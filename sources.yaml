@@ -1,5 +1,11 @@
 sources:
   - name: "IGN"
     feed: "https://feeds.ign.com/ign/all"
+  - name: "Tom's Hardware"
+    feed: "https://www.tomshardware.com/feeds/all.rss.xml"
+  - name: "TechRadar"
+    feed: "https://www.techradar.com/feeds"
+  - name: "GameSpot"
+    feed: "https://www.gamespot.com/feeds/news/"
   - name: "Dsogaming"
     feed: "https://www.dsogaming.com/feed/"
