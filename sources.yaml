@@ -1,0 +1,7 @@
+sources:
+  - name: "Tom's Hardware"
+    feed: "https://www.tomshardware.com/feeds/all.rss.xml"
+  - name: "TechRadar"
+    feed: "https://www.techradar.com/feeds"
+  - name: "IGN"
+    feed: "https://feeds.ign.com/ign/all"
