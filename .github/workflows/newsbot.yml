@@ -46,4 +46,23 @@ jobs:
           LANG: "fa"
           PYTHONUNBUFFERED: "1"
         run: |
+        - name: WP auth probe (runner)
+  env:
+    WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
+    WP_USERNAME: ${{ secrets.WP_USERNAME }}
+    WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+  run: |
+    echo "users/me status:"
+    curl -s -o me.txt -w "%{http_code}\n" -u "$WP_USERNAME:$WP_APP_PASSWORD" \
+      "$WP_BASE_URL/wp-json/wp/v2/users/me"
+    echo "first 200 chars:"
+    head -c 200 me.txt; echo
+
+    echo "posts create status:"
+    curl -s -o post.txt -w "%{http_code}\n" -u "$WP_USERNAME:$WP_APP_PASSWORD" \
+      -H "Content-Type: application/json" \
+      -d '{"title":"API test","content":"Hello","status":"draft"}' \
+      "$WP_BASE_URL/wp-json/wp/v2/posts"
+    echo "first 200 chars:"
+    head -c 200 post.txt; echo
           python -u bot.py
