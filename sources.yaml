@@ -1,3 +1,5 @@
 sources:
   - name: "IGN"
     feed: "https://feeds.ign.com/ign/all"
+  - name: "Dsogaming"
+    feed: "https://www.dsogaming.com/feed/"
