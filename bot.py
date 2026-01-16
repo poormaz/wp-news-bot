@@ -276,18 +276,8 @@ def run():
             time.sleep(1.2)  # نرخ‌دهی ساده
         except Exception:
             mark_failed(item_id)
-import traceback
-
-...
-        except Exception as e:
-            print("FAILED item:", url)
-            print("ERROR:", repr(e))
-            traceback.print_exc()
-            mark_failed(item_id)
-            raise  # باعث می‌شود GitHub Actions هم Fail شود و خطا را ببینی
-
-    print(f"Done. Added from feeds: {total_added}, processed: {len(pending)}")
 
 if __name__ == "__main__":
     run()
+
 
