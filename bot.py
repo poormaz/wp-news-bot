@@ -16,9 +16,10 @@ from openai import OpenAI
 
 load_dotenv()
 
+# ===== ENV =====
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 
-WP_BASE_URL = os.getenv("WP_BASE_URL", "").rstrip("/")
+WP_BASE_URL = os.getenv("WP_BASE_URL", "").strip().rstrip("/")
 WP_USERNAME = os.getenv("WP_USERNAME", "").strip()
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "").strip()
 
@@ -28,7 +29,7 @@ MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "3"))
 LANG = os.getenv("LANG", "fa").strip()
 
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "25"))
-USER_AGENT = os.getenv("USER_AGENT", "WPNewsBot/1.0 (+https://example.com)").strip()
+USER_AGENT = os.getenv("USER_AGENT", "WPNewsBot/1.0 (+https://poormaz.com)").strip()
 
 DB_FILE = "news_cache.db"
 SOURCES_FILE = "sources.yaml"
@@ -36,16 +37,9 @@ SOURCES_FILE = "sources.yaml"
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 
 
+# ===== utils =====
 def die(msg: str):
     raise SystemExit(msg)
-
-
-def safe_env_report():
-    keys = ["OPENAI_API_KEY", "WP_BASE_URL", "WP_USERNAME", "WP_APP_PASSWORD"]
-    print("ENV CHECK (safe):")
-    for k in keys:
-        v = os.getenv(k, "")
-        print(f"- {k}: {'OK' if v else 'MISSING'} (len={len(v)})")
 
 
 def clean_text(s: str) -> str:
@@ -59,6 +53,15 @@ def url_hash(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
+def safe_env_report():
+    keys = ["OPENAI_API_KEY", "WP_BASE_URL", "WP_USERNAME", "WP_APP_PASSWORD"]
+    print("ENV CHECK (safe):")
+    for k in keys:
+        v = os.getenv(k, "")
+        print(f"- {k}: {'OK' if v else 'MISSING'} (len={len(v)})")
+
+
+# ===== DB =====
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -77,38 +80,6 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-
-
-def load_sources():
-    if not os.path.exists(SOURCES_FILE):
-        die(f"Missing {SOURCES_FILE}")
-
-    with open(SOURCES_FILE, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
-
-    sources = cfg.get("sources", [])
-    if not isinstance(sources, list) or not sources:
-        die("sources.yaml is empty. Expected:\nsources:\n  - name: ...\n    feed: ...")
-
-    for s in sources:
-        if "name" not in s or "feed" not in s:
-            die("Each source must have 'name' and 'feed'")
-    return sources
-
-
-def fetch_feed_entries(feed_url: str):
-    headers = {"User-Agent": USER_AGENT}
-    r = requests.get(feed_url, headers=headers, timeout=HTTP_TIMEOUT)
-    print(f"FEED GET: {feed_url} | status={r.status_code} | bytes={len(r.content)}")
-
-    if r.status_code >= 400:
-        print("FEED ERROR BODY (first 200 chars):", r.text[:200])
-        return []
-
-    parsed = feedparser.parse(r.text)
-    entries = parsed.entries or []
-    print(f"FEED PARSED: entries={len(entries)}")
-    return entries
 
 
 def upsert_new_items(source_name: str, entries: list) -> int:
@@ -176,6 +147,39 @@ def mark_failed(item_id: str):
     conn.close()
 
 
+# ===== Sources =====
+def load_sources():
+    if not os.path.exists(SOURCES_FILE):
+        die(f"Missing {SOURCES_FILE}")
+
+    with open(SOURCES_FILE, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+
+    sources = cfg.get("sources", [])
+    if not isinstance(sources, list) or not sources:
+        die("sources.yaml is empty. Expected:\nsources:\n  - name: ...\n    feed: ...")
+
+    for s in sources:
+        if "name" not in s or "feed" not in s:
+            die("Each source must have 'name' and 'feed'")
+    return sources
+
+
+def fetch_feed_entries(feed_url: str):
+    headers = {"User-Agent": USER_AGENT}
+    r = requests.get(feed_url, headers=headers, timeout=HTTP_TIMEOUT)
+    print(f"FEED GET: {feed_url} | status={r.status_code} | bytes={len(r.content)}")
+    if r.status_code >= 400:
+        print("FEED ERROR BODY (first 200):", r.text[:200])
+        return []
+
+    parsed = feedparser.parse(r.text)
+    entries = parsed.entries or []
+    print(f"FEED PARSED: entries={len(entries)}")
+    return entries
+
+
+# ===== OpenAI =====
 def openai_generate_fa(title_en: str, snippet_en: str, source_name: str, source_url: str) -> dict:
     if not OPENAI_API_KEY:
         die("OPENAI_API_KEY is missing")
@@ -191,9 +195,10 @@ Input:
 - Source name: {source_name}
 - Source URL: {source_url}
 
-Task:
-- Write ORIGINAL Persian content (do not copy source text).
-- Return valid JSON only with keys:
+Rules:
+- Write ORIGINAL Persian content (do not copy the source).
+- Do NOT invent specs/numbers. If missing, say "جزئیات کامل در منبع".
+- Return valid JSON ONLY with keys:
   title_fa, summary_fa, bullets_fa (array of 3 strings), why_it_matters_fa
 """
 
@@ -231,19 +236,46 @@ Task:
     data["summary_fa"] = clean_text(data["summary_fa"])
     data["why_it_matters_fa"] = clean_text(data["why_it_matters_fa"])
     data["bullets_fa"] = [clean_text(x) for x in data["bullets_fa"][:3]]
-
     return data
 
 
+# ===== WordPress REST =====
 def wp_auth_header(username: str, app_password: str) -> str:
     token = base64.b64encode(f"{username}:{app_password}".encode("utf-8")).decode("utf-8")
     return f"Basic {token}"
 
 
-def create_wp_post(title: str, content_html: str) -> int:
+def wp_check_me():
+    """
+    Verifies that Application Password auth actually works:
+    GET /wp-json/wp/v2/users/me [web:359]
+    """
     if not (WP_BASE_URL and WP_USERNAME and WP_APP_PASSWORD):
         die("WP_BASE_URL / WP_USERNAME / WP_APP_PASSWORD is missing")
 
+    endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/users/me"
+    headers = {
+        "Authorization": wp_auth_header(WP_USERNAME, WP_APP_PASSWORD),
+        "User-Agent": USER_AGENT,
+    }
+
+    r = requests.get(endpoint, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=False)
+    print("WP ME:", endpoint, "| status=", r.status_code)
+
+    if r.status_code in (301, 302, 307, 308):
+        print("WP ME redirect to:", r.headers.get("Location"))
+
+    if r.status_code >= 400:
+        print("WP ME error body (first 300):", r.text[:300])
+
+    r.raise_for_status()
+
+    me = r.json()
+    print("WP ME OK:", "id=", me.get("id"), "| name=", me.get("name"))
+    return me
+
+
+def create_wp_post(title: str, content_html: str) -> int:
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/posts"
     headers = {
         "Authorization": wp_auth_header(WP_USERNAME, WP_APP_PASSWORD),
@@ -255,12 +287,17 @@ def create_wp_post(title: str, content_html: str) -> int:
     if WP_CATEGORY_ID > 0:
         payload["categories"] = [WP_CATEGORY_ID]
 
-    r = requests.post(endpoint, headers=headers, json=payload, timeout=HTTP_TIMEOUT)
+    # Disallow redirects so we can see if WP_BASE_URL is wrong and redirects away
+    r = requests.post(endpoint, headers=headers, json=payload, timeout=HTTP_TIMEOUT, allow_redirects=False)
     print("WP POST:", endpoint, "| status=", r.status_code)
+
+    if r.status_code in (301, 302, 307, 308):
+        print("WP POST redirect to:", r.headers.get("Location"))
+
     if r.status_code >= 400:
         print("WP ERROR BODY (first 500 chars):", r.text[:500])
-    r.raise_for_status()
 
+    r.raise_for_status()
     return int(r.json()["id"])
 
 
@@ -276,6 +313,7 @@ def build_wp_content(gen: dict, source_name: str, source_url: str, published_at:
 """.strip()
 
 
+# ===== Main =====
 def run():
     print("=== WP News Bot starting ===")
     safe_env_report()
@@ -283,9 +321,15 @@ def run():
     if LANG.lower() != "fa":
         die("Set LANG=fa")
 
-    init_db()
-    sources = load_sources()
+    if not WP_BASE_URL.startswith("https://"):
+        print("WARNING: WP_BASE_URL should start with https:// for Application Passwords.")
 
+    # Verify WP auth early (users/me endpoint) [web:359]
+    wp_check_me()
+
+    init_db()
+
+    sources = load_sources()
     print("Sources loaded:", len(sources))
     for s in sources:
         print("-", s["name"], s["feed"])
