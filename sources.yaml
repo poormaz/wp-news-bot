@@ -1,4 +1,3 @@
 sources:
   - name: "IGN"
     feed: "https://feeds.ign.com/ign/all"
-
