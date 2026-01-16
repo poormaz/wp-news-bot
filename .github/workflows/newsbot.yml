@@ -1,25 +1,17 @@
 name: WP News Bot
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
   schedule:
     - cron: "0 */6 * * *"   # هر 6 ساعت (UTC)
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: true
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -40,13 +32,3 @@ jobs:
           LANG: "fa"
         run: |
           python bot.py
-
-      - name: Persist cache db (optional)
-        run: |
-          if [ -f news_cache.db ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add news_cache.db
-            git commit -m "Update cache" || echo "No changes to commit"
-            git push || true
-          fi
