@@ -20,6 +20,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Check secrets (safe)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        run: |
+          python - << 'PY'
+          import os
+          for k in ["WP_BASE_URL","WP_USERNAME","WP_APP_PASSWORD","OPENAI_API_KEY"]:
+              v = os.getenv(k, "")
+              print(k, "OK" if v else "MISSING", "len=", len(v))
+          PY
+
       - name: Run bot
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -30,5 +44,6 @@ jobs:
           WP_CATEGORY_ID: "0"
           MAX_POSTS_PER_RUN: "3"
           LANG: "fa"
+          PYTHONUNBUFFERED: "1"
         run: |
-          python bot.py
+          python -u bot.py
