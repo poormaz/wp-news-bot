@@ -5,6 +5,7 @@ import time
 import base64
 import hashlib
 import sqlite3
+import traceback
 from datetime import datetime, timezone
 
 import yaml
@@ -13,37 +14,48 @@ import requests
 from dotenv import load_dotenv
 from openai import OpenAI
 
+# Allow local testing with .env (GitHub Actions secrets will override env anyway)
 load_dotenv()
 
+# ===== ENV =====
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+
 WP_BASE_URL = os.getenv("WP_BASE_URL", "").rstrip("/")
 WP_USERNAME = os.getenv("WP_USERNAME", "").strip()
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "").strip()
 
-WP_POST_STATUS = os.getenv("WP_POST_STATUS", "draft").strip()
+WP_POST_STATUS = os.getenv("WP_POST_STATUS", "draft").strip()  # draft|publish
 WP_CATEGORY_ID = int(os.getenv("WP_CATEGORY_ID", "0"))
 MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "3"))
 LANG = os.getenv("LANG", "fa").strip()
 
-HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "20"))
-USER_AGENT = os.getenv("USER_AGENT", "WPNewsBot/1.0").strip()
+HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "25"))
+USER_AGENT = os.getenv("USER_AGENT", "WPNewsBot/1.0 (+https://example.com)").strip()
 
 DB_FILE = "news_cache.db"
 SOURCES_FILE = "sources.yaml"
 
-MODEL = "gpt-4o-mini"  # می‌توانید تغییر دهید
+MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 
+# ===== helpers =====
 def die(msg: str):
     raise SystemExit(msg)
 
 def clean_text(s: str) -> str:
     s = s or ""
-    s = re.sub(r"<[^>]+>", " ", s)  # strip html
+    s = re.sub(r"<[^>]+>", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
 def url_hash(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+def safe_env_report():
+    keys = ["OPENAI_API_KEY", "WP_BASE_URL", "WP_USERNAME", "WP_APP_PASSWORD"]
+    print("ENV CHECK:")
+    for k in keys:
+        v = os.getenv(k, "")
+        print(f"- {k}: {'OK' if v else 'MISSING'} (len={len(v)})")
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -67,16 +79,37 @@ def init_db():
 def load_sources():
     if not os.path.exists(SOURCES_FILE):
         die(f"Missing {SOURCES_FILE}")
+
     with open(SOURCES_FILE, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
+        cfg = yaml.safe_load(f) or {}
+
     sources = cfg.get("sources", [])
-    if not sources:
-        die("sources.yaml has no sources")
+    if not isinstance(sources, list) or not sources:
+        die("sources.yaml has no sources: expected\nsources:\n  - name: ...\n    feed: ...")
+
+    # validate
+    for s in sources:
+        if "name" not in s or "feed" not in s:
+            die("Each source must have name and feed")
     return sources
 
 def fetch_feed_entries(feed_url: str):
-    fp = feedparser.parse(feed_url)
-    entries = fp.entries or []
+    """
+    Fetch feed via requests to see HTTP status + bytes,
+    then parse from raw string (feedparser supports parsing from a string). [web:290]
+    """
+    headers = {"User-Agent": USER_AGENT}
+    r = requests.get(feed_url, headers=headers, timeout=HTTP_TIMEOUT)
+    print(f"FEED GET: {feed_url} | status={r.status_code} | bytes={len(r.content)}")
+
+    # Some sites return 403 unless UA is set; this makes that visible in logs. [web:294]
+    if r.status_code >= 400:
+        print("FEED ERROR BODY (first 200 chars):", r.text[:200])
+        return []
+
+    parsed = feedparser.parse(r.text)
+    entries = parsed.entries or []
+    print(f"FEED PARSED: entries={len(entries)}")
     return entries
 
 def upsert_new_items(source_name: str, entries: list) -> int:
@@ -173,11 +206,14 @@ Task (IMPORTANT):
         temperature=0.3,
     )
 
-    text = resp.choices[0].message.content.strip()
+    text = (resp.choices[0].message.content or "").strip()
+    if not text:
+        raise ValueError("OpenAI returned empty content")
 
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
+        # try to salvage JSON object if model wrapped it in text
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end != -1 and end > start:
@@ -223,12 +259,15 @@ def create_wp_post(title: str, content_html: str) -> int:
         payload["categories"] = [WP_CATEGORY_ID]
 
     r = requests.post(endpoint, headers=headers, json=payload, timeout=HTTP_TIMEOUT)
+    print("WP POST:", endpoint, "| status=", r.status_code)  # endpoint used for creating posts [web:298]
+    if r.status_code >= 400:
+        print("WP ERROR BODY (first 500 chars):", r.text[:500])
+
     r.raise_for_status()
     return int(r.json()["id"])
 
 def build_wp_content(gen: dict, source_name: str, source_url: str, published_at: str) -> str:
     bullets = "".join([f"<li>{b}</li>" for b in gen["bullets_fa"]])
-
     html = f"""
 <p>{gen["summary_fa"]}</p>
 
@@ -242,26 +281,40 @@ def build_wp_content(gen: dict, source_name: str, source_url: str, published_at:
 <p><strong>منبع:</strong> <a href="{source_url}" target="_blank" rel="nofollow noopener">{source_name}</a></p>
 <p><small>زمان انتشار منبع (RSS): {clean_text(published_at)}</small></p>
 """.strip()
-
     return html
 
 def run():
+    print("=== WP News Bot starting ===")
+    safe_env_report()
+
     if LANG.lower() != "fa":
         die("This bot is configured for Persian (fa). Set LANG=fa")
 
     init_db()
+
     sources = load_sources()
+    print("Sources loaded:", len(sources))
+    for s in sources:
+        print("-", s["name"], s["feed"])
 
     total_added = 0
     for s in sources:
         name = s["name"]
         feed = s["feed"]
         entries = fetch_feed_entries(feed)
-        total_added += upsert_new_items(name, entries[:10])
+        added = upsert_new_items(name, entries[:10])
+        print(f"ADDED from {name}: {added}")
+        total_added += added
 
     pending = get_pending_items(MAX_POSTS_PER_RUN)
+    print("Pending to publish:", len(pending), "| MAX_POSTS_PER_RUN:", MAX_POSTS_PER_RUN)
 
     for (item_id, source_name, title_en, snippet_en, url, published_at) in pending:
+        print("\n--- ITEM ---")
+        print("Source:", source_name)
+        print("URL:", url)
+        print("Title EN:", title_en)
+
         try:
             gen = openai_generate_fa(
                 title_en=title_en,
@@ -271,13 +324,21 @@ def run():
             )
             wp_title = gen["title_fa"]
             wp_content = build_wp_content(gen, source_name, url, published_at)
+
             wp_post_id = create_wp_post(wp_title, wp_content)
+            print("POSTED to WP, post_id:", wp_post_id)
+
             mark_posted(item_id, wp_post_id)
-            time.sleep(1.2)  # نرخ‌دهی ساده
-        except Exception:
+            time.sleep(1.2)
+
+        except Exception as e:
+            print("FAILED item:", url)
+            print("ERROR:", repr(e))
+            traceback.print_exc()
             mark_failed(item_id)
+            raise  # fail the workflow so you notice
+
+    print(f"\nDone. Added from feeds: {total_added}, processed: {len(pending)}")
 
 if __name__ == "__main__":
     run()
-
-
