@@ -40,8 +40,8 @@ jobs:
           RANKMATH_UPDATER_URL: ${{ secrets.RANKMATH_UPDATER_URL }}
           RANKMATH_UPDATER_TOKEN: ${{ secrets.RANKMATH_UPDATER_TOKEN }}
           CAT_ALL: "2"
-          CAT_GAMING: "2,1"
-          CAT_HARDWARE: "2,19"
+          CAT_GAMING: "1"
+          CAT_HARDWARE: "19"
           CAT_REVIEWS: "3"
         run: |
           python - << 'PY'
