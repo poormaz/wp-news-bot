@@ -29,30 +29,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # فقط طول secretها را چاپ میکند، مقدار را نه
       - name: Check secrets (safe)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: gpt-5-mini
+
           WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
-          RANKMATH_UPDATER_URL: ${{ secrets.RANKMATH_UPDATER_URL }}
-          RANKMATH_UPDATER_TOKEN: ${{ secrets.RANKMATH_UPDATER_TOKEN }}
+
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          CAT_ALL: "2"
-          CAT_GAMING: "1"
-          CAT_HARDWARE: "19"
-          CAT_REVIEWS: "3"
         run: |
           python - << 'PY'
           import os
-          for k in ["WP_BASE_URL","WP_USERNAME","WP_APP_PASSWORD","OPENAI_API_KEY","OPENAI_MODEL"]:
+          for k in ["WP_BASE_URL","WP_USERNAME","WP_APP_PASSWORD","OPENAI_API_KEY","OPENAI_MODEL","PEXELS_API_KEY"]:
               v = os.getenv(k, "")
               print(k, "OK" if v else "MISSING", "len=", len(v))
           PY
 
-      # تست REST API از داخل Runner (فقط GET - هیچ پستی ساخته نمی‌شود)
+      # فقط GET (هیچ پستی ساخته نمی‌شود)
       - name: WP probe (runner, verbose)
         env:
           WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
@@ -77,12 +72,6 @@ jobs:
             "$WP_BASE_URL/wp-json/wp/v2/users/me" | head -n 60
           echo
 
-          echo "=== 3) GET posts (with Basic Auth) ==="
-          curl -i --max-time 20 -A "$UA" -H "Accept: application/json" \
-            -u "$WP_USERNAME:$WP_APP_PASSWORD" \
-            "$WP_BASE_URL/wp-json/wp/v2/posts?per_page=1" | head -n 60
-          echo
-
       - name: Run bot
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -91,21 +80,36 @@ jobs:
           WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+
           RANKMATH_UPDATER_URL: ${{ secrets.RANKMATH_UPDATER_URL }}
           RANKMATH_UPDATER_TOKEN: ${{ secrets.RANKMATH_UPDATER_TOKEN }}
 
+          # Categories
           CAT_ALL: "2"
           CAT_GAMING: "1"
           CAT_HARDWARE: "19"
           CAT_REVIEWS: "3"
 
+          # Posting
           WP_POST_STATUS: draft
           MAX_POSTS_PER_RUN: "1"
           LANG: "fa"
 
-          # اگر bot.py ازش استفاده کند:
+          # RSS import limit (3 یا 4)
+          FEED_ENTRIES_LIMIT: "4"
+
+          # Rotation
+          ROTATION_SOURCES: "GameSpot,IGN,DSOGaming,Wccftech"
+
+          # Images
           SET_FEATURED_IMAGE: "1"
+          EMBED_IMAGE_IN_CONTENT: "1"
+
+          # Pexels
+          PEXELS_ENABLED: "1"
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PEXELS_ORIENTATION: "landscape"
+          PEXELS_PER_PAGE: "1"
 
           PYTHONUNBUFFERED: "1"
         run: |
