@@ -9,7 +9,3 @@ sources:
     feed: "https://www.tomshardware.com/feeds.xml"
   - name: "GameSpot"
     feed: "https://www.gamespot.com/feeds/news/"
-  - name: "TechRadar"
-    feed: "https://www.techradar.com/feeds/tag/gaming"
-  - name: "TechRadar"
-    feed: "https://www.techradar.com/feeds/tag/computing-components"
