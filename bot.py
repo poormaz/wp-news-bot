@@ -227,11 +227,11 @@ def pick_categories(source_name: str, title_en: str, snippet_en: str) -> list[in
     text = (title_en + " " + snippet_en).lower()
 
     # Reviews: فقط 3 (طبق خواسته تو)
-    if CAT_REVIEWS and any(k in text for k in ["review", "benchmark", "hands-on", "impressions"]):
+    if CAT_REVIEWS and any(k in text for k in ["review", "hands-on", "Preview", "impressions"]):
         return [CAT_REVIEWS]
 
     # Hardware: همزمان داخل همه خبرها
-    if CAT_HARDWARE and any(k in text for k in ["gpu", "rtx", "radeon", "cpu", "intel", "amd", "nvidia", "laptop", "ssd", "ram", "motherboard"]):
+    if CAT_HARDWARE and any(k in text for k in ["gpu", "rtx", "benchmark", "radeon", "FSR", "DLSS", "cpu", "Geforce now", "intel", "amd", "nvidia", "laptop", "ssd", "ram", "motherboard"]):
         return [CAT_ALL, CAT_HARDWARE] if CAT_ALL else [CAT_HARDWARE]
 
     # Gaming: همزمان داخل همه خبرها
@@ -557,5 +557,6 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
