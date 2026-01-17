@@ -33,9 +33,16 @@ jobs:
       - name: Check secrets (safe)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: gpt-5-mini
           WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          RANKMATH_UPDATER_URL: ${{ secrets.RANKMATH_UPDATER_URL }}
+          RANKMATH_UPDATER_TOKEN: ${{ secrets.RANKMATH_UPDATER_TOKEN }}
+          CAT_ALL: "2"
+          CAT_GAMING: "2,1"
+          CAT_HARDWARE: "2,19"
+          CAT_REVIEWS: "3"
         run: |
           python - << 'PY'
           import os
