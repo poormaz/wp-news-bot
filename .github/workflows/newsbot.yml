@@ -1,10 +1,10 @@
-name: run-bot
+name: wp-news-bot
 
 on:
   workflow_dispatch:
   schedule:
     # زمان‌ها UTC هستند
-    - cron: "0 * * * *"  # هر ساعت یک بار
+    - cron: "0 * * * *"  # هر ساعت
 
 concurrency:
   group: wp-news-bot
@@ -29,7 +29,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # فقط طول envها را چاپ می‌کند، مقدار را نه
+      # فقط طول secretها را چاپ می‌کند، مقدار را نه
       - name: Check secrets (safe)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -44,26 +44,40 @@ jobs:
               print(k, "OK" if v else "MISSING", "len=", len(v))
           PY
 
-      # تست WP از داخل Runner (برای اینکه بفهمیم 401/403 از کجاست)
-      - name: WP auth probe (runner)
+      # تست دقیق REST API از داخل Runner
+      # هدف: بفهمیم /wp-json/ کلاً بسته است یا فقط Authorization باعث بلاک می‌شود
+      - name: WP probe (runner, verbose)
         env:
           WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
         run: |
-          echo "users/me status:"
-          curl -s -o me.txt -w "%{http_code}\n" -u "$WP_USERNAME:$WP_APP_PASSWORD" \
-            "$WP_BASE_URL/wp-json/wp/v2/users/me"
-          echo "first 200 chars:"
-          head -c 200 me.txt; echo
+          set -e
 
-          echo "posts create status:"
-          curl -s -o post.txt -w "%{http_code}\n" -u "$WP_USERNAME:$WP_APP_PASSWORD" \
+          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+
+          echo "=== WP_BASE_URL ==="
+          echo "$WP_BASE_URL"
+          echo
+
+          echo "=== 1) GET /wp-json/ (no auth) ==="
+          curl -i --max-time 20 -A "$UA" -H "Accept: application/json" \
+            "$WP_BASE_URL/wp-json/" | head -n 40
+          echo
+
+          echo "=== 2) GET users/me (with Basic Auth) ==="
+          curl -i --max-time 20 -A "$UA" -H "Accept: application/json" \
+            -u "$WP_USERNAME:$WP_APP_PASSWORD" \
+            "$WP_BASE_URL/wp-json/wp/v2/users/me" | head -n 60
+          echo
+
+          echo "=== 3) POST posts (with Basic Auth) ==="
+          curl -i --max-time 20 -A "$UA" -H "Accept: application/json" \
+            -u "$WP_USERNAME:$WP_APP_PASSWORD" \
             -H "Content-Type: application/json" \
             -d '{"title":"API test","content":"Hello","status":"draft"}' \
-            "$WP_BASE_URL/wp-json/wp/v2/posts"
-          echo "first 200 chars:"
-          head -c 200 post.txt; echo
+            "$WP_BASE_URL/wp-json/wp/v2/posts" | head -n 60
+          echo
 
       - name: Run bot
         env:
