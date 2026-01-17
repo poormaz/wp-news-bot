@@ -100,7 +100,7 @@ jobs:
           CAT_HARDWARE: "19"
           CAT_REVIEWS: "3"
           WP_POST_STATUS: draft
-          MAX_POSTS_PER_RUN: "3"
+          MAX_POSTS_PER_RUN: "1"
           LANG: "fa"
           PYTHONUNBUFFERED: "1"
         run: |
