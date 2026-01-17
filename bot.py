@@ -6,7 +6,7 @@ import base64
 import hashlib
 import sqlite3
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, quote_plus
 
@@ -18,48 +18,59 @@ from openai import OpenAI
 
 load_dotenv()
 
-# ========= ENV =========
+# =======================
+# ENV
+# =======================
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini").strip()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini").strip()
 
 WP_BASE_URL = os.getenv("WP_BASE_URL", "").strip().rstrip("/")
 WP_USERNAME = os.getenv("WP_USERNAME", "").strip()
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "").strip()
-
 WP_POST_STATUS = os.getenv("WP_POST_STATUS", "draft").strip()
-WP_CATEGORY_ID_DEFAULT = int(os.getenv("WP_CATEGORY_ID", "0"))
 
-MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "1"))
 LANG = os.getenv("LANG", "fa").strip()
-
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "25"))
-USER_AGENT = os.getenv("USER_AGENT", "Mozilla/5.0 (WPNewsBot/1.0; +https://poormaz.com)").strip()
+USER_AGENT = os.getenv("USER_AGENT", "Mozilla/5.0 (WPNewsBot/1.0; +https://example.com)").strip()
 
 DB_FILE = os.getenv("DB_FILE", "news_cache.db").strip()
 SOURCES_FILE = os.getenv("SOURCES_FILE", "sources.yaml").strip()
 
-# Optional: RankMath updater endpoint (plugin)
-RANKMATH_UPDATER_URL = os.getenv("RANKMATH_UPDATER_URL", "").strip()
-RANKMATH_UPDATER_TOKEN = os.getenv("RANKMATH_UPDATER_TOKEN", "").strip()
+# One post per run
+MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "1"))
 
-# Categories (env mapping)
+# How many top RSS items per site to import each run (3 or 4 suggested)
+FEED_ENTRIES_LIMIT = int(os.getenv("FEED_ENTRIES_LIMIT", "4"))
+
+# Category mapping
 CAT_ALL = int(os.getenv("CAT_ALL", "0"))
 CAT_GAMING = int(os.getenv("CAT_GAMING", "0"))
 CAT_HARDWARE = int(os.getenv("CAT_HARDWARE", "0"))
 CAT_REVIEWS = int(os.getenv("CAT_REVIEWS", "0"))
+WP_CATEGORY_ID_DEFAULT = int(os.getenv("WP_CATEGORY_ID", "0"))
+
+# RankMath updater (optional)
+RANKMATH_UPDATER_URL = os.getenv("RANKMATH_UPDATER_URL", "").strip()
+RANKMATH_UPDATER_TOKEN = os.getenv("RANKMATH_UPDATER_TOKEN", "").strip()
 
 # Image behavior
 SET_FEATURED_IMAGE = os.getenv("SET_FEATURED_IMAGE", "1").strip() == "1"
 EMBED_IMAGE_IN_CONTENT = os.getenv("EMBED_IMAGE_IN_CONTENT", "1").strip() == "1"
 
+# Rotation / round-robin order:
+# Example: "GameSpot,IGN,DSOGaming,Wccftech"
+ROTATION_SOURCES = os.getenv("ROTATION_SOURCES", "").strip()
+
 # Pexels fallback
-PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
 PEXELS_ENABLED = os.getenv("PEXELS_ENABLED", "1").strip() == "1"
-PEXELS_PER_PAGE = int(os.getenv("PEXELS_PER_PAGE", "1"))
+PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
 PEXELS_ORIENTATION = os.getenv("PEXELS_ORIENTATION", "landscape").strip()
+PEXELS_PER_PAGE = int(os.getenv("PEXELS_PER_PAGE", "1"))
 
 
-# ========= helpers =========
+# =======================
+# Helpers
+# =======================
 def die(msg: str):
     raise SystemExit(msg)
 
@@ -71,9 +82,10 @@ def safe_env_report():
         "WP_BASE_URL",
         "WP_USERNAME",
         "WP_APP_PASSWORD",
-        "RANKMATH_UPDATER_URL",
-        "RANKMATH_UPDATER_TOKEN",
         "PEXELS_API_KEY",
+        "ROTATION_SOURCES",
+        "FEED_ENTRIES_LIMIT",
+        "MAX_POSTS_PER_RUN",
     ]
     print("ENV CHECK (safe):")
     for k in keys:
@@ -97,6 +109,20 @@ def wp_auth_header(username: str, app_password: str) -> str:
     return f"Basic {token}"
 
 
+def parse_published_ts(published_at: str) -> int:
+    """
+    Convert RSS published string to unix timestamp (seconds).
+    Falls back to now if parsing fails.
+    """
+    try:
+        dt = parsedate_to_datetime(published_at)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+    except Exception:
+        return int(datetime.now(timezone.utc).timestamp())
+
+
 def format_rss_date(published_at: str) -> str:
     try:
         dt = parsedate_to_datetime(published_at)
@@ -116,18 +142,7 @@ def guess_ext_and_mime(content_type: str | None) -> tuple[str, str]:
     return "jpg", "image/jpeg"
 
 
-def guess_mime_from_ext(ext: str) -> str:
-    ext = (ext or "").lower().strip(".")
-    if ext == "png":
-        return "image/png"
-    if ext == "gif":
-        return "image/gif"
-    if ext == "webp":
-        return "image/webp"
-    return "image/jpeg"
-
-
-def slugify_words_for_query(title_en: str, max_words: int = 7) -> str:
+def basic_keywords_from_title(title_en: str, max_words: int = 7) -> str:
     t = (title_en or "").lower()
     t = re.sub(r"[^a-z0-9\s\-]", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
@@ -140,15 +155,17 @@ def slugify_words_for_query(title_en: str, max_words: int = 7) -> str:
         "new", "latest", "update", "updates",
     }
     keep = [w for w in words if w not in stop and len(w) >= 3]
-    keep = keep[:max_words] if keep else words[:max_words]
-    q = " ".join(keep).strip()
-    return q or "technology"
+    keep = (keep or words)[:max_words]
+    return " ".join(keep).strip() or "technology"
 
 
-# ========= DB =========
+# =======================
+# DB
+# =======================
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+
     c.execute("""
       CREATE TABLE IF NOT EXISTS items (
         id TEXT PRIMARY KEY,
@@ -157,11 +174,48 @@ def init_db():
         snippet_en TEXT,
         url TEXT,
         published_at TEXT,
+        published_ts INTEGER,
         created_at TEXT,
         status TEXT,
         wp_post_id INTEGER
       )
     """)
+
+    c.execute("""
+      CREATE TABLE IF NOT EXISTS state (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      )
+    """)
+
+    # Migration: add published_ts if missing (older DB)
+    c.execute("PRAGMA table_info(items)")
+    cols = {row[1] for row in c.fetchall()}
+    if "published_ts" not in cols:
+        c.execute("ALTER TABLE items ADD COLUMN published_ts INTEGER")
+        conn.commit()
+
+    conn.commit()
+    conn.close()
+
+
+def state_get(key: str, default: str = "") -> str:
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT value FROM state WHERE key=?", (key,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else default
+
+
+def state_set(key: str, value: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute(
+        "INSERT INTO state(key,value) VALUES(?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (key, value),
+    )
     conn.commit()
     conn.close()
 
@@ -171,6 +225,8 @@ def upsert_new_items(source_name: str, entries: list) -> int:
     c = conn.cursor()
 
     added = 0
+    now_iso = datetime.utcnow().isoformat()
+
     for e in entries:
         link = (e.get("link") or "").strip()
         if not link:
@@ -180,39 +236,28 @@ def upsert_new_items(source_name: str, entries: list) -> int:
         title = clean_text(e.get("title", ""))
         snippet = clean_text(e.get("summary", "") or e.get("description", ""))
 
-        published = e.get("published", "") or e.get("updated", "")
+        published = (e.get("published") or e.get("updated") or "").strip()
         if not published:
-            published = datetime.utcnow().isoformat()
+            published = now_iso
 
-        now = datetime.utcnow().isoformat()
+        published_ts = parse_published_ts(published)
 
         try:
             c.execute("""
-              INSERT INTO items (id, source_name, title_en, snippet_en, url, published_at, created_at, status, wp_post_id)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (hid, source_name, title, snippet, link, published, now, "pending", None))
+              INSERT INTO items (
+                id, source_name, title_en, snippet_en, url,
+                published_at, published_ts, created_at, status, wp_post_id
+              )
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (hid, source_name, title, snippet, link, published, published_ts, now_iso, "pending", None))
             added += 1
         except sqlite3.IntegrityError:
+            # already exists (same URL hash)
             pass
 
     conn.commit()
     conn.close()
     return added
-
-
-def get_pending_items(limit: int):
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("""
-      SELECT id, source_name, title_en, snippet_en, url, published_at
-      FROM items
-      WHERE status = 'pending'
-      ORDER BY created_at DESC
-      LIMIT ?
-    """, (limit,))
-    rows = c.fetchall()
-    conn.close()
-    return rows
 
 
 def mark_posted(item_id: str, wp_post_id: int):
@@ -231,7 +276,58 @@ def mark_failed(item_id: str):
     conn.close()
 
 
-# ========= Sources =========
+def get_next_pending_round_robin(source_order: list[str]):
+    """
+    Pick exactly one pending item, rotating between sources.
+    If the current source has no pending items, it will scan forward to find one.
+    If none exist, returns [].
+    """
+    if not source_order:
+        return []
+
+    # rr_index points to the "next source to try"
+    try:
+        rr_index = int(state_get("rr_index", "0") or "0")
+    except ValueError:
+        rr_index = 0
+
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+
+    chosen_row = None
+    chosen_idx = None
+
+    for i in range(len(source_order)):
+        idx = (rr_index + i) % len(source_order)
+        src = source_order[idx]
+
+        c.execute("""
+          SELECT id, source_name, title_en, snippet_en, url, published_at
+          FROM items
+          WHERE status='pending' AND source_name=?
+          ORDER BY COALESCE(published_ts, 0) DESC, created_at DESC
+          LIMIT 1
+        """, (src,))
+        row = c.fetchone()
+        if row:
+            chosen_row = row
+            chosen_idx = idx
+            break
+
+    conn.close()
+
+    if chosen_row is None:
+        return []
+
+    # next run starts after the chosen source
+    next_idx = (chosen_idx + 1) % len(source_order)
+    state_set("rr_index", str(next_idx))
+    return [chosen_row]
+
+
+# =======================
+# Sources
+# =======================
 def load_sources():
     if not os.path.exists(SOURCES_FILE):
         die(f"Missing {SOURCES_FILE}")
@@ -263,7 +359,9 @@ def fetch_feed_entries(feed_url: str):
     return entries
 
 
-# ========= Category selection =========
+# =======================
+# Categories
+# =======================
 def pick_categories(title_en: str, snippet_en: str) -> list[int]:
     text = (title_en + " " + snippet_en).lower()
 
@@ -286,7 +384,9 @@ def pick_categories(title_en: str, snippet_en: str) -> list[int]:
     return []
 
 
-# ========= OpenAI generation =========
+# =======================
+# OpenAI content generation
+# =======================
 def openai_generate_fa_article(title_en: str, snippet_en: str, source_name: str, source_url: str) -> dict:
     if not OPENAI_API_KEY:
         die("OPENAI_API_KEY is missing")
@@ -304,24 +404,24 @@ Input:
 
 Rules:
 - Write ORIGINAL Persian content (no copying).
-- Do NOT invent facts/specs/numbers. If unknown, say "جزئیات کامل در منبع".
+- Do NOT invent facts/specs/numbers. If unknown, say: "جزئیات کامل در منبع".
 - Target length: 600–700 Persian words.
-- Use HTML and include 3 to 5 <h2> headings.
+- Use HTML with 3 to 5 <h2> headings.
 - Avoid bullet-heavy writing (max 3 bullet points total).
 - Do NOT write the phrase "چرا مهم است".
-- End with a short one-sentence takeaway (without that phrase).
-- Include a short FAQ section with 3 Q/A pairs at the end:
+- End with one short takeaway sentence (without that phrase).
+- Add FAQ at the end:
   <h2>سوالات متداول</h2>
   <p>سوال: ...</p>
-  <p>پاسخ: ...</p>
+  <p>پاسخ: ...</p> (3 pairs)
 
 Return valid JSON ONLY with keys:
 title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa
 """.strip()
 
-    # نکته: temperature را عمداً نمی‌فرستیم تا روی پیش‌فرض مدل باشد
+    # Important: don't pass temperature (avoid unsupported temperature error)
     resp = client.chat.completions.create(
-        model=MODEL,
+        model=OPENAI_MODEL,
         messages=[
             {"role": "system", "content": "فقط JSON برگردان. بدون مارک‌داون و بدون متن اضافه."},
             {"role": "user", "content": prompt},
@@ -335,6 +435,7 @@ title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
+        # Recover from extra text
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end != -1 and end > start:
@@ -342,7 +443,8 @@ title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa
         else:
             raise
 
-    for k in ["title_fa", "meta_title_fa", "meta_description_fa", "focus_keyword_fa", "content_html_fa"]:
+    required = ["title_fa", "meta_title_fa", "meta_description_fa", "focus_keyword_fa", "content_html_fa"]
+    for k in required:
         if k not in data:
             raise ValueError(f"Missing key in OpenAI JSON: {k}")
 
@@ -354,7 +456,9 @@ title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa
     return data
 
 
-# ========= Image extraction from source =========
+# =======================
+# Images: source first, then Pexels
+# =======================
 def extract_image_url_from_html(html: str, base_url: str) -> str | None:
     html = html or ""
 
@@ -388,9 +492,6 @@ def fetch_source_image_url(source_url: str) -> str | None:
 
 
 def download_image_bytes(img_url: str) -> tuple[bytes, str, str] | tuple[None, None, None]:
-    """
-    returns: (bytes, ext, mime)
-    """
     headers = {"User-Agent": USER_AGENT, "Accept": "image/avif,image/webp,image/*,*/*"}
     r = requests.get(img_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
     if r.status_code >= 400 or not r.content:
@@ -401,24 +502,15 @@ def download_image_bytes(img_url: str) -> tuple[bytes, str, str] | tuple[None, N
     return r.content, ext, mime
 
 
-# ========= Pexels fallback =========
 def pexels_search_photo(query: str) -> dict | None:
     if not (PEXELS_ENABLED and PEXELS_API_KEY):
         return None
 
-    q = (query or "").strip()
-    if not q:
-        q = "technology"
-
+    q = (query or "").strip() or "technology"
     endpoint = "https://api.pexels.com/v1/search"
     url = f"{endpoint}?query={quote_plus(q)}&per_page={PEXELS_PER_PAGE}&orientation={quote_plus(PEXELS_ORIENTATION)}"
 
-    headers = {
-        "Authorization": PEXELS_API_KEY,
-        "User-Agent": USER_AGENT,
-        "Accept": "application/json",
-    }
-
+    headers = {"Authorization": PEXELS_API_KEY, "User-Agent": USER_AGENT, "Accept": "application/json"}
     r = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
     print("PEXELS SEARCH:", r.status_code, "| query=", q)
     if r.status_code >= 400:
@@ -442,14 +534,29 @@ def pexels_attribution_html(photo: dict) -> str:
         return ""
     photographer = clean_text(photo.get("photographer", ""))
     photo_page = (photo.get("url") or "").strip()
-    if photographer and photo_page:
+
+    # short attribution line
+    if photo_page and photographer:
         return f'<p><small>اعتبار عکس: <a href="{photo_page}" target="_blank" rel="nofollow noopener">Pexels / {photographer}</a></small></p>'
     if photo_page:
         return f'<p><small>اعتبار عکس: <a href="{photo_page}" target="_blank" rel="nofollow noopener">Pexels</a></small></p>'
     return "<p><small>اعتبار عکس: Pexels</small></p>"
 
 
-# ========= WordPress media & post =========
+# =======================
+# WordPress
+# =======================
+def wp_check_me():
+    endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/users/me"
+    headers = {"Authorization": wp_auth_header(WP_USERNAME, WP_APP_PASSWORD), "User-Agent": USER_AGENT}
+    r = requests.get(endpoint, headers=headers, timeout=HTTP_TIMEOUT)
+    print("WP ME:", r.status_code)
+    if r.status_code >= 400:
+        print("WP ME error body (first 300):", r.text[:300])
+    r.raise_for_status()
+    return r.json()
+
+
 def wp_upload_media(image_bytes: bytes, filename: str, mime_type: str, alt_text: str = "") -> dict:
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/media"
     headers = {
@@ -483,40 +590,6 @@ def wp_upload_media(image_bytes: bytes, filename: str, mime_type: str, alt_text:
     return media
 
 
-def push_rankmath_meta(post_id: int, meta_title: str, meta_desc: str, focus_kw: str):
-    if not (RANKMATH_UPDATER_URL and RANKMATH_UPDATER_TOKEN):
-        print("RankMath updater disabled (missing env).")
-        return
-
-    payload = {
-        "token": RANKMATH_UPDATER_TOKEN,
-        "post_id": int(post_id),
-        "meta_title": meta_title or "",
-        "meta_description": meta_desc or "",
-        "focus_keyword": focus_kw or "",
-    }
-
-    r = requests.post(RANKMATH_UPDATER_URL, json=payload, timeout=HTTP_TIMEOUT)
-    print("RANKMATH UPDATE:", r.status_code, r.text[:200])
-    if r.status_code >= 400:
-        print("RANKMATH ERROR (first 300):", r.text[:300])
-    r.raise_for_status()
-
-
-def wp_check_me():
-    endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/users/me"
-    headers = {
-        "Authorization": wp_auth_header(WP_USERNAME, WP_APP_PASSWORD),
-        "User-Agent": USER_AGENT,
-    }
-    r = requests.get(endpoint, headers=headers, timeout=HTTP_TIMEOUT)
-    print("WP ME:", r.status_code)
-    if r.status_code >= 400:
-        print("WP ME error body (first 300):", r.text[:300])
-    r.raise_for_status()
-    return r.json()
-
-
 def create_wp_post(title: str, content_html: str, categories: list[int], featured_media_id: int | None) -> int:
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/posts"
     headers = {
@@ -539,8 +612,34 @@ def create_wp_post(title: str, content_html: str, categories: list[int], feature
     return int(r.json()["id"])
 
 
-def build_wp_content(final_body_html: str, source_name: str, source_url: str, published_at: str,
-                     image_html: str = "", image_credit_html: str = "") -> str:
+def push_rankmath_meta(post_id: int, meta_title: str, meta_desc: str, focus_kw: str):
+    if not (RANKMATH_UPDATER_URL and RANKMATH_UPDATER_TOKEN):
+        print("RankMath updater disabled (missing env).")
+        return
+
+    payload = {
+        "token": RANKMATH_UPDATER_TOKEN,
+        "post_id": int(post_id),
+        "meta_title": meta_title or "",
+        "meta_description": meta_desc or "",
+        "focus_keyword": focus_kw or "",
+    }
+
+    r = requests.post(RANKMATH_UPDATER_URL, json=payload, timeout=HTTP_TIMEOUT)
+    print("RANKMATH UPDATE:", r.status_code, r.text[:200])
+    if r.status_code >= 400:
+        print("RANKMATH ERROR (first 300):", r.text[:300])
+    r.raise_for_status()
+
+
+def build_wp_content(
+    final_body_html: str,
+    source_name: str,
+    source_url: str,
+    published_at: str,
+    image_html: str = "",
+    image_credit_html: str = "",
+) -> str:
     nice_date = format_rss_date(published_at)
 
     header_media = ""
@@ -561,7 +660,9 @@ def build_wp_content(final_body_html: str, source_name: str, source_url: str, pu
     return "\n\n".join([p for p in parts if p]).strip()
 
 
-# ========= main =========
+# =======================
+# Main
+# =======================
 def run():
     print("=== WP News Bot starting ===")
     safe_env_report()
@@ -580,15 +681,29 @@ def run():
     for s in sources:
         print("-", s["name"], s["feed"])
 
+    # Determine rotation list
+    if ROTATION_SOURCES:
+        rotation = [x.strip() for x in ROTATION_SOURCES.split(",") if x.strip()]
+    else:
+        rotation = [s["name"] for s in sources]
+
+    print("Rotation order:", rotation)
+
+    # Fetch & upsert newest items for every source (top N)
     total_added = 0
     for s in sources:
         entries = fetch_feed_entries(s["feed"])
-        added = upsert_new_items(s["name"], entries[:10])
+        newest = entries[:max(1, FEED_ENTRIES_LIMIT)]
+        added = upsert_new_items(s["name"], newest)
         print(f"ADDED from {s['name']}: {added}")
         total_added += added
 
-    pending = get_pending_items(MAX_POSTS_PER_RUN)
-    print("Pending to publish:", len(pending), "| MAX_POSTS_PER_RUN:", MAX_POSTS_PER_RUN)
+    # Pick exactly one pending item by round-robin
+    pending = get_next_pending_round_robin(rotation)
+    print("Pending selected:", len(pending), "| MAX_POSTS_PER_RUN:", MAX_POSTS_PER_RUN)
+
+    # Hard safety: do not process more than 1
+    pending = pending[:1]
 
     for (item_id, source_name, title_en, snippet_en, url, published_at) in pending:
         print("\n--- ITEM ---")
@@ -611,9 +726,8 @@ def run():
                 img_url = fetch_source_image_url(url)
                 print("Source Image URL:", img_url)
 
-                # Fallback to Pexels if none found on source
                 if not img_url:
-                    q = slugify_words_for_query(title_en)
+                    q = basic_keywords_from_title(title_en)
                     photo = pexels_search_photo(q)
                     if photo:
                         img_url = pexels_pick_image_url(photo)
@@ -629,7 +743,12 @@ def run():
                     img_bytes, ext, mime = download_image_bytes(img_url)
                     if img_bytes:
                         fn = f"news-{item_id[:12]}.{ext}"
-                        media = wp_upload_media(img_bytes, fn, mime_type=mime or guess_mime_from_ext(ext), alt_text=gen["title_fa"])
+                        media = wp_upload_media(
+                            img_bytes,
+                            fn,
+                            mime_type=mime,
+                            alt_text=gen["title_fa"]
+                        )
                         featured_media_id = int(media["id"])
                         wp_src = (media.get("source_url") or "").strip()
                         if wp_src:
@@ -646,21 +765,21 @@ def run():
                 source_url=url,
                 published_at=published_at,
                 image_html=image_html,
-                image_credit_html=image_credit_html
+                image_credit_html=image_credit_html,
             )
 
             post_id = create_wp_post(
                 title=gen["title_fa"],
                 content_html=content_html,
                 categories=categories,
-                featured_media_id=featured_media_id
+                featured_media_id=featured_media_id,
             )
 
             push_rankmath_meta(
                 post_id=post_id,
                 meta_title=gen["meta_title_fa"],
                 meta_desc=gen["meta_description_fa"],
-                focus_kw=gen["focus_keyword_fa"]
+                focus_kw=gen["focus_keyword_fa"],
             )
 
             print("POSTED:", post_id)
