@@ -222,28 +222,28 @@ def fetch_feed_entries(feed_url: str):
 
 
 # ========= Category selection =========
+
 def pick_categories(source_name: str, title_en: str, snippet_en: str) -> list[int]:
     text = (title_en + " " + snippet_en).lower()
 
-    # Reviews
+    # Reviews: فقط 3 (طبق خواسته تو)
     if CAT_REVIEWS and any(k in text for k in ["review", "benchmark", "hands-on", "impressions"]):
         return [CAT_REVIEWS]
 
-    # Hardware
+    # Hardware: همزمان داخل همه خبرها
     if CAT_HARDWARE and any(k in text for k in ["gpu", "rtx", "radeon", "cpu", "intel", "amd", "nvidia", "laptop", "ssd", "ram", "motherboard"]):
-        return [CAT_HARDWARE]
+        return [CAT_ALL, CAT_HARDWARE] if CAT_ALL else [CAT_HARDWARE]
 
-    # Gaming
+    # Gaming: همزمان داخل همه خبرها
     if CAT_GAMING and any(k in text for k in ["game", "gaming", "steam", "ps5", "xbox", "nintendo", "dlc", "trailer"]):
-        return [CAT_GAMING]
+        return [CAT_ALL, CAT_GAMING] if CAT_ALL else [CAT_GAMING]
 
-    # Fallback
+    # Fallback: همه خبرها
     if CAT_ALL:
         return [CAT_ALL]
     if WP_CATEGORY_ID_DEFAULT > 0:
         return [WP_CATEGORY_ID_DEFAULT]
     return []
-
 
 # ========= OpenAI generation =========
 def openai_generate_fa_long(title_en: str, snippet_en: str, source_name: str, source_url: str) -> dict:
@@ -557,4 +557,5 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
