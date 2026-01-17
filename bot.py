@@ -36,7 +36,12 @@ USER_AGENT = os.getenv("USER_AGENT", "Mozilla/5.0 (WPNewsBot/1.0; +https://poorm
 DB_FILE = "news_cache.db"
 SOURCES_FILE = "sources.yaml"
 
-MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
+MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini").strip()
+...
+resp = client.chat.completions.create(
+    model=MODEL,
+    messages=[...],
+)
 
 # Optional: RankMath updater endpoint (plugin below)
 RANKMATH_UPDATER_URL = os.getenv("RANKMATH_UPDATER_URL", "").strip()  # e.g. https://poormaz.com/wp-json/pmz-seo/v1/update
@@ -552,3 +557,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+
