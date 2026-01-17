@@ -287,7 +287,7 @@ title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa
             {"role": "system", "content": "فقط JSON برگردان. بدون مارک‌داون و بدون متن اضافه."},
             {"role": "user", "content": prompt}
         ],
-        temperature=0.35,
+        temperature=1,
     )
 
     text = (resp.choices[0].message.content or "").strip()
@@ -563,3 +563,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+
