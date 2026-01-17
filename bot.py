@@ -8,7 +8,7 @@ import sqlite3
 import traceback
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, quote_plus
 
 import yaml
 import feedparser
@@ -20,29 +20,29 @@ load_dotenv()
 
 # ========= ENV =========
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini").strip()
 
 WP_BASE_URL = os.getenv("WP_BASE_URL", "").strip().rstrip("/")
 WP_USERNAME = os.getenv("WP_USERNAME", "").strip()
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "").strip()
 
 WP_POST_STATUS = os.getenv("WP_POST_STATUS", "draft").strip()
-WP_CATEGORY_ID_DEFAULT = int(os.getenv("WP_CATEGORY_ID", "0"))  # fallback
-MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "1"))  # default 1
+WP_CATEGORY_ID_DEFAULT = int(os.getenv("WP_CATEGORY_ID", "0"))
+
+MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "1"))
 LANG = os.getenv("LANG", "fa").strip()
 
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "25"))
 USER_AGENT = os.getenv("USER_AGENT", "Mozilla/5.0 (WPNewsBot/1.0; +https://poormaz.com)").strip()
 
-DB_FILE = "news_cache.db"
-SOURCES_FILE = "sources.yaml"
-
-MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini").strip()
+DB_FILE = os.getenv("DB_FILE", "news_cache.db").strip()
+SOURCES_FILE = os.getenv("SOURCES_FILE", "sources.yaml").strip()
 
 # Optional: RankMath updater endpoint (plugin)
 RANKMATH_UPDATER_URL = os.getenv("RANKMATH_UPDATER_URL", "").strip()
 RANKMATH_UPDATER_TOKEN = os.getenv("RANKMATH_UPDATER_TOKEN", "").strip()
 
-# Categories
+# Categories (env mapping)
 CAT_ALL = int(os.getenv("CAT_ALL", "0"))
 CAT_GAMING = int(os.getenv("CAT_GAMING", "0"))
 CAT_HARDWARE = int(os.getenv("CAT_HARDWARE", "0"))
@@ -50,6 +50,13 @@ CAT_REVIEWS = int(os.getenv("CAT_REVIEWS", "0"))
 
 # Image behavior
 SET_FEATURED_IMAGE = os.getenv("SET_FEATURED_IMAGE", "1").strip() == "1"
+EMBED_IMAGE_IN_CONTENT = os.getenv("EMBED_IMAGE_IN_CONTENT", "1").strip() == "1"
+
+# Pexels fallback
+PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
+PEXELS_ENABLED = os.getenv("PEXELS_ENABLED", "1").strip() == "1"
+PEXELS_PER_PAGE = int(os.getenv("PEXELS_PER_PAGE", "1"))
+PEXELS_ORIENTATION = os.getenv("PEXELS_ORIENTATION", "landscape").strip()
 
 
 # ========= helpers =========
@@ -60,16 +67,18 @@ def die(msg: str):
 def safe_env_report():
     keys = [
         "OPENAI_API_KEY",
-        "WP_BASE_URL", "WP_USERNAME", "WP_APP_PASSWORD",
-        "RANKMATH_UPDATER_URL", "RANKMATH_UPDATER_TOKEN",
-        "CAT_ALL", "CAT_GAMING", "CAT_HARDWARE", "CAT_REVIEWS",
-        "MAX_POSTS_PER_RUN", "OPENAI_MODEL"
+        "OPENAI_MODEL",
+        "WP_BASE_URL",
+        "WP_USERNAME",
+        "WP_APP_PASSWORD",
+        "RANKMATH_UPDATER_URL",
+        "RANKMATH_UPDATER_TOKEN",
+        "PEXELS_API_KEY",
     ]
     print("ENV CHECK (safe):")
     for k in keys:
         v = os.getenv(k, "")
-        ok = "OK" if v else "MISSING"
-        print(f"- {k}: {ok} (len={len(v)})")
+        print(f"- {k}: {'OK' if v else 'MISSING'} (len={len(v)})")
 
 
 def clean_text(s: str) -> str:
@@ -96,6 +105,17 @@ def format_rss_date(published_at: str) -> str:
         return (published_at or "").split("+")[0].strip()
 
 
+def guess_ext_and_mime(content_type: str | None) -> tuple[str, str]:
+    ct = (content_type or "").lower()
+    if "png" in ct:
+        return "png", "image/png"
+    if "webp" in ct:
+        return "webp", "image/webp"
+    if "gif" in ct:
+        return "gif", "image/gif"
+    return "jpg", "image/jpeg"
+
+
 def guess_mime_from_ext(ext: str) -> str:
     ext = (ext or "").lower().strip(".")
     if ext == "png":
@@ -105,6 +125,24 @@ def guess_mime_from_ext(ext: str) -> str:
     if ext == "webp":
         return "image/webp"
     return "image/jpeg"
+
+
+def slugify_words_for_query(title_en: str, max_words: int = 7) -> str:
+    t = (title_en or "").lower()
+    t = re.sub(r"[^a-z0-9\s\-]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    words = [w for w in t.split(" ") if w]
+
+    stop = {
+        "the", "a", "an", "and", "or", "to", "of", "in", "on", "for", "with", "from", "by", "at",
+        "is", "are", "was", "were", "be", "been", "being",
+        "as", "this", "that", "these", "those",
+        "new", "latest", "update", "updates",
+    }
+    keep = [w for w in words if w not in stop and len(w) >= 3]
+    keep = keep[:max_words] if keep else words[:max_words]
+    q = " ".join(keep).strip()
+    return q or "technology"
 
 
 # ========= DB =========
@@ -229,15 +267,15 @@ def fetch_feed_entries(feed_url: str):
 def pick_categories(title_en: str, snippet_en: str) -> list[int]:
     text = (title_en + " " + snippet_en).lower()
 
-    # Reviews: فقط CAT_REVIEWS (طبق خواسته تو)
     if CAT_REVIEWS and any(k in text for k in ["review", "hands-on", "preview", "impressions", "benchmark"]):
         return [CAT_REVIEWS]
 
-    # Hardware: همزمان داخل همه خبرها
-    if CAT_HARDWARE and any(k in text for k in ["gpu", "rtx", "radeon", "cpu", "intel", "amd", "nvidia", "laptop", "ssd", "ram", "motherboard"]):
+    if CAT_HARDWARE and any(k in text for k in [
+        "gpu", "rtx", "radeon", "cpu", "intel", "amd", "nvidia",
+        "laptop", "ssd", "ram", "motherboard", "dlss", "fsr"
+    ]):
         return [CAT_ALL, CAT_HARDWARE] if CAT_ALL else [CAT_HARDWARE]
 
-    # Gaming: همزمان داخل همه خبرها
     if CAT_GAMING and any(k in text for k in ["game", "gaming", "steam", "ps5", "xbox", "nintendo", "dlc", "trailer"]):
         return [CAT_ALL, CAT_GAMING] if CAT_ALL else [CAT_GAMING]
 
@@ -267,7 +305,7 @@ Input:
 Rules:
 - Write ORIGINAL Persian content (no copying).
 - Do NOT invent facts/specs/numbers. If unknown, say "جزئیات کامل در منبع".
-- Target length: 700–1000 Persian words.
+- Target length: 600–700 Persian words.
 - Use HTML and include 3 to 5 <h2> headings.
 - Avoid bullet-heavy writing (max 3 bullet points total).
 - Do NOT write the phrase "چرا مهم است".
@@ -279,15 +317,15 @@ Rules:
 
 Return valid JSON ONLY with keys:
 title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa
-"""
+""".strip()
 
+    # نکته: temperature را عمداً نمی‌فرستیم تا روی پیش‌فرض مدل باشد
     resp = client.chat.completions.create(
         model=MODEL,
         messages=[
             {"role": "system", "content": "فقط JSON برگردان. بدون مارک‌داون و بدون متن اضافه."},
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": prompt},
         ],
-        temperature=1,
     )
 
     text = (resp.choices[0].message.content or "").strip()
@@ -316,7 +354,7 @@ title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa
     return data
 
 
-# ========= Image extraction =========
+# ========= Image extraction from source =========
 def extract_image_url_from_html(html: str, base_url: str) -> str | None:
     html = html or ""
 
@@ -349,25 +387,69 @@ def fetch_source_image_url(source_url: str) -> str | None:
     return extract_image_url_from_html(r.text, source_url)
 
 
-def download_image_bytes(img_url: str) -> tuple[bytes, str] | tuple[None, None]:
+def download_image_bytes(img_url: str) -> tuple[bytes, str, str] | tuple[None, None, None]:
+    """
+    returns: (bytes, ext, mime)
+    """
     headers = {"User-Agent": USER_AGENT, "Accept": "image/avif,image/webp,image/*,*/*"}
     r = requests.get(img_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
     if r.status_code >= 400 or not r.content:
         print("IMG download failed:", r.status_code, img_url)
-        return None, None
+        return None, None, None
 
-    ctype = (r.headers.get("Content-Type") or "").lower()
-    ext = "jpg"
-    if "png" in ctype:
-        ext = "png"
-    elif "webp" in ctype:
-        ext = "webp"
-    elif "gif" in ctype:
-        ext = "gif"
-
-    return r.content, ext
+    ext, mime = guess_ext_and_mime(r.headers.get("Content-Type"))
+    return r.content, ext, mime
 
 
+# ========= Pexels fallback =========
+def pexels_search_photo(query: str) -> dict | None:
+    if not (PEXELS_ENABLED and PEXELS_API_KEY):
+        return None
+
+    q = (query or "").strip()
+    if not q:
+        q = "technology"
+
+    endpoint = "https://api.pexels.com/v1/search"
+    url = f"{endpoint}?query={quote_plus(q)}&per_page={PEXELS_PER_PAGE}&orientation={quote_plus(PEXELS_ORIENTATION)}"
+
+    headers = {
+        "Authorization": PEXELS_API_KEY,
+        "User-Agent": USER_AGENT,
+        "Accept": "application/json",
+    }
+
+    r = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
+    print("PEXELS SEARCH:", r.status_code, "| query=", q)
+    if r.status_code >= 400:
+        print("PEXELS ERROR (first 300):", r.text[:300])
+        return None
+
+    data = r.json() or {}
+    photos = data.get("photos") or []
+    if not photos:
+        return None
+    return photos[0]
+
+
+def pexels_pick_image_url(photo: dict) -> str | None:
+    src = (photo or {}).get("src") or {}
+    return (src.get("large2x") or src.get("large") or src.get("original") or src.get("medium"))
+
+
+def pexels_attribution_html(photo: dict) -> str:
+    if not photo:
+        return ""
+    photographer = clean_text(photo.get("photographer", ""))
+    photo_page = (photo.get("url") or "").strip()
+    if photographer and photo_page:
+        return f'<p><small>اعتبار عکس: <a href="{photo_page}" target="_blank" rel="nofollow noopener">Pexels / {photographer}</a></small></p>'
+    if photo_page:
+        return f'<p><small>اعتبار عکس: <a href="{photo_page}" target="_blank" rel="nofollow noopener">Pexels</a></small></p>'
+    return "<p><small>اعتبار عکس: Pexels</small></p>"
+
+
+# ========= WordPress media & post =========
 def wp_upload_media(image_bytes: bytes, filename: str, mime_type: str, alt_text: str = "") -> dict:
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/media"
     headers = {
@@ -394,14 +476,13 @@ def wp_upload_media(image_bytes: bytes, filename: str, mime_type: str, alt_text:
                 "Content-Type": "application/json",
             },
             json={"alt_text": alt_text},
-            timeout=HTTP_TIMEOUT
+            timeout=HTTP_TIMEOUT,
         )
         print("WP MEDIA ALT PATCH:", patch.status_code)
 
     return media
 
 
-# ========= RankMath updater call =========
 def push_rankmath_meta(post_id: int, meta_title: str, meta_desc: str, focus_kw: str):
     if not (RANKMATH_UPDATER_URL and RANKMATH_UPDATER_TOKEN):
         print("RankMath updater disabled (missing env).")
@@ -422,7 +503,6 @@ def push_rankmath_meta(post_id: int, meta_title: str, meta_desc: str, focus_kw: 
     r.raise_for_status()
 
 
-# ========= WordPress post =========
 def wp_check_me():
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/users/me"
     headers = {
@@ -459,16 +539,29 @@ def create_wp_post(title: str, content_html: str, categories: list[int], feature
     return int(r.json()["id"])
 
 
-def build_wp_content(final_body_html: str, source_name: str, source_url: str, published_at: str) -> str:
+def build_wp_content(final_body_html: str, source_name: str, source_url: str, published_at: str,
+                     image_html: str = "", image_credit_html: str = "") -> str:
     nice_date = format_rss_date(published_at)
+
+    header_media = ""
+    if image_html and EMBED_IMAGE_IN_CONTENT:
+        header_media = (image_html.strip() + "\n" + (image_credit_html or "").strip()).strip()
+
     footer = f"""
 <hr>
 <p><strong>منبع:</strong> <a href="{source_url}" target="_blank" rel="nofollow noopener">{source_name}</a></p>
 <p><small>زمان انتشار منبع: {nice_date}</small></p>
 """.strip()
-    return (final_body_html.strip() + "\n\n" + footer).strip()
+
+    parts = []
+    if header_media:
+        parts.append(header_media)
+    parts.append(final_body_html.strip())
+    parts.append(footer)
+    return "\n\n".join([p for p in parts if p]).strip()
 
 
+# ========= main =========
 def run():
     print("=== WP News Bot starting ===")
     safe_env_report()
@@ -510,27 +603,50 @@ def run():
             gen = openai_generate_fa_article(title_en, snippet_en, source_name, url)
 
             featured_media_id = None
+            image_html = ""
+            image_credit_html = ""
+            used_image_kind = "none"
+
             if SET_FEATURED_IMAGE:
                 img_url = fetch_source_image_url(url)
-                print("Image URL:", img_url)
+                print("Source Image URL:", img_url)
+
+                # Fallback to Pexels if none found on source
+                if not img_url:
+                    q = slugify_words_for_query(title_en)
+                    photo = pexels_search_photo(q)
+                    if photo:
+                        img_url = pexels_pick_image_url(photo)
+                        image_credit_html = pexels_attribution_html(photo)
+                        used_image_kind = "pexels"
+                        print("Pexels Image URL:", img_url)
+                    else:
+                        print("Pexels: no photo found.")
+                else:
+                    used_image_kind = "source"
+
                 if img_url:
-                    img_bytes, ext = download_image_bytes(img_url)
+                    img_bytes, ext, mime = download_image_bytes(img_url)
                     if img_bytes:
-                        mime = guess_mime_from_ext(ext)
                         fn = f"news-{item_id[:12]}.{ext}"
-                        media = wp_upload_media(img_bytes, fn, mime_type=mime, alt_text=gen["title_fa"])
+                        media = wp_upload_media(img_bytes, fn, mime_type=mime or guess_mime_from_ext(ext), alt_text=gen["title_fa"])
                         featured_media_id = int(media["id"])
-                        print("Featured media id:", featured_media_id)
+                        wp_src = (media.get("source_url") or "").strip()
+                        if wp_src:
+                            image_html = f'<p><img src="{wp_src}" alt="{gen["title_fa"]}"></p>'
+                        print("Featured media id:", featured_media_id, "| kind:", used_image_kind)
                     else:
                         print("No image bytes downloaded.")
                 else:
-                    print("No image found on source page.")
+                    print("No image found (source + pexels).")
 
             content_html = build_wp_content(
                 final_body_html=gen["content_html_fa"],
                 source_name=source_name,
                 source_url=url,
-                published_at=published_at
+                published_at=published_at,
+                image_html=image_html,
+                image_credit_html=image_credit_html
             )
 
             post_id = create_wp_post(
@@ -563,4 +679,3 @@ def run():
 
 if __name__ == "__main__":
     run()
-
