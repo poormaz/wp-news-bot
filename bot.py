@@ -8,7 +8,7 @@ import sqlite3
 import traceback
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 import yaml
 import feedparser
@@ -27,7 +27,7 @@ WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "").strip()
 
 WP_POST_STATUS = os.getenv("WP_POST_STATUS", "draft").strip()
 WP_CATEGORY_ID_DEFAULT = int(os.getenv("WP_CATEGORY_ID", "0"))  # fallback
-MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "3"))
+MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "1"))  # default 1
 LANG = os.getenv("LANG", "fa").strip()
 
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "25"))
@@ -37,17 +37,12 @@ DB_FILE = "news_cache.db"
 SOURCES_FILE = "sources.yaml"
 
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini").strip()
-...
-resp = client.chat.completions.create(
-    model=MODEL,
-    messages=[...],
-)
 
-# Optional: RankMath updater endpoint (plugin below)
-RANKMATH_UPDATER_URL = os.getenv("RANKMATH_UPDATER_URL", "").strip()  # e.g. https://poormaz.com/wp-json/pmz-seo/v1/update
-RANKMATH_UPDATER_TOKEN = os.getenv("RANKMATH_UPDATER_TOKEN", "").strip()  # random token, not WP password
+# Optional: RankMath updater endpoint (plugin)
+RANKMATH_UPDATER_URL = os.getenv("RANKMATH_UPDATER_URL", "").strip()
+RANKMATH_UPDATER_TOKEN = os.getenv("RANKMATH_UPDATER_TOKEN", "").strip()
 
-# Category mapping via env (optional)
+# Categories
 CAT_ALL = int(os.getenv("CAT_ALL", "0"))
 CAT_GAMING = int(os.getenv("CAT_GAMING", "0"))
 CAT_HARDWARE = int(os.getenv("CAT_HARDWARE", "0"))
@@ -55,7 +50,6 @@ CAT_REVIEWS = int(os.getenv("CAT_REVIEWS", "0"))
 
 # Image behavior
 SET_FEATURED_IMAGE = os.getenv("SET_FEATURED_IMAGE", "1").strip() == "1"
-EMBED_IMAGE_IN_CONTENT = os.getenv("EMBED_IMAGE_IN_CONTENT", "0").strip() == "1"
 
 
 # ========= helpers =========
@@ -65,13 +59,17 @@ def die(msg: str):
 
 def safe_env_report():
     keys = [
-        "OPENAI_API_KEY", "WP_BASE_URL", "WP_USERNAME", "WP_APP_PASSWORD",
-        "RANKMATH_UPDATER_URL", "RANKMATH_UPDATER_TOKEN"
+        "OPENAI_API_KEY",
+        "WP_BASE_URL", "WP_USERNAME", "WP_APP_PASSWORD",
+        "RANKMATH_UPDATER_URL", "RANKMATH_UPDATER_TOKEN",
+        "CAT_ALL", "CAT_GAMING", "CAT_HARDWARE", "CAT_REVIEWS",
+        "MAX_POSTS_PER_RUN", "OPENAI_MODEL"
     ]
     print("ENV CHECK (safe):")
     for k in keys:
         v = os.getenv(k, "")
-        print(f"- {k}: {'OK' if v else 'MISSING'} (len={len(v)})")
+        ok = "OK" if v else "MISSING"
+        print(f"- {k}: {ok} (len={len(v)})")
 
 
 def clean_text(s: str) -> str:
@@ -91,16 +89,22 @@ def wp_auth_header(username: str, app_password: str) -> str:
 
 
 def format_rss_date(published_at: str) -> str:
-    """
-    Input like: Fri, 09 Jan 2026 14:03:56 +0000
-    Output:     Fri, 09 Jan 2026
-    """
     try:
         dt = parsedate_to_datetime(published_at)
         return dt.strftime("%a, %d %b %Y")
     except Exception:
-        # fallback: cut timezone/time if parse fails
         return (published_at or "").split("+")[0].strip()
+
+
+def guess_mime_from_ext(ext: str) -> str:
+    ext = (ext or "").lower().strip(".")
+    if ext == "png":
+        return "image/png"
+    if ext == "gif":
+        return "image/gif"
+    if ext == "webp":
+        return "image/webp"
+    return "image/jpeg"
 
 
 # ========= DB =========
@@ -212,7 +216,7 @@ def fetch_feed_entries(feed_url: str):
     r = requests.get(feed_url, headers=headers, timeout=HTTP_TIMEOUT)
     print(f"FEED GET: {feed_url} | status={r.status_code} | bytes={len(r.content)}")
     if r.status_code >= 400:
-        print("FEED ERROR BODY (first 200):", r.text[:200])
+        print("FEED ERROR BODY (first 250):", r.text[:250])
         return []
 
     parsed = feedparser.parse(r.text)
@@ -222,31 +226,30 @@ def fetch_feed_entries(feed_url: str):
 
 
 # ========= Category selection =========
-
-def pick_categories(source_name: str, title_en: str, snippet_en: str) -> list[int]:
+def pick_categories(title_en: str, snippet_en: str) -> list[int]:
     text = (title_en + " " + snippet_en).lower()
 
-    # Reviews: فقط 3 (طبق خواسته تو)
-    if CAT_REVIEWS and any(k in text for k in ["review", "hands-on", "Preview", "impressions"]):
+    # Reviews: فقط CAT_REVIEWS (طبق خواسته تو)
+    if CAT_REVIEWS and any(k in text for k in ["review", "hands-on", "preview", "impressions", "benchmark"]):
         return [CAT_REVIEWS]
 
     # Hardware: همزمان داخل همه خبرها
-    if CAT_HARDWARE and any(k in text for k in ["gpu", "rtx", "benchmark", "radeon", "FSR", "DLSS", "cpu", "Geforce now", "intel", "amd", "nvidia", "laptop", "ssd", "ram", "motherboard"]):
+    if CAT_HARDWARE and any(k in text for k in ["gpu", "rtx", "radeon", "cpu", "intel", "amd", "nvidia", "laptop", "ssd", "ram", "motherboard"]):
         return [CAT_ALL, CAT_HARDWARE] if CAT_ALL else [CAT_HARDWARE]
 
     # Gaming: همزمان داخل همه خبرها
     if CAT_GAMING and any(k in text for k in ["game", "gaming", "steam", "ps5", "xbox", "nintendo", "dlc", "trailer"]):
         return [CAT_ALL, CAT_GAMING] if CAT_ALL else [CAT_GAMING]
 
-    # Fallback: همه خبرها
     if CAT_ALL:
         return [CAT_ALL]
     if WP_CATEGORY_ID_DEFAULT > 0:
         return [WP_CATEGORY_ID_DEFAULT]
     return []
 
+
 # ========= OpenAI generation =========
-def openai_generate_fa_long(title_en: str, snippet_en: str, source_name: str, source_url: str) -> dict:
+def openai_generate_fa_article(title_en: str, snippet_en: str, source_name: str, source_url: str) -> dict:
     if not OPENAI_API_KEY:
         die("OPENAI_API_KEY is missing")
 
@@ -264,17 +267,24 @@ Input:
 Rules:
 - Write ORIGINAL Persian content (no copying).
 - Do NOT invent facts/specs/numbers. If unknown, say "جزئیات کامل در منبع".
-- Target length: 500–900 Persian words.
-- Use HTML with <h2> headings (2 to 4 headings).
-- Include a short FAQ section with 3 Q/A pairs at the end (use <h2>سوالات متداول</h2> and <p>Q: ...</p><p>A: ...</p>).
-- Return valid JSON ONLY with keys:
-  title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa
+- Target length: 700–1000 Persian words.
+- Use HTML and include 3 to 5 <h2> headings.
+- Avoid bullet-heavy writing (max 3 bullet points total).
+- Do NOT write the phrase "چرا مهم است".
+- End with a short one-sentence takeaway (without that phrase).
+- Include a short FAQ section with 3 Q/A pairs at the end:
+  <h2>سوالات متداول</h2>
+  <p>سوال: ...</p>
+  <p>پاسخ: ...</p>
+
+Return valid JSON ONLY with keys:
+title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa
 """
 
     resp = client.chat.completions.create(
         model=MODEL,
         messages=[
-            {"role": "system", "content": "Return only JSON. No markdown."},
+            {"role": "system", "content": "فقط JSON برگردان. بدون مارک‌داون و بدون متن اضافه."},
             {"role": "user", "content": prompt}
         ],
         temperature=0.35,
@@ -299,14 +309,10 @@ Rules:
             raise ValueError(f"Missing key in OpenAI JSON: {k}")
 
     data["title_fa"] = clean_text(data["title_fa"])
-    data["meta_title_fa"] = clean_text(data["meta_title_fa"])
-    data["meta_description_fa"] = clean_text(data["meta_description_fa"])
+    data["meta_title_fa"] = clean_text(data["meta_title_fa"])[:70]
+    data["meta_description_fa"] = clean_text(data["meta_description_fa"])[:160]
     data["focus_keyword_fa"] = clean_text(data["focus_keyword_fa"])
     data["content_html_fa"] = (data["content_html_fa"] or "").strip()
-
-    # Safety trims
-    data["meta_title_fa"] = data["meta_title_fa"][:70]
-    data["meta_description_fa"] = data["meta_description_fa"][:160]
     return data
 
 
@@ -336,6 +342,7 @@ def extract_image_url_from_html(html: str, base_url: str) -> str | None:
 def fetch_source_image_url(source_url: str) -> str | None:
     headers = {"User-Agent": USER_AGENT, "Accept": "text/html,*/*"}
     r = requests.get(source_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
+    print("SOURCE HTML:", r.status_code, "bytes=", len(r.content))
     if r.status_code >= 400:
         print("SOURCE HTML fetch failed:", r.status_code)
         return None
@@ -349,7 +356,6 @@ def download_image_bytes(img_url: str) -> tuple[bytes, str] | tuple[None, None]:
         print("IMG download failed:", r.status_code, img_url)
         return None, None
 
-    # Try to guess extension
     ctype = (r.headers.get("Content-Type") or "").lower()
     ext = "jpg"
     if "png" in ctype:
@@ -362,26 +368,26 @@ def download_image_bytes(img_url: str) -> tuple[bytes, str] | tuple[None, None]:
     return r.content, ext
 
 
-def wp_upload_media(image_bytes: bytes, filename: str, alt_text: str = "") -> int:
+def wp_upload_media(image_bytes: bytes, filename: str, mime_type: str, alt_text: str = "") -> dict:
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/media"
     headers = {
         "Authorization": wp_auth_header(WP_USERNAME, WP_APP_PASSWORD),
         "User-Agent": USER_AGENT,
         "Content-Disposition": f'attachment; filename="{filename}"',
+        "Content-Type": mime_type,
     }
 
     r = requests.post(endpoint, headers=headers, data=image_bytes, timeout=HTTP_TIMEOUT)
     print("WP MEDIA UPLOAD:", r.status_code)
     if r.status_code >= 400:
-        print("WP MEDIA ERROR (first 300):", r.text[:300])
+        print("WP MEDIA ERROR (first 400):", r.text[:400])
     r.raise_for_status()
 
-    media_id = int(r.json()["id"])
+    media = r.json()
 
-    # Optional: set alt_text (requires another request)
     if alt_text:
         patch = requests.post(
-            f"{WP_BASE_URL}/wp-json/wp/v2/media/{media_id}",
+            f"{WP_BASE_URL}/wp-json/wp/v2/media/{media['id']}",
             headers={
                 "Authorization": wp_auth_header(WP_USERNAME, WP_APP_PASSWORD),
                 "User-Agent": USER_AGENT,
@@ -391,7 +397,8 @@ def wp_upload_media(image_bytes: bytes, filename: str, alt_text: str = "") -> in
             timeout=HTTP_TIMEOUT
         )
         print("WP MEDIA ALT PATCH:", patch.status_code)
-    return media_id
+
+    return media
 
 
 # ========= RankMath updater call =========
@@ -408,8 +415,10 @@ def push_rankmath_meta(post_id: int, meta_title: str, meta_desc: str, focus_kw: 
         "focus_keyword": focus_kw or "",
     }
 
-    r = requests.post(RANKMATH_UPDATER_URL, json=payload, timeout=25)
+    r = requests.post(RANKMATH_UPDATER_URL, json=payload, timeout=HTTP_TIMEOUT)
     print("RANKMATH UPDATE:", r.status_code, r.text[:200])
+    if r.status_code >= 400:
+        print("RANKMATH ERROR (first 300):", r.text[:300])
     r.raise_for_status()
 
 
@@ -421,14 +430,14 @@ def wp_check_me():
         "User-Agent": USER_AGENT,
     }
     r = requests.get(endpoint, headers=headers, timeout=HTTP_TIMEOUT)
-    print("WP ME:", endpoint, "| status=", r.status_code)
+    print("WP ME:", r.status_code)
     if r.status_code >= 400:
         print("WP ME error body (first 300):", r.text[:300])
     r.raise_for_status()
     return r.json()
 
 
-def create_wp_post(title: str, content_html: str, categories: list[int], featured_media: int | None) -> int:
+def create_wp_post(title: str, content_html: str, categories: list[int], featured_media_id: int | None) -> int:
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/posts"
     headers = {
         "Authorization": wp_auth_header(WP_USERNAME, WP_APP_PASSWORD),
@@ -439,8 +448,8 @@ def create_wp_post(title: str, content_html: str, categories: list[int], feature
     payload = {"title": title, "content": content_html, "status": WP_POST_STATUS}
     if categories:
         payload["categories"] = categories
-    if featured_media:
-        payload["featured_media"] = featured_media
+    if featured_media_id:
+        payload["featured_media"] = featured_media_id
 
     r = requests.post(endpoint, headers=headers, json=payload, timeout=HTTP_TIMEOUT)
     print("WP POST:", r.status_code)
@@ -450,17 +459,13 @@ def create_wp_post(title: str, content_html: str, categories: list[int], feature
     return int(r.json()["id"])
 
 
-def build_wp_content(final_body_html: str, source_name: str, source_url: str, published_at: str, image_tag_html: str = "") -> str:
+def build_wp_content(final_body_html: str, source_name: str, source_url: str, published_at: str) -> str:
     nice_date = format_rss_date(published_at)
     footer = f"""
 <hr>
 <p><strong>منبع:</strong> <a href="{source_url}" target="_blank" rel="nofollow noopener">{source_name}</a></p>
 <p><small>زمان انتشار منبع: {nice_date}</small></p>
 """.strip()
-
-    if image_tag_html and EMBED_IMAGE_IN_CONTENT:
-        return (image_tag_html + "\n\n" + final_body_html.strip() + "\n\n" + footer).strip()
-
     return (final_body_html.strip() + "\n\n" + footer).strip()
 
 
@@ -469,16 +474,15 @@ def run():
     safe_env_report()
 
     if LANG.lower() != "fa":
-        die("Set LANG=fa")
+        die("LANG باید fa باشد")
 
     if not (WP_BASE_URL and WP_USERNAME and WP_APP_PASSWORD):
-        die("WP_BASE_URL / WP_USERNAME / WP_APP_PASSWORD is missing")
+        die("WP_BASE_URL / WP_USERNAME / WP_APP_PASSWORD خالی است")
 
     wp_check_me()
-
     init_db()
-    sources = load_sources()
 
+    sources = load_sources()
     print("Sources loaded:", len(sources))
     for s in sources:
         print("-", s["name"], s["feed"])
@@ -500,37 +504,40 @@ def run():
         print("Title EN:", title_en)
 
         try:
-            categories = pick_categories(source_name, title_en, snippet_en)
+            categories = pick_categories(title_en, snippet_en)
             print("Picked categories:", categories)
 
-            gen = openai_generate_fa_long(title_en, snippet_en, source_name, url)
+            gen = openai_generate_fa_article(title_en, snippet_en, source_name, url)
 
             featured_media_id = None
-            image_tag_html = ""
-
             if SET_FEATURED_IMAGE:
                 img_url = fetch_source_image_url(url)
                 print("Image URL:", img_url)
                 if img_url:
                     img_bytes, ext = download_image_bytes(img_url)
                     if img_bytes:
+                        mime = guess_mime_from_ext(ext)
                         fn = f"news-{item_id[:12]}.{ext}"
-                        featured_media_id = wp_upload_media(img_bytes, fn, alt_text=gen["title_fa"])
-                        image_tag_html = f'<p><img src="{WP_BASE_URL}/?attachment_id={featured_media_id}" alt="{gen["title_fa"]}"></p>'
+                        media = wp_upload_media(img_bytes, fn, mime_type=mime, alt_text=gen["title_fa"])
+                        featured_media_id = int(media["id"])
+                        print("Featured media id:", featured_media_id)
+                    else:
+                        print("No image bytes downloaded.")
+                else:
+                    print("No image found on source page.")
 
             content_html = build_wp_content(
                 final_body_html=gen["content_html_fa"],
                 source_name=source_name,
                 source_url=url,
-                published_at=published_at,
-                image_tag_html=image_tag_html
+                published_at=published_at
             )
 
             post_id = create_wp_post(
                 title=gen["title_fa"],
                 content_html=content_html,
                 categories=categories,
-                featured_media=featured_media_id
+                featured_media_id=featured_media_id
             )
 
             push_rankmath_meta(
@@ -556,7 +563,3 @@ def run():
 
 if __name__ == "__main__":
     run()
-
-
-
-
