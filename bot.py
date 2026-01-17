@@ -397,20 +397,19 @@ def wp_upload_media(image_bytes: bytes, filename: str, alt_text: str = "") -> in
 # ========= RankMath updater call =========
 def push_rankmath_meta(post_id: int, meta_title: str, meta_desc: str, focus_kw: str):
     if not (RANKMATH_UPDATER_URL and RANKMATH_UPDATER_TOKEN):
+        print("RankMath updater disabled (missing env).")
         return
 
     payload = {
         "token": RANKMATH_UPDATER_TOKEN,
-        "post_id": post_id,
-        "meta_title": meta_title,
-        "meta_description": meta_desc,
-        "focus_keyword": focus_kw,
+        "post_id": int(post_id),
+        "meta_title": meta_title or "",
+        "meta_description": meta_desc or "",
+        "focus_keyword": focus_kw or "",
     }
 
-    r = requests.post(RANKMATH_UPDATER_URL, json=payload, timeout=HTTP_TIMEOUT)
-    print("RANKMATH UPDATE:", r.status_code)
-    if r.status_code >= 400:
-        print("RANKMATH ERROR (first 300):", r.text[:300])
+    r = requests.post(RANKMATH_UPDATER_URL, json=payload, timeout=25)
+    print("RANKMATH UPDATE:", r.status_code, r.text[:200])
     r.raise_for_status()
 
 
@@ -557,6 +556,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
