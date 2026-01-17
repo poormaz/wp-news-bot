@@ -39,6 +39,7 @@ jobs:
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
           RANKMATH_UPDATER_URL: ${{ secrets.RANKMATH_UPDATER_URL }}
           RANKMATH_UPDATER_TOKEN: ${{ secrets.RANKMATH_UPDATER_TOKEN }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           CAT_ALL: "2"
           CAT_GAMING: "1"
           CAT_HARDWARE: "19"
@@ -90,7 +91,7 @@ jobs:
           WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
-
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           RANKMATH_UPDATER_URL: ${{ secrets.RANKMATH_UPDATER_URL }}
           RANKMATH_UPDATER_TOKEN: ${{ secrets.RANKMATH_UPDATER_TOKEN }}
 
