@@ -99,7 +99,7 @@ jobs:
           FEED_ENTRIES_LIMIT: "4"
 
           # Rotation
-          ROTATION_SOURCES: "GameSpot,IGN,DSOGaming,Wccftech"
+          ROTATION_SOURCES: "GameSpot,IGN,DSOGaming,Wccftech,Tom's Hardware,Techpowerup,Windows Central,PC Games Insider,Instant Gaming News"
 
           # Images
           SET_FEATURED_IMAGE: "1"
