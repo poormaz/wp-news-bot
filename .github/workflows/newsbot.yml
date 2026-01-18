@@ -91,7 +91,7 @@ jobs:
           DEDUP_SIM_THRESHOLD: "0.80"
           DEDUP_WP_CHECK: "1"
           DEDUP_WP_SEARCH_PER_PAGE: "10"
-          DEDUP_MIN_TOKENS: "5"
+          DEDUP_MIN_TOKENS: "6"
 
           PYTHONUNBUFFERED: "1"
         run: |
