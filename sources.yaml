@@ -5,7 +5,7 @@ sources:
     feed: "https://wccftech.com/feed/"
   - name: IGN
     feed: "https://feeds.ign.com/ign/all"
-  - name: "Tom's Hardware"
+  - name: Tom's Hardware
     feed: "https://www.tomshardware.com/feeds.xml"
   - name: GameSpot
     feed: "https://www.gamespot.com/feeds/news/"
@@ -13,7 +13,8 @@ sources:
     feed: "https://www.techpowerup.com/rss/reviews"
   - name: Windows Central
     feed: "https://www.windowscentral.com/feeds.xml"
-  - name: PC Games Insider 
+  - name: PC Games Insider
     feed: "https://www.pcgamesinsider.biz/rss/news/"
   - name: Instant Gaming News
     feed: "https://news.instant-gaming.com/en/rss.xml"
+
