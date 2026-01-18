@@ -17,4 +17,5 @@ sources:
     feed: "https://www.pcgamesinsider.biz/rss/news/"
   - name: Instant Gaming News
     feed: "https://news.instant-gaming.com/en/rss.xml"
-
+  - name: Videocardz
+    feed: "https://videocardz.com/rss-feed"
