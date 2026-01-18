@@ -11,13 +11,8 @@ sources:
     feed: "https://www.gamespot.com/feeds/news/"
   - name: Techpowerup
     feed: "https://www.techpowerup.com/rss/reviews"
-  - name: Windows Central
-    feed: "https://www.windowscentral.com/feeds.xml"
-  - name: PC Games Insider
-    feed: "https://www.pcgamesinsider.biz/rss/news/"
-  - name: Instant Gaming News
-    feed: "https://news.instant-gaming.com/en/rss.xml"
   - name: Videocardz
     feed: "https://videocardz.com/rss-feed"
   - name: PC Gamer
     feed: "https://www.pcgamer.com/rss/"
+
