@@ -36,7 +36,6 @@ jobs:
           restore-keys: |
             wp-news-bot-db-
 
-
       - name: WP probe (GET only)
         env:
           WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
