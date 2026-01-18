@@ -40,7 +40,7 @@ SOURCES_FILE = os.getenv("SOURCES_FILE", "sources.yaml").strip()
 MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "1"))
 
 # How many top RSS items per site to import each run (3 or 4 suggested)
-FEED_ENTRIES_LIMIT = int(os.getenv("FEED_ENTRIES_LIMIT", "4"))
+FEED_ENTRIES_LIMIT = int(os.getenv("FEED_ENTRIES_LIMIT", "15"))
 
 # Category mapping
 CAT_ALL = int(os.getenv("CAT_ALL", "0"))
@@ -798,3 +798,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+
