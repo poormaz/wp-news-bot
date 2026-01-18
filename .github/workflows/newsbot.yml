@@ -69,7 +69,7 @@ jobs:
 
           # Categories
           CAT_ALL: "2"
-          CAT_GAMING: "1"
+          CAT_GAMING: "18"
           CAT_HARDWARE: "19"
           CAT_REVIEWS: "3"
 
