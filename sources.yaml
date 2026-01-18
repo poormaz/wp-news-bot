@@ -3,16 +3,13 @@ sources:
     feed: "https://www.dsogaming.com/feed/"
   - name: Wccftech
     feed: "https://wccftech.com/feed/"
-  - name: IGN
-    feed: "https://feeds.ign.com/ign/all"
   - name: Tom's Hardware
     feed: "https://www.tomshardware.com/feeds.xml"
-  - name: GameSpot
-    feed: "https://www.gamespot.com/feeds/news/"
   - name: Techpowerup
     feed: "https://www.techpowerup.com/rss/reviews"
   - name: Videocardz
     feed: "https://videocardz.com/rss-feed"
+  - name: Instant Gaming News
+    feed: "https://news.instant-gaming.com/en/rss.xml"
   - name: PC Gamer
     feed: "https://www.pcgamer.com/rss/"
-
