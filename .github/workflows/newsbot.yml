@@ -3,8 +3,7 @@ name: wp-news-bot
 on:
   workflow_dispatch:
   schedule:
-    # زمان‌ها UTC هستند
-    - cron: "0 * * * *" # هر ساعت
+    - cron: "0 * * * *" # هر ساعت (UTC)
 
 concurrency:
   group: wp-news-bot
@@ -29,26 +28,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Check secrets (safe)
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: gpt-5-mini
-
-          WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
-          WP_USERNAME: ${{ secrets.WP_USERNAME }}
-          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
-
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-        run: |
-          python - << 'PY'
-          import os
-          for k in ["WP_BASE_URL","WP_USERNAME","WP_APP_PASSWORD","OPENAI_API_KEY","OPENAI_MODEL","PEXELS_API_KEY"]:
-              v = os.getenv(k, "")
-              print(k, "OK" if v else "MISSING", "len=", len(v))
-          PY
-
-      # فقط GET (هیچ پستی ساخته نمی‌شود)
-      - name: WP probe (runner, verbose)
+      - name: WP probe (GET only)
         env:
           WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
@@ -57,20 +37,15 @@ jobs:
           set -e
           UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 
-          echo "=== WP_BASE_URL ==="
-          echo "$WP_BASE_URL"
-          echo
-
           echo "=== 1) GET /wp-json/ (no auth) ==="
           curl -i --max-time 20 -A "$UA" -H "Accept: application/json" \
             "$WP_BASE_URL/wp-json/" | head -n 40
-          echo
 
+          echo
           echo "=== 2) GET users/me (with Basic Auth) ==="
           curl -i --max-time 20 -A "$UA" -H "Accept: application/json" \
             -u "$WP_USERNAME:$WP_APP_PASSWORD" \
             "$WP_BASE_URL/wp-json/wp/v2/users/me" | head -n 60
-          echo
 
       - name: Run bot
         env:
@@ -95,11 +70,11 @@ jobs:
           MAX_POSTS_PER_RUN: "1"
           LANG: "fa"
 
-          # RSS import limit (3 یا 4)
-          FEED_ENTRIES_LIMIT: "4"
+          # RSS newest N per source
+          FEED_ENTRIES_LIMIT: "10"
 
-          # Rotation
-          ROTATION_SOURCES: "GameSpot,IGN,DSOGaming,Wccftech,Tom's Hardware,Techpowerup,Windows Central,PC Games Insider,Instant Gaming News"
+          # Rotation (اگر خالی کنی، از ترتیب sources.yaml می‌چرخه)
+          ROTATION_SOURCES: "DSOGaming,Wccftech,IGN,Tom's Hardware,GameSpot,Techpowerup,Windows Central,PC Games Insider,Instant Gaming News"
 
           # Images
           SET_FEATURED_IMAGE: "1"
@@ -110,6 +85,13 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PEXELS_ORIENTATION: "landscape"
           PEXELS_PER_PAGE: "1"
+
+          # DEDUP (fuzzy)
+          DEDUP_WINDOW_HOURS: "48"
+          DEDUP_SIM_THRESHOLD: "0.80"
+          DEDUP_WP_CHECK: "1"
+          DEDUP_WP_SEARCH_PER_PAGE: "10"
+          DEDUP_MIN_TOKENS: "5"
 
           PYTHONUNBUFFERED: "1"
         run: |
