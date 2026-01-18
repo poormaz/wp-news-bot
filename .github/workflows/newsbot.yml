@@ -88,10 +88,10 @@ jobs:
 
           # DEDUP (fuzzy)
           DEDUP_WINDOW_HOURS: "48"
-          DEDUP_SIM_THRESHOLD: "0.80"
+          DEDUP_SIM_THRESHOLD: "0.83"
           DEDUP_WP_CHECK: "1"
           DEDUP_WP_SEARCH_PER_PAGE: "10"
-          DEDUP_MIN_TOKENS: "6"
+          DEDUP_MIN_TOKENS: "5"
 
           PYTHONUNBUFFERED: "1"
         run: |
