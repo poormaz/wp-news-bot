@@ -28,10 +28,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           
-      - name: Cache bot database (newscache.db)
+      - name: Cache bot database (news_cache.db)
         uses: actions/cache@v4
         with:
-          path: newscache.db
+          path: news_cache.db
           key: wp-news-bot-db-${{ github.run_id }}
           restore-keys: |
             wp-news-bot-db-
