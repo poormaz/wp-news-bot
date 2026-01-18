@@ -27,6 +27,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          
+      - name: Cache bot database (newscache.db)
+        uses: actions/cache@v4
+        with:
+          path: newscache.db
+          key: wp-news-bot-db-${{ github.run_id }}
+          restore-keys: |
+            wp-news-bot-db-
+
 
       - name: WP probe (GET only)
         env:
