@@ -74,7 +74,7 @@ jobs:
           CAT_REVIEWS: "3"
 
           # Posting
-          WP_POST_STATUS: draft
+          WP_POST_STATUS: publish
           MAX_POSTS_PER_RUN: "1"
           LANG: "fa"
 
