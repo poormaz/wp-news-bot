@@ -382,6 +382,21 @@ def is_duplicate_by_db(title_en: str) -> tuple[bool, str]:
     return False, ""
 
 
+def get_next_pending_for_source(source_name: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("""
+      SELECT id, source_name, title_en, snippet_en, url, published_at
+      FROM items
+      WHERE status='pending' AND source_name=?
+      ORDER BY COALESCE(published_ts, 0) DESC, created_at DESC
+      LIMIT 1
+    """, (source_name,))
+    row = c.fetchone()
+    conn.close()
+    return row
+
+
 # =======================
 # Sources
 # =======================
@@ -932,3 +947,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+
