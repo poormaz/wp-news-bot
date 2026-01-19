@@ -6,8 +6,9 @@ sources:
   - name: Techpowerup
     feed: "https://www.techpowerup.com/rss/reviews"
   - name: Videocardz
-    feed: "https://videocardz.com/rss-feed"
+    feed: "https://rss.app/feeds/r6xHD25guWbmwLBB.xml"
   - name: Instant Gaming News
     feed: "https://news.instant-gaming.com/en/rss.xml"
   - name: PC Gamer
     feed: "https://www.pcgamer.com/rss/"
+
