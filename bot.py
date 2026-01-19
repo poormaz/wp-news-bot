@@ -31,13 +31,14 @@ WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "").strip()
 WP_POST_STATUS = os.getenv("WP_POST_STATUS", "draft").strip()
 
 LANG = os.getenv("LANG", "fa").strip()
+
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "25"))
 USER_AGENT = os.getenv("USER_AGENT", "Mozilla/5.0 (WPNewsBot/1.0; +https://example.com)").strip()
 
 DB_FILE = os.getenv("DB_FILE", "news_cache.db").strip()
 SOURCES_FILE = os.getenv("SOURCES_FILE", "sources.yaml").strip()
 
-# One post per run
+# How many posts per run
 MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "1"))
 
 # How many top RSS items per site to import each run
@@ -76,13 +77,11 @@ DEDUP_WP_SEARCH_PER_PAGE = int(os.getenv("DEDUP_WP_SEARCH_PER_PAGE", "10"))
 # Safety: don't post if title is too short (reduces false positives)
 DEDUP_MIN_TOKENS = int(os.getenv("DEDUP_MIN_TOKENS", "5"))
 
-
 # =======================
 # Helpers
 # =======================
 def die(msg: str):
     raise SystemExit(msg)
-
 
 def safe_env_report():
     keys = [
@@ -104,22 +103,18 @@ def safe_env_report():
         v = os.getenv(k, "")
         print(f"- {k}: {'OK' if v else 'MISSING'} (len={len(v)})")
 
-
 def clean_text(s: str) -> str:
     s = s or ""
     s = re.sub(r"<[^>]+>", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
-
 def url_hash(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
-
 
 def wp_auth_header(username: str, app_password: str) -> str:
     token = base64.b64encode(f"{username}:{app_password}".encode("utf-8")).decode("utf-8")
     return f"Basic {token}"
-
 
 def parse_published_ts(published_at: str) -> int:
     try:
@@ -130,14 +125,12 @@ def parse_published_ts(published_at: str) -> int:
     except Exception:
         return int(datetime.now(timezone.utc).timestamp())
 
-
 def format_rss_date(published_at: str) -> str:
     try:
         dt = parsedate_to_datetime(published_at)
         return dt.strftime("%a, %d %b %Y")
     except Exception:
         return (published_at or "").split("+")[0].strip()
-
 
 def guess_ext_and_mime(content_type: str | None) -> tuple[str, str]:
     ct = (content_type or "").lower()
@@ -149,14 +142,11 @@ def guess_ext_and_mime(content_type: str | None) -> tuple[str, str]:
         return "gif", "image/gif"
     return "jpg", "image/jpeg"
 
-
 STOPWORDS = {
     "the", "a", "an", "and", "or", "to", "of", "in", "on", "for", "with", "from", "by", "at",
-    "is", "are", "was", "were", "be", "been", "being",
-    "as", "this", "that", "these", "those",
+    "is", "are", "was", "were", "be", "been", "being", "as", "this", "that", "these", "those",
     "new", "latest", "update", "updates",
 }
-
 
 def normalize_en_title(t: str) -> str:
     t = (t or "").lower()
@@ -165,13 +155,11 @@ def normalize_en_title(t: str) -> str:
     words = [w for w in t.split(" ") if w and w not in STOPWORDS and len(w) >= 3]
     return " ".join(words)[:220].strip()
 
-
 def title_tokens(norm: str) -> list[str]:
     norm = (norm or "").strip()
     if not norm:
         return []
     return [w for w in norm.split(" ") if w]
-
 
 def jaccard(a_tokens: list[str], b_tokens: list[str]) -> float:
     a = set(a_tokens)
@@ -180,12 +168,10 @@ def jaccard(a_tokens: list[str], b_tokens: list[str]) -> float:
         return 0.0
     return len(a & b) / len(a | b)
 
-
 def seq_ratio(a: str, b: str) -> float:
     if not a or not b:
         return 0.0
     return SequenceMatcher(a=a, b=b).ratio()
-
 
 def title_similarity(title_a: str, title_b: str) -> float:
     """
@@ -195,21 +181,17 @@ def title_similarity(title_a: str, title_b: str) -> float:
     nb = normalize_en_title(title_b)
     ta = title_tokens(na)
     tb = title_tokens(nb)
-
     if len(ta) < DEDUP_MIN_TOKENS or len(tb) < DEDUP_MIN_TOKENS:
         # too short => avoid aggressive dedup
         return 0.0
-
     s1 = seq_ratio(na, nb)
     s2 = jaccard(ta, tb)
     return (0.65 * s1) + (0.35 * s2)
-
 
 def basic_keywords_for_wp_search(title_en: str, max_words: int = 6) -> str:
     norm = normalize_en_title(title_en)
     toks = title_tokens(norm)[:max_words]
     return " ".join(toks).strip()
-
 
 # =======================
 # DB
@@ -252,7 +234,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-
 def state_get(key: str, default: str = "") -> str:
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -260,7 +241,6 @@ def state_get(key: str, default: str = "") -> str:
     row = c.fetchone()
     conn.close()
     return row[0] if row else default
-
 
 def state_set(key: str, value: str):
     conn = sqlite3.connect(DB_FILE)
@@ -272,7 +252,6 @@ def state_set(key: str, value: str):
     )
     conn.commit()
     conn.close()
-
 
 def upsert_new_items(source_name: str, entries: list) -> int:
     conn = sqlite3.connect(DB_FILE)
@@ -316,14 +295,12 @@ def upsert_new_items(source_name: str, entries: list) -> int:
     conn.close()
     return added
 
-
 def mark_posted(item_id: str, wp_post_id: int):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("UPDATE items SET status='posted', wp_post_id=? WHERE id=?", (wp_post_id, item_id))
     conn.commit()
     conn.close()
-
 
 def mark_failed(item_id: str):
     conn = sqlite3.connect(DB_FILE)
@@ -332,17 +309,14 @@ def mark_failed(item_id: str):
     conn.commit()
     conn.close()
 
-
 def mark_skipped(item_id: str, reason: str = ""):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # store reason in state? simplest: print only; DB keeps skipped status.
     c.execute("UPDATE items SET status='skipped' WHERE id=?", (item_id,))
     conn.commit()
     conn.close()
     if reason:
         print("SKIPPED reason:", reason)
-
 
 def get_recent_posted_or_skipped_titles() -> list[tuple[str, str, int]]:
     """
@@ -363,7 +337,6 @@ def get_recent_posted_or_skipped_titles() -> list[tuple[str, str, int]]:
     conn.close()
     return rows
 
-
 def is_duplicate_by_db(title_en: str) -> tuple[bool, str]:
     candidates = get_recent_posted_or_skipped_titles()
     if not candidates:
@@ -381,7 +354,6 @@ def is_duplicate_by_db(title_en: str) -> tuple[bool, str]:
         return True, f"db-sim={best:.3f} vs {best_src}"
     return False, ""
 
-
 def get_next_pending_for_source(source_name: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -396,21 +368,17 @@ def get_next_pending_for_source(source_name: str):
     conn.close()
     return row
 
-
 # =======================
 # Sources
 # =======================
 def load_sources():
     if not os.path.exists(SOURCES_FILE):
         die(f"Missing {SOURCES_FILE}")
-
     with open(SOURCES_FILE, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
-
     sources = cfg.get("sources", [])
     if not isinstance(sources, list) or not sources:
-        die("sources.yaml is empty. Expected:\nsources:\n  - name: ...\n    feed: ...")
-
+        die("sources.yaml is empty. Expected:\nsources:\n - name: ...\n   feed: ...")
     normalized = []
     for s in sources:
         if "name" not in s or "feed" not in s:
@@ -421,7 +389,6 @@ def load_sources():
         })
     return normalized
 
-
 def fetch_feed_entries(feed_url: str):
     headers = {"User-Agent": USER_AGENT}
     r = requests.get(feed_url, headers=headers, timeout=HTTP_TIMEOUT)
@@ -429,57 +396,40 @@ def fetch_feed_entries(feed_url: str):
     if r.status_code >= 400:
         print("FEED ERROR BODY (first 250):", r.text[:250])
         return []
-
     parsed = feedparser.parse(r.text)
     entries = parsed.entries or []
     print(f"FEED PARSED: entries={len(entries)}")
     return entries
 
-
 # =======================
 # Rotation
 # =======================
-def get_next_pending_round_robin(source_order: list[str]):
-    if not source_order:
-        return []
+def get_rotation_list(sources: list[dict]) -> list[str]:
+    if ROTATION_SOURCES:
+        return [x.strip() for x in ROTATION_SOURCES.split(",") if x.strip()]
+    return [s["name"] for s in sources]
 
+def choose_next_source_with_pending(rotation: list[str]) -> tuple[str | None, int | None]:
+    if not rotation:
+        return None, None
     try:
         rr_index = int(state_get("rr_index", "0") or "0")
     except ValueError:
         rr_index = 0
 
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
+    for i in range(len(rotation)):
+        idx = (rr_index + i) % len(rotation)
+        src = rotation[idx]
+        if get_next_pending_for_source(src):
+            return src, idx
+    return None, None
 
-    chosen_row = None
-    chosen_idx = None
-
-    for i in range(len(source_order)):
-        idx = (rr_index + i) % len(source_order)
-        src = source_order[idx]
-
-        c.execute("""
-          SELECT id, source_name, title_en, snippet_en, url, published_at
-          FROM items
-          WHERE status='pending' AND source_name=?
-          ORDER BY COALESCE(published_ts, 0) DESC, created_at DESC
-          LIMIT 1
-        """, (src,))
-        row = c.fetchone()
-        if row:
-            chosen_row = row
-            chosen_idx = idx
-            break
-
-    conn.close()
-
-    if chosen_row is None:
+# (Optional) kept for backward compatibility / debugging
+def get_next_pending_round_robin(source_order: list[str]):
+    src, idx = choose_next_source_with_pending(source_order)
+    if src is None:
         return []
-
-    next_idx = (chosen_idx + 1) % len(source_order)
-    state_set("rr_index", str(next_idx))
-    return [chosen_row]
-
+    return [get_next_pending_for_source(src)]
 
 # =======================
 # Categories
@@ -491,8 +441,7 @@ def pick_categories(title_en: str, snippet_en: str) -> list[int]:
         return [CAT_REVIEWS]
 
     if CAT_HARDWARE and any(k in text for k in [
-        "gpu", "rtx", "radeon", "cpu", "intel", "amd", "nvidia",
-        "laptop", "ssd", "ram", "motherboard", "dlss", "fsr"
+        "gpu", "rtx", "radeon", "cpu", "intel", "amd", "nvidia", "laptop", "ssd", "ram", "motherboard", "dlss", "fsr"
     ]):
         return [CAT_ALL, CAT_HARDWARE] if CAT_ALL else [CAT_HARDWARE]
 
@@ -501,10 +450,11 @@ def pick_categories(title_en: str, snippet_en: str) -> list[int]:
 
     if CAT_ALL:
         return [CAT_ALL]
+
     if WP_CATEGORY_ID_DEFAULT > 0:
         return [WP_CATEGORY_ID_DEFAULT]
-    return []
 
+    return []
 
 # =======================
 # OpenAI
@@ -530,22 +480,21 @@ Rules:
 - Target length: 600–700 Persian words.
 - Use HTML with 3 to 5 <h2> headings.
 - Avoid bullet-heavy writing (max 3 bullet points total).
-- Do NOT write the phrase "چرا مهم است".
+- Do NOT write the phrase "در نهایت".
 - End with one short takeaway sentence (without that phrase).
-- Add FAQ at the end:
+- Add FAQ at the end (3 pairs) using:
   <h2>سوالات متداول</h2>
-  <p>سوال: ...</p>
-  <p>پاسخ: ...</p> (3 pairs)
+  <p><strong>سوال:</strong> ...</p>
+  <p><strong>پاسخ:</strong> ...</p>
 
 Return valid JSON ONLY with keys:
 title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa
 """.strip()
 
-    # Don't pass temperature (avoid model constraints)
     resp = client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=[
-            {"role": "system", "content": "فقط JSON برگردان. بدون مارک‌داون و بدون متن اضافه."},
+            {"role": "system", "content": "فقط JSON برگردان. بدون مارکداون و بدون متن اضافه."},
             {"role": "user", "content": prompt},
         ],
     )
@@ -576,27 +525,28 @@ title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa
     data["content_html_fa"] = (data["content_html_fa"] or "").strip()
     return data
 
-
 # =======================
 # Images (source -> pexels)
 # =======================
 def extract_image_url_from_html(html: str, base_url: str) -> str | None:
     html = html or ""
 
+    # og:image
     m = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', html, re.I)
     if m:
         return m.group(1).strip()
 
+    # twitter:image
     m = re.search(r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']', html, re.I)
     if m:
         return m.group(1).strip()
 
+    # first img
     m = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', html, re.I)
     if m:
         return urljoin(base_url, m.group(1).strip())
 
     return None
-
 
 def fetch_source_image_url(source_url: str) -> str | None:
     headers = {"User-Agent": USER_AGENT, "Accept": "text/html,*/*"}
@@ -607,17 +557,14 @@ def fetch_source_image_url(source_url: str) -> str | None:
         return None
     return extract_image_url_from_html(r.text, source_url)
 
-
 def download_image_bytes(img_url: str) -> tuple[bytes, str, str] | tuple[None, None, None]:
     headers = {"User-Agent": USER_AGENT, "Accept": "image/avif,image/webp,image/*,*/*"}
     r = requests.get(img_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
     if r.status_code >= 400 or not r.content:
         print("IMG download failed:", r.status_code, img_url)
         return None, None, None
-
     ext, mime = guess_ext_and_mime(r.headers.get("Content-Type"))
     return r.content, ext, mime
-
 
 def pexels_search_photo(query: str) -> dict | None:
     if not (PEXELS_ENABLED and PEXELS_API_KEY):
@@ -638,23 +585,21 @@ def pexels_search_photo(query: str) -> dict | None:
     photos = data.get("photos") or []
     return photos[0] if photos else None
 
-
 def pexels_pick_image_url(photo: dict) -> str | None:
     src = (photo or {}).get("src") or {}
     return (src.get("large2x") or src.get("large") or src.get("original") or src.get("medium"))
-
 
 def pexels_attribution_html(photo: dict) -> str:
     if not photo:
         return ""
     photographer = clean_text(photo.get("photographer", ""))
     photo_page = (photo.get("url") or "").strip()
-    if photo_page and photographer:
-        return f'<p><small>اعتبار عکس: <a href="{photo_page}" target="_blank" rel="nofollow noopener">Pexels / {photographer}</a></small></p>'
-    if photo_page:
-        return f'<p><small>اعتبار عکس: <a href="{photo_page}" target="_blank" rel="nofollow noopener">Pexels</a></small></p>'
-    return "<p><small>اعتبار عکس: Pexels</small></p>"
 
+    if photo_page and photographer:
+        return f"<p><small>اعتبار عکس: <a href='{photo_page}' target='_blank' rel='nofollow noopener'>Pexels / {photographer}</a></small></p>"
+    if photo_page:
+        return f"<p><small>اعتبار عکس: <a href='{photo_page}' target='_blank' rel='nofollow noopener'>Pexels</a></small></p>"
+    return "<p><small>اعتبار عکس: Pexels</small></p>"
 
 # =======================
 # WordPress REST
@@ -669,7 +614,6 @@ def wp_request_headers(json_mode: bool = False) -> dict:
         h["Accept"] = "application/json"
     return h
 
-
 def wp_check_me():
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/users/me"
     r = requests.get(endpoint, headers=wp_request_headers(), timeout=HTTP_TIMEOUT)
@@ -678,7 +622,6 @@ def wp_check_me():
         print("WP ME error body (first 300):", r.text[:300])
     r.raise_for_status()
     return r.json()
-
 
 def wp_upload_media(image_bytes: bytes, filename: str, mime_type: str, alt_text: str = "") -> dict:
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/media"
@@ -705,7 +648,6 @@ def wp_upload_media(image_bytes: bytes, filename: str, mime_type: str, alt_text:
 
     return media
 
-
 def create_wp_post(title: str, content_html: str, categories: list[int], featured_media_id: int | None) -> int:
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/posts"
     payload = {"title": title, "content": content_html, "status": WP_POST_STATUS}
@@ -719,8 +661,8 @@ def create_wp_post(title: str, content_html: str, categories: list[int], feature
     if r.status_code >= 400:
         print("WP POST ERROR (first 500):", r.text[:500])
     r.raise_for_status()
-    return int(r.json()["id"])
 
+    return int(r.json()["id"])
 
 def push_rankmath_meta(post_id: int, meta_title: str, meta_desc: str, focus_kw: str):
     if not (RANKMATH_UPDATER_URL and RANKMATH_UPDATER_TOKEN):
@@ -741,11 +683,10 @@ def push_rankmath_meta(post_id: int, meta_title: str, meta_desc: str, focus_kw: 
         print("RANKMATH ERROR (first 300):", r.text[:300])
     r.raise_for_status()
 
-
 def wp_search_similar_posts(title_en: str) -> tuple[bool, str]:
     """
     Layer 2: Ask WP if a similar post already exists (draft/publish).
-    Uses wp/v2/posts?search=... which supports `search`. [web:673]
+    Uses wp/v2/posts?search=... which supports `search`.
     """
     if not DEDUP_WP_CHECK:
         return False, ""
@@ -780,8 +721,8 @@ def wp_search_similar_posts(title_en: str) -> tuple[bool, str]:
 
     if best >= DEDUP_SIM_THRESHOLD:
         return True, f"wp-sim={best:.3f} title='{best_title[:80]}'"
-    return False, ""
 
+    return False, ""
 
 def build_wp_content(final_body_html: str, source_name: str, source_url: str, published_at: str,
                      image_html: str = "", image_credit_html: str = "") -> str:
@@ -791,19 +732,19 @@ def build_wp_content(final_body_html: str, source_name: str, source_url: str, pu
     if image_html and EMBED_IMAGE_IN_CONTENT:
         header_media = (image_html.strip() + "\n" + (image_credit_html or "").strip()).strip()
 
-    footer = f"""
-<hr>
-<p><strong>منبع:</strong> <a href="{source_url}" target="_blank" rel="nofollow noopener">{source_name}</a></p>
-<p><small>زمان انتشار منبع: {nice_date}</small></p>
-""".strip()
+    footer = (
+        "<hr>"
+        f"<p><strong>منبع:</strong> <a href='{source_url}' target='_blank' rel='nofollow noopener'>{clean_text(source_name)}</a></p>"
+        f"<p><small>زمان انتشار منبع: {clean_text(nice_date)}</small></p>"
+    )
 
     parts = []
     if header_media:
         parts.append(header_media)
-    parts.append(final_body_html.strip())
+    parts.append((final_body_html or "").strip())
     parts.append(footer)
-    return "\n\n".join([p for p in parts if p]).strip()
 
+    return "\n\n".join([p for p in parts if p]).strip()
 
 # =======================
 # Main
@@ -826,13 +767,10 @@ def run():
     for s in sources:
         print("-", s["name"], s["feed"])
 
-    if ROTATION_SOURCES:
-        rotation = [x.strip() for x in ROTATION_SOURCES.split(",") if x.strip()]
-    else:
-        rotation = [s["name"] for s in sources]
+    rotation = get_rotation_list(sources)
     print("Rotation order:", rotation)
 
-    # import newest items from each source
+    # 1) Import newest items from each source
     total_added = 0
     for s in sources:
         entries = fetch_feed_entries(s["feed"])
@@ -841,110 +779,130 @@ def run():
         print(f"ADDED from {s['name']}: {added}")
         total_added += added
 
-    # pick 1 item by round-robin
-    pending = get_next_pending_round_robin(rotation)
-    print("Pending selected:", len(pending), "| MAX_POSTS_PER_RUN:", MAX_POSTS_PER_RUN)
+    # 2) Post up to MAX_POSTS_PER_RUN, respecting rotation
+    processed_posts = 0
 
-    # Hard safety
-    pending = pending[:1]
+    for _ in range(max(1, MAX_POSTS_PER_RUN)):
+        src, src_idx = choose_next_source_with_pending(rotation)
+        if src is None:
+            print("No pending items found for any source.")
+            break
 
-    for (item_id, source_name, title_en, snippet_en, url, published_at) in pending:
-        print("\n--- ITEM ---")
-        print("Source:", source_name)
-        print("URL:", url)
-        print("Title EN:", title_en)
+        # advance rr_index to next source (so we don't get stuck)
+        next_idx = (int(src_idx) + 1) % len(rotation)
+        state_set("rr_index", str(next_idx))
 
-        try:
-            # Dedup layer 1: DB fuzzy by title_en within 48h
-            dup, why = is_duplicate_by_db(title_en)
-            if dup:
-                mark_skipped(item_id, reason=f"duplicate: {why}")
-                continue
+        print(f"\n=== TURN: source='{src}' (next rr_index={next_idx}) ===")
 
-            # Dedup layer 2: WP search fuzzy
-            dup2, why2 = wp_search_similar_posts(title_en)
-            if dup2:
-                mark_skipped(item_id, reason=f"duplicate: {why2}")
-                continue
+        # For this source: try newest pending; if duplicate => skip and try next pending (same source, same run)
+        while True:
+            row = get_next_pending_for_source(src)
+            if not row:
+                print(f"No more pending items for source '{src}'.")
+                break
 
-            categories = pick_categories(title_en, snippet_en)
-            print("Picked categories:", categories)
+            (item_id, source_name, title_en, snippet_en, url, published_at) = row
 
-            gen = openai_generate_fa_article(title_en, snippet_en, source_name, url)
+            print("\n--- ITEM ---")
+            print("Source:", source_name)
+            print("URL:", url)
+            print("Title EN:", title_en)
 
-            featured_media_id = None
-            image_html = ""
-            image_credit_html = ""
-            used_image_kind = "none"
+            try:
+                # Dedup layer 1: DB fuzzy by title_en within window
+                dup, why = is_duplicate_by_db(title_en)
+                if dup:
+                    mark_skipped(item_id, reason=f"duplicate: {why}")
+                    continue
 
-            if SET_FEATURED_IMAGE:
-                img_url = fetch_source_image_url(url)
-                print("Source Image URL:", img_url)
+                # Dedup layer 2: WP search fuzzy
+                dup2, why2 = wp_search_similar_posts(title_en)
+                if dup2:
+                    mark_skipped(item_id, reason=f"duplicate: {why2}")
+                    continue
 
-                if not img_url:
-                    photo = pexels_search_photo(normalize_en_title(title_en))
-                    if photo:
-                        img_url = pexels_pick_image_url(photo)
-                        image_credit_html = pexels_attribution_html(photo)
-                        used_image_kind = "pexels"
-                        print("Pexels Image URL:", img_url)
+                categories = pick_categories(title_en, snippet_en)
+                print("Picked categories:", categories)
+
+                gen = openai_generate_fa_article(title_en, snippet_en, source_name, url)
+
+                featured_media_id = None
+                image_html = ""
+                image_credit_html = ""
+                used_image_kind = "none"
+
+                if SET_FEATURED_IMAGE:
+                    img_url = fetch_source_image_url(url)
+                    print("Source Image URL:", img_url)
+
+                    if not img_url:
+                        photo = pexels_search_photo(normalize_en_title(title_en))
+                        if photo:
+                            img_url = pexels_pick_image_url(photo)
+                            image_credit_html = pexels_attribution_html(photo)
+                            used_image_kind = "pexels"
+                            print("Pexels Image URL:", img_url)
+                        else:
+                            print("Pexels: no photo found.")
                     else:
-                        print("Pexels: no photo found.")
-                else:
-                    used_image_kind = "source"
+                        used_image_kind = "source"
 
-                if img_url:
-                    img_bytes, ext, mime = download_image_bytes(img_url)
-                    if img_bytes:
-                        fn = f"news-{item_id[:12]}.{ext}"
-                        media = wp_upload_media(img_bytes, fn, mime_type=mime, alt_text=gen["title_fa"])
-                        featured_media_id = int(media["id"])
-                        wp_src = (media.get("source_url") or "").strip()
-                        if wp_src:
-                            image_html = f'<p><img src="{wp_src}" alt="{gen["title_fa"]}"></p>'
-                        print("Featured media id:", featured_media_id, "| kind:", used_image_kind)
+                    if img_url:
+                        img_bytes, ext, mime = download_image_bytes(img_url)
+                        if img_bytes:
+                            fn = f"news-{item_id[:12]}.{ext}"
+                            media = wp_upload_media(img_bytes, fn, mime_type=mime, alt_text=gen["title_fa"])
+                            featured_media_id = int(media["id"])
+                            wp_src = (media.get("source_url") or "").strip()
+                            if wp_src:
+                                image_html = f"<p><img src='{wp_src}' alt='{gen['title_fa']}'></p>"
+                            print("Featured media id:", featured_media_id, "| kind:", used_image_kind)
+                        else:
+                            print("No image bytes downloaded.")
                     else:
-                        print("No image bytes downloaded.")
-                else:
-                    print("No image found (source + pexels).")
+                        print("No image found (source + pexels).")
 
-            content_html = build_wp_content(
-                final_body_html=gen["content_html_fa"],
-                source_name=source_name,
-                source_url=url,
-                published_at=published_at,
-                image_html=image_html,
-                image_credit_html=image_credit_html,
-            )
+                content_html = build_wp_content(
+                    final_body_html=gen["content_html_fa"],
+                    source_name=source_name,
+                    source_url=url,
+                    published_at=published_at,
+                    image_html=image_html,
+                    image_credit_html=image_credit_html,
+                )
 
-            post_id = create_wp_post(
-                title=gen["title_fa"],
-                content_html=content_html,
-                categories=categories,
-                featured_media_id=featured_media_id,
-            )
+                post_id = create_wp_post(
+                    title=gen["title_fa"],
+                    content_html=content_html,
+                    categories=categories,
+                    featured_media_id=featured_media_id,
+                )
 
-            push_rankmath_meta(
-                post_id=post_id,
-                meta_title=gen["meta_title_fa"],
-                meta_desc=gen["meta_description_fa"],
-                focus_kw=gen["focus_keyword_fa"],
-            )
+                push_rankmath_meta(
+                    post_id=post_id,
+                    meta_title=gen["meta_title_fa"],
+                    meta_desc=gen["meta_description_fa"],
+                    focus_kw=gen["focus_keyword_fa"],
+                )
 
-            print("POSTED:", post_id)
-            mark_posted(item_id, post_id)
-            time.sleep(1.2)
+                print("POSTED:", post_id)
+                mark_posted(item_id, post_id)
+                processed_posts += 1
 
-        except Exception as e:
-            print("FAILED item:", url)
-            print("ERROR:", repr(e))
-            traceback.print_exc()
-            mark_failed(item_id)
-            raise
+                time.sleep(1.2)
+                break  # done with this source for this "turn"
 
-    print(f"\nDone. Added from feeds: {total_added}, processed: {len(pending)}")
+            except Exception as e:
+                print("FAILED item:", url)
+                print("ERROR:", repr(e))
+                traceback.print_exc()
+                mark_failed(item_id)
+                raise
 
+        if processed_posts >= MAX_POSTS_PER_RUN:
+            break
+
+    print(f"\nDone. Added from feeds: {total_added}, posted now: {processed_posts}")
 
 if __name__ == "__main__":
     run()
-
