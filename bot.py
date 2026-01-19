@@ -504,7 +504,6 @@ Rules:
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_schema", "json_schema": ARTICLE_JSON_SCHEMA},
-            temperature=OPENAI_TEMPERATURE,
         )
         text = (resp.choices[0].message.content or "").strip()
         data = _parse_json_strict(text)
@@ -518,7 +517,6 @@ Rules:
                 {"role": "user", "content": prompt + "\n\nReturn valid JSON ONLY with keys: title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa"},
             ],
             response_format={"type": "json_object"},
-            temperature=OPENAI_TEMPERATURE,
         )
         text = (resp.choices[0].message.content or "").strip()
         data = _parse_json_strict(text)
@@ -883,3 +881,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+
