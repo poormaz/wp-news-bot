@@ -3,7 +3,7 @@ name: wp-news-bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */2 * * *' # هر ساعت (UTC)
+    - cron: '0 */2.5 * * *' # هر ساعت (UTC)
     
 concurrency:
   group: wp-news-bot
