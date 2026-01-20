@@ -536,19 +536,18 @@ Rules:
     data["focus_keyword_fa"] = clean_text(data["focus_keyword_fa"])
     data["content_html_fa"] = (data["content_html_fa"] or "").strip()
 
-# --- Post-process: remove repeated "go to source" phrases inside body ---
-bad_phrases = [
-    "جزئیات کامل در منبع",
-    "برای اطلاعات بیشتر به لینک منبع مراجعه کنید",
-    "برای اطلاعات بیشتر به منبع مراجعه کنید",
-]
+    # --- Post-process: remove repeated "go to source" phrases inside body ---
+    bad_phrases = [
+        "جزئیات کامل در منبع",
+        "برای اطلاعات بیشتر به لینک منبع مراجعه کنید",
+        "برای اطلاعات بیشتر به منبع مراجعه کنید",
+   ]
 
-html = data["content_html_fa"] or ""
-for bp in bad_phrases:
-    html = html.replace(bp, "").strip()
+    html = data["content_html_fa"] or ""
+    for bp in bad_phrases:
+            html = html.replace(bp, "").strip()
 
-data["content_html_fa"] = html
-
+    data["content_html_fa"] = html
     return data
 
 
@@ -900,6 +899,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
