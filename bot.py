@@ -488,11 +488,15 @@ Input:
 
 Rules:
 - Write ORIGINAL Persian content (no copying).
-- Do NOT invent facts/specs/numbers. If unknown, say: "جزئیات کامل در منبع".
-- Target length: 600–700 Persian words.
-- content_html_fa must be HTML using <p>, <h2>, <ul><li> when helpful.
+- Do NOT invent facts/specs/numbers (no new dates, prices, performance numbers, release windows).
+- If something is missing/unclear in title/snippet, DO NOT write "جزئیات کامل در منبع" inside the body and DO NOT repeatedly refer to the source link.
+  Instead, write a helpful, general explanation for a Persian audience (context, why it matters, possible implications) WITHOUT adding new factual claims.
+- Mention the source link ONLY ONCE at the end (one short paragraph).
+- Required length: 600–700 Persian words (do not go under 600).
+- content_html_fa must be valid HTML using <p>, <h2>, <ul><li> when helpful.
 - End with a short Q&A section (2 questions) in Persian inside HTML.
 """.strip()
+
 
     # Prefer structured outputs (json_schema). If the model/account doesn't support it,
     # we fallback to JSON mode + strict parsing.
