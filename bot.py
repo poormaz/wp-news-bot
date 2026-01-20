@@ -774,9 +774,9 @@ def push_rankmath_meta_wp(post_id: int, meta_title: str, meta_desc: str, focus_k
             "rank_math_focus_keyword": focus_kw or "",
         }
     }
-    r = requests.post(endpoint, headers=wp_request_headers(jsonmode=True), json=payload, timeout=HTTP_TIMEOUT)
+    r = requests.post(endpoint, headers=wp_request_headers(json_mode=True), json=payload, timeout=HTTP_TIMEOUT)
     print("RANKMATH updateMeta:", r.status_code, "| body:", (r.text or "")[:200])
-    return r.status_code < 400
+    return r.status_code >= 400
 
 # =======================
 # Images
@@ -1066,5 +1066,6 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
