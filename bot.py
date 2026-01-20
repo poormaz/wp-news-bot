@@ -545,7 +545,7 @@ Rules:
 
     html = data["content_html_fa"] or ""
     for bp in bad_phrases:
-            html = html.replace(bp, "").strip()
+        html = html.replace(bp, "").strip()
 
     data["content_html_fa"] = html
     return data
@@ -899,6 +899,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
