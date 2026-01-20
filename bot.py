@@ -26,7 +26,7 @@ load_dotenv()
 # =======================
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini").strip()
-OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0").strip() or "0")
+OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "1").strip() or "1")
 
 WP_BASE_URL = os.getenv("WP_BASE_URL", "").strip().rstrip("/")
 WP_USERNAME = os.getenv("WP_USERNAME", "").strip()
@@ -1072,3 +1072,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+
