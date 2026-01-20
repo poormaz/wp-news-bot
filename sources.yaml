@@ -3,12 +3,11 @@ sources:
     feed: "https://www.dsogaming.com/feed/"
   - name: Wccftech
     feed: "https://wccftech.com/feed/"
-  - name: Techpowerup
-    feed: "https://www.techpowerup.com/rss/reviews"
+  - name: Techspot
+    feed: "https://www.techspot.com/reviews.xml"
   - name: Videocardz
     feed: "https://rss.app/feeds/r6xHD25guWbmwLBB.xml"
   - name: Instant Gaming News
     feed: "https://news.instant-gaming.com/en/rss.xml"
   - name: PC Gamer
     feed: "https://www.pcgamer.com/rss/"
-
