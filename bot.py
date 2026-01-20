@@ -536,16 +536,22 @@ Rules:
     data["focus_keyword_fa"] = clean_text(data["focus_keyword_fa"])
     data["content_html_fa"] = (data["content_html_fa"] or "").strip()
 
-    # --- Post-process: remove repeated "go to source" phrases inside body ---
+    # Remove repeated "go to source" + any extra source lines inside body
     bad_phrases = [
         "جزئیات کامل در منبع",
-      "برای اطلاعات بیشتر به لینک منبع مراجعه کنید",
-      "برای اطلاعات بیشتر به منبع مراجعه کنید",
+     "برای اطلاعات بیشتر به لینک منبع مراجعه کنید",
+     "برای اطلاعات بیشتر به منبع مراجعه کنید",
    ]
 
     html = data["content_html_fa"] or ""
+
+    # 1) remove common phrases
     for bp in bad_phrases:
         html = html.replace(bp, "").strip()
+
+    # 2) remove any extra "منبع:" lines or raw source URL inside body
+    html = re.sub(r'(?im)^\s*منبع\s*:\s*.*$', '', html).strip()
+    html = html.replace(source_url, "").strip()
 
     data["content_html_fa"] = html
     return data
@@ -899,6 +905,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
