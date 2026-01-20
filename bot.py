@@ -539,8 +539,8 @@ Rules:
     # --- Post-process: remove repeated "go to source" phrases inside body ---
     bad_phrases = [
         "جزئیات کامل در منبع",
-        "برای اطلاعات بیشتر به لینک منبع مراجعه کنید",
-        "برای اطلاعات بیشتر به منبع مراجعه کنید",
+      "برای اطلاعات بیشتر به لینک منبع مراجعه کنید",
+      "برای اطلاعات بیشتر به منبع مراجعه کنید",
    ]
 
     html = data["content_html_fa"] or ""
@@ -899,6 +899,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
