@@ -1037,7 +1037,7 @@ def run():
                 )
 
                 # RankMath meta (optional)
-                push_rankmath_meta(
+                push_rankmath_meta_wp(
                     post_id=post_id,
                     meta_title=gen["meta_title_fa"],
                     meta_desc=gen["meta_description_fa"],
@@ -1066,6 +1066,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
