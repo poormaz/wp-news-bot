@@ -763,26 +763,20 @@ def wp_search_similar_posts(title_en: str) -> tuple[bool, str]:
         return True, f"wp-sim={best:.3f} title={best_title[:80]}"
     return False, ""
 
-
-def push_rankmath_meta(post_id: int, meta_title: str, meta_desc: str, focus_kw: str):
-    if not (RANKMATH_UPDATER_URL and RANKMATH_UPDATER_TOKEN):
-        print("RankMath updater disabled (missing env).")
-        return
-
+def push_rankmath_meta_wp(post_id: int, meta_title: str, meta_desc: str, focus_kw: str):
+    endpoint = f"{WP_BASE_URL}/wp-json/rankmath/v1/updateMeta"
     payload = {
-        "token": RANKMATH_UPDATER_TOKEN,
-        "postid": int(post_id),
-        "metatitle": meta_title or "",
-        "metadescription": meta_desc or "",
-        "focuskeyword": focus_kw or "",
+        "objectType": "post",
+        "objectID": int(post_id),
+        "meta": {
+            "rank_math_title": meta_title or "",
+            "rank_math_description": meta_desc or "",
+            "rank_math_focus_keyword": focus_kw or "",
+        }
     }
-
-    r = requests.post(RANKMATH_UPDATER_URL, json=payload, timeout=HTTP_TIMEOUT)
-    print("RANKMATH UPDATE:", r.status_code, "| body:", (r.text or "")[:200])
-    if r.status_code >= 400:
-        print("RANKMATH ERROR (first 300):", r.text[:300])
-        r.raise_for_status()
-
+    r = requests.post(endpoint, headers=wp_request_headers(jsonmode=True), json=payload, timeout=HTTP_TIMEOUT)
+    print("RANKMATH updateMeta:", r.status_code, "| body:", (r.text or "")[:200])
+    return r.status_code < 400
 
 # =======================
 # Images
@@ -1072,4 +1066,5 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
