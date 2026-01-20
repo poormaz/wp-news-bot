@@ -6,15 +6,18 @@ import base64
 import hashlib
 import sqlite3
 import traceback
+import html as html_lib
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, quote_plus
+
 import yaml
 import feedparser
 import requests
 from dotenv import load_dotenv
 from openai import OpenAI
 from difflib import SequenceMatcher
+
 
 load_dotenv()
 
@@ -29,28 +32,30 @@ WP_BASE_URL = os.getenv("WP_BASE_URL", "").strip().rstrip("/")
 WP_USERNAME = os.getenv("WP_USERNAME", "").strip()
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "").strip()
 WP_POST_STATUS = os.getenv("WP_POST_STATUS", "draft").strip()
+
 LANG = os.getenv("LANG", "fa").strip()
 
-HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "25"))
+HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "25").strip() or "25")
 USER_AGENT = os.getenv("USER_AGENT", "Mozilla/5.0 (WPNewsBot/1.0; +https://example.com)").strip()
 
 DB_FILE = os.getenv("DB_FILE", "news_cache.db").strip()
 SOURCES_FILE = os.getenv("SOURCES_FILE", "sources.yaml").strip()
 
 # How many posts per run
-MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "1"))
+MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "1").strip() or "1")
+
 # How many top RSS items per site to import each run
-FEED_ENTRIES_LIMIT = int(os.getenv("FEED_ENTRIES_LIMIT", "10"))
+FEED_ENTRIES_LIMIT = int(os.getenv("FEED_ENTRIES_LIMIT", "10").strip() or "10")
 
 # Rotation order (comma-separated). If empty => order from sources.yaml
 ROTATION_SOURCES = os.getenv("ROTATION_SOURCES", "").strip()
 
 # Categories
-CAT_ALL = int(os.getenv("CAT_ALL", "0"))
-CAT_GAMING = int(os.getenv("CAT_GAMING", "0"))
-CAT_HARDWARE = int(os.getenv("CAT_HARDWARE", "0"))
-CAT_REVIEWS = int(os.getenv("CAT_REVIEWS", "0"))
-WP_CATEGORY_ID_DEFAULT = int(os.getenv("WP_CATEGORY_ID", "0"))
+CAT_ALL = int(os.getenv("CAT_ALL", "0").strip() or "0")
+CAT_GAMING = int(os.getenv("CAT_GAMING", "0").strip() or "0")
+CAT_HARDWARE = int(os.getenv("CAT_HARDWARE", "0").strip() or "0")
+CAT_REVIEWS = int(os.getenv("CAT_REVIEWS", "0").strip() or "0")
+WP_CATEGORY_ID_DEFAULT = int(os.getenv("WP_CATEGORY_ID", "0").strip() or "0")
 
 # RankMath updater (optional)
 RANKMATH_UPDATER_URL = os.getenv("RANKMATH_UPDATER_URL", "").strip()
@@ -64,22 +69,29 @@ EMBED_IMAGE_IN_CONTENT = os.getenv("EMBED_IMAGE_IN_CONTENT", "1").strip() == "1"
 PEXELS_ENABLED = os.getenv("PEXELS_ENABLED", "1").strip() == "1"
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
 PEXELS_ORIENTATION = os.getenv("PEXELS_ORIENTATION", "landscape").strip()
-PEXELS_PER_PAGE = int(os.getenv("PEXELS_PER_PAGE", "1"))
+PEXELS_PER_PAGE = int(os.getenv("PEXELS_PER_PAGE", "1").strip() or "1")
+
+# Source page text extraction (page_text)
+USE_SOURCE_PAGE_TEXT = os.getenv("USE_SOURCE_PAGE_TEXT", "1").strip() == "1"
+SOURCE_TEXT_MAX_CHARS = int(os.getenv("SOURCE_TEXT_MAX_CHARS", "7000").strip() or "7000")
 
 # Dedup (fuzzy by title_en)
-DEDUP_WINDOW_HOURS = int(os.getenv("DEDUP_WINDOW_HOURS", "48"))
-DEDUP_SIM_THRESHOLD = float(os.getenv("DEDUP_SIM_THRESHOLD", "0.80"))  # 0.75..0.85 typical
+DEDUP_WINDOW_HOURS = int(os.getenv("DEDUP_WINDOW_HOURS", "48").strip() or "48")
+DEDUP_SIM_THRESHOLD = float(os.getenv("DEDUP_SIM_THRESHOLD", "0.80").strip() or "0.80")  # 0.75..0.85 typical
+
 DEDUP_WP_CHECK = os.getenv("DEDUP_WP_CHECK", "1").strip() == "1"
-DEDUP_WP_SEARCH_PER_PAGE = int(os.getenv("DEDUP_WP_SEARCH_PER_PAGE", "10"))
+DEDUP_WP_SEARCH_PER_PAGE = int(os.getenv("DEDUP_WP_SEARCH_PER_PAGE", "10").strip() or "10")
 
 # Safety: don't post if title is too short (reduces false positives)
-DEDUP_MIN_TOKENS = int(os.getenv("DEDUP_MIN_TOKENS", "5"))
+DEDUP_MIN_TOKENS = int(os.getenv("DEDUP_MIN_TOKENS", "5").strip() or "5")
+
 
 # =======================
 # Helpers
 # =======================
 def die(msg: str):
     raise SystemExit(msg)
+
 
 def safe_env_report():
     keys = [
@@ -95,11 +107,14 @@ def safe_env_report():
         "DEDUP_WINDOW_HOURS",
         "DEDUP_SIM_THRESHOLD",
         "DEDUP_WP_CHECK",
+        "USE_SOURCE_PAGE_TEXT",
+        "SOURCE_TEXT_MAX_CHARS",
     ]
     print("ENV CHECK (safe):")
     for k in keys:
         v = os.getenv(k, "")
         print(f"- {k}: {'OK' if v else 'MISSING'} (len={len(v)})")
+
 
 def clean_text(s: str) -> str:
     s = s or ""
@@ -107,12 +122,15 @@ def clean_text(s: str) -> str:
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
+
 def url_hash(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
+
 
 def wp_auth_header(username: str, app_password: str) -> str:
     token = base64.b64encode(f"{username}:{app_password}".encode("utf-8")).decode("utf-8")
     return f"Basic {token}"
+
 
 def parse_published_ts(published_at: str) -> int:
     try:
@@ -123,12 +141,14 @@ def parse_published_ts(published_at: str) -> int:
     except Exception:
         return int(datetime.now(timezone.utc).timestamp())
 
+
 def format_rss_date(published_at: str) -> str:
     try:
         dt = parsedate_to_datetime(published_at)
         return dt.strftime("%a, %d %b %Y")
     except Exception:
         return (published_at or "").split("+")[0].strip()
+
 
 def guess_ext_and_mime(content_type: str | None) -> tuple[str, str]:
     ct = (content_type or "").lower()
@@ -140,11 +160,13 @@ def guess_ext_and_mime(content_type: str | None) -> tuple[str, str]:
         return "gif", "image/gif"
     return "jpg", "image/jpeg"
 
+
 STOPWORDS = {
     "the", "a", "an", "and", "or", "to", "of", "in", "on", "for", "with", "from", "by",
     "at", "is", "are", "was", "were", "be", "been", "being", "as", "this", "that",
     "these", "those", "new", "latest", "update", "updates",
 }
+
 
 def normalize_en_title(t: str) -> str:
     t = (t or "").lower()
@@ -153,11 +175,13 @@ def normalize_en_title(t: str) -> str:
     words = [w for w in t.split(" ") if w and w not in STOPWORDS and len(w) >= 3]
     return " ".join(words)[:220].strip()
 
+
 def title_tokens(norm: str) -> list[str]:
     norm = (norm or "").strip()
     if not norm:
         return []
     return [w for w in norm.split(" ") if w]
+
 
 def jaccard(a_tokens: list[str], b_tokens: list[str]) -> float:
     a = set(a_tokens)
@@ -166,28 +190,33 @@ def jaccard(a_tokens: list[str], b_tokens: list[str]) -> float:
         return 0.0
     return len(a & b) / len(a | b)
 
+
 def seq_ratio(a: str, b: str) -> float:
     if not a or not b:
         return 0.0
     return SequenceMatcher(a=a, b=b).ratio()
 
+
 def title_similarity(title_a: str, title_b: str) -> float:
-    """ Combine sequence ratio + token Jaccard for robust fuzzy matching. """
+    """
+    Combine sequence ratio + token Jaccard for robust fuzzy matching.
+    """
     na = normalize_en_title(title_a)
     nb = normalize_en_title(title_b)
     ta = title_tokens(na)
     tb = title_tokens(nb)
     if len(ta) < DEDUP_MIN_TOKENS or len(tb) < DEDUP_MIN_TOKENS:
-        # too short => avoid aggressive dedup
         return 0.0
     s1 = seq_ratio(na, nb)
     s2 = jaccard(ta, tb)
     return (0.65 * s1) + (0.35 * s2)
 
+
 def basic_keywords_for_wp_search(title_en: str, max_words: int = 6) -> str:
     norm = normalize_en_title(title_en)
     toks = title_tokens(norm)[:max_words]
     return " ".join(toks).strip()
+
 
 # =======================
 # DB
@@ -195,7 +224,9 @@ def basic_keywords_for_wp_search(title_en: str, max_words: int = 6) -> str:
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("""
+
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS items (
             id TEXT PRIMARY KEY,
             source_name TEXT,
@@ -209,22 +240,30 @@ def init_db():
             status TEXT,
             wp_post_id INTEGER
         )
-    """)
-    c.execute("""
+        """
+    )
+
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS state (
             key TEXT PRIMARY KEY,
             value TEXT
         )
-    """)
-    # migrations
+        """
+    )
+
+    # Migrations (safe if older DB)
     c.execute("PRAGMA table_info(items)")
     cols = {row[1] for row in c.fetchall()}
+
     if "title_norm" not in cols:
         c.execute("ALTER TABLE items ADD COLUMN title_norm TEXT")
     if "published_ts" not in cols:
         c.execute("ALTER TABLE items ADD COLUMN published_ts INTEGER")
+
     conn.commit()
     conn.close()
+
 
 def state_get(key: str, default: str = "") -> str:
     conn = sqlite3.connect(DB_FILE)
@@ -233,6 +272,7 @@ def state_get(key: str, default: str = "") -> str:
     row = c.fetchone()
     conn.close()
     return row[0] if row else default
+
 
 def state_set(key: str, value: str):
     conn = sqlite3.connect(DB_FILE)
@@ -245,40 +285,47 @@ def state_set(key: str, value: str):
     conn.commit()
     conn.close()
 
+
 def upsert_new_items(source_name: str, entries: list) -> int:
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     added = 0
     now_iso = datetime.utcnow().isoformat()
+
     for e in entries:
         link = (e.get("link") or "").strip()
         if not link:
             continue
+
         hid = url_hash(link)
         title = clean_text(e.get("title", ""))
         snippet = clean_text(e.get("summary", "") or e.get("description", ""))
         published = (e.get("published") or e.get("updated") or "").strip()
         if not published:
             published = now_iso
+
         pts = parse_published_ts(published)
         tnorm = normalize_en_title(title)
+
         try:
-            c.execute("""
+            c.execute(
+                """
                 INSERT INTO items (
                     id, source_name, title_en, title_norm, snippet_en, url,
                     published_at, published_ts, created_at, status, wp_post_id
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                hid, source_name, title, tnorm, snippet, link,
-                published, pts, now_iso, "pending", None
-            ))
+                """,
+                (hid, source_name, title, tnorm, snippet, link, published, pts, now_iso, "pending", None),
+            )
             added += 1
         except sqlite3.IntegrityError:
             pass
+
     conn.commit()
     conn.close()
     return added
+
 
 def mark_posted(item_id: str, wp_post_id: int):
     conn = sqlite3.connect(DB_FILE)
@@ -287,12 +334,14 @@ def mark_posted(item_id: str, wp_post_id: int):
     conn.commit()
     conn.close()
 
+
 def mark_failed(item_id: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("UPDATE items SET status='failed' WHERE id=?", (item_id,))
     conn.commit()
     conn.close()
+
 
 def mark_skipped(item_id: str, reason: str = ""):
     conn = sqlite3.connect(DB_FILE)
@@ -303,27 +352,35 @@ def mark_skipped(item_id: str, reason: str = ""):
     if reason:
         print("SKIPPED reason:", reason)
 
+
 def get_recent_posted_or_skipped_titles() -> list[tuple[str, str, int]]:
-    """ returns list of (source_name, title_norm, published_ts) """
+    """
+    returns list of (source_name, title_norm, published_ts)
+    """
     cutoff = int(time.time()) - (DEDUP_WINDOW_HOURS * 3600)
+
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("""
+    c.execute(
+        """
         SELECT source_name, COALESCE(title_norm,''), COALESCE(published_ts,0)
         FROM items
-        WHERE status IN ('posted','skipped')
-          AND COALESCE(published_ts,0) >= ?
+        WHERE status IN ('posted','skipped') AND COALESCE(published_ts,0) >= ?
         ORDER BY COALESCE(published_ts,0) DESC
         LIMIT 300
-    """, (cutoff,))
+        """,
+        (cutoff,),
+    )
     rows = c.fetchall()
     conn.close()
     return rows
+
 
 def is_duplicate_by_db(title_en: str) -> tuple[bool, str]:
     candidates = get_recent_posted_or_skipped_titles()
     if not candidates:
         return False, ""
+
     best = 0.0
     best_src = ""
     for (src, tnorm, pts) in candidates:
@@ -331,44 +388,51 @@ def is_duplicate_by_db(title_en: str) -> tuple[bool, str]:
         if score > best:
             best = score
             best_src = src
+
     if best >= DEDUP_SIM_THRESHOLD:
         return True, f"db-sim={best:.3f} vs {best_src}"
     return False, ""
 
+
 def get_next_pending_for_source(source_name: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("""
+    c.execute(
+        """
         SELECT id, source_name, title_en, snippet_en, url, published_at
         FROM items
         WHERE status='pending' AND source_name=?
         ORDER BY COALESCE(published_ts, 0) DESC, created_at DESC
         LIMIT 1
-    """, (source_name,))
+        """,
+        (source_name,),
+    )
     row = c.fetchone()
     conn.close()
     return row
 
+
 # =======================
-# Sources
+# Sources (RSS)
 # =======================
 def load_sources():
     if not os.path.exists(SOURCES_FILE):
         die(f"Missing {SOURCES_FILE}")
+
     with open(SOURCES_FILE, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
+
     sources = cfg.get("sources", [])
     if not isinstance(sources, list) or not sources:
-        die("sources.yaml is empty. Expected:\nsources:\n - name: ...\n feed: ...")
+        die("sources.yaml is empty. Expected:\nsources:\n - name: ...\n   feed: ...")
+
     normalized = []
     for s in sources:
         if "name" not in s or "feed" not in s:
             die("Each source must have 'name' and 'feed'")
-        normalized.append({
-            "name": str(s["name"]).strip(),
-            "feed": str(s["feed"]).strip(),
-        })
+        normalized.append({"name": str(s["name"]).strip(), "feed": str(s["feed"]).strip()})
     return normalized
+
 
 def fetch_feed_entries(feed_url: str):
     headers = {"User-Agent": USER_AGENT}
@@ -382,6 +446,7 @@ def fetch_feed_entries(feed_url: str):
     print(f"FEED PARSED: entries={len(entries)}")
     return entries
 
+
 # =======================
 # Rotation
 # =======================
@@ -390,13 +455,16 @@ def get_rotation_list(sources: list[dict]) -> list[str]:
         return [x.strip() for x in ROTATION_SOURCES.split(",") if x.strip()]
     return [s["name"] for s in sources]
 
+
 def choose_next_source_with_pending(rotation: list[str]) -> tuple[str | None, int | None]:
     if not rotation:
         return None, None
+
     try:
         rr_index = int(state_get("rr_index", "0") or "0")
     except ValueError:
         rr_index = 0
+
     for i in range(len(rotation)):
         idx = (rr_index + i) % len(rotation)
         src = rotation[idx]
@@ -404,32 +472,63 @@ def choose_next_source_with_pending(rotation: list[str]) -> tuple[str | None, in
             return src, idx
     return None, None
 
-# (Optional) kept for backward compatibility / debugging
-def get_next_pending_round_robin(source_order: list[str]):
-    src, idx = choose_next_source_with_pending(source_order)
-    if src is None:
-        return []
-    return [get_next_pending_for_source(src)]
 
 # =======================
 # Categories
 # =======================
 def pick_categories(title_en: str, snippet_en: str) -> list[int]:
     text = (title_en + " " + snippet_en).lower()
+
     if CAT_REVIEWS and any(k in text for k in ["review", "hands-on", "preview", "impressions", "benchmark"]):
         return [CAT_REVIEWS]
-    if CAT_HARDWARE and any(k in text for k in [
-        "gpu", "rtx", "radeon", "cpu", "intel", "amd", "nvidia", "laptop", "ssd", "ram",
-        "motherboard", "dlss", "fsr"
-    ]):
+
+    if CAT_HARDWARE and any(
+        k in text for k in ["gpu", "rtx", "radeon", "cpu", "intel", "amd", "nvidia", "laptop", "ssd", "ram", "motherboard", "dlss", "fsr"]
+    ):
         return [CAT_ALL, CAT_HARDWARE] if CAT_ALL else [CAT_HARDWARE]
+
     if CAT_GAMING and any(k in text for k in ["game", "gaming", "steam", "ps5", "xbox", "nintendo", "dlc", "trailer"]):
         return [CAT_ALL, CAT_GAMING] if CAT_ALL else [CAT_GAMING]
+
     if CAT_ALL:
         return [CAT_ALL]
+
     if WP_CATEGORY_ID_DEFAULT > 0:
         return [WP_CATEGORY_ID_DEFAULT]
+
     return []
+
+
+# =======================
+# Source page text (page_text)
+# =======================
+def fetch_source_text_excerpt(source_url: str, max_chars: int = SOURCE_TEXT_MAX_CHARS) -> str:
+    """
+    Downloads the source URL HTML, strips tags/scripts/styles, returns a clean text excerpt.
+    This is what we pass to the model as page_text to preserve factual details.
+    """
+    headers = {"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
+    r = requests.get(source_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
+    if r.status_code >= 400:
+        print("SOURCE TEXT fetch failed:", r.status_code)
+        return ""
+
+    raw = r.text or ""
+
+    raw = re.sub(r"(?is)<script[^>]*>.*?</script>", " ", raw)
+    raw = re.sub(r"(?is)<style[^>]*>.*?</style>", " ", raw)
+    raw = re.sub(r"(?is)<noscript[^>]*>.*?</noscript>", " ", raw)
+    raw = re.sub(r"(?s)<!--.*?-->", " ", raw)
+
+    text = re.sub(r"(?s)<[^>]+>", " ", raw)
+    text = html_lib.unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    if not text:
+        return ""
+
+    return text[:max_chars]
+
 
 # =======================
 # OpenAI (Structured Outputs)
@@ -451,6 +550,7 @@ ARTICLE_JSON_SCHEMA = {
     },
 }
 
+
 def _parse_json_strict(text: str) -> dict:
     text = (text or "").strip()
     if not text:
@@ -462,47 +562,61 @@ def _parse_json_strict(text: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # 2) Try extracting {...} if the model wrapped it
+    # 2) Try extracting {...}
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
-        return json.loads(text[start:end + 1])
+        return json.loads(text[start : end + 1])
 
-    # 3) Give up
     raise ValueError("OpenAI returned non-JSON content that could not be parsed")
 
-def openai_generate_fa_article(title_en: str, snippet_en: str, source_name: str, source_url: str) -> dict:
+
+def openai_generate_fa_article(title_en: str, snippet_en: str, source_name: str, source_url: str, page_text: str = "") -> dict:
     if not OPENAI_API_KEY:
         die("OPENAI_API_KEY is missing")
 
     client = OpenAI(api_key=OPENAI_API_KEY)
 
+    # Prompt: forces fact coverage while staying original
     prompt = f"""
-You are a Persian (Farsi) tech & gaming news editor writing for a WordPress site.
+You are a Persian (Farsi) tech & gaming news editor for a WordPress site.
 
-Input:
-- English title: {title_en}
-- English snippet: {snippet_en}
+Input (English):
+- Title: {title_en}
+- Snippet: {snippet_en}
 - Source name: {source_name}
 - Source URL: {source_url}
+- Source page excerpt (English, may be long): {page_text}
 
-Rules:
-- Write ORIGINAL Persian content according to {page_text} (no copying).
-- Do NOT invent facts/specs/numbers (no new dates, prices, performance numbers, release windows).
-- Write a helpful, general explanation for a Persian audience (context, possible implications) WITHOUT adding new factual claims.
-- Required length: 600–700 Persian words (do not go under 600).
-- content_html_fa must be valid HTML using <p>, <h2>, <ul><li> when helpful.
-- End with a short Q&A section (2 questions) in Persian inside HTML.
+Hard constraints:
+- Write ORIGINAL Persian content according the {page_text}. Do not copy phrases verbatim.
+- Do NOT invent facts/specs/numbers. You may ONLY use facts that appear in the input.
+- IMPORTANT: Do NOT omit factual details that appear in the input (dates, prices, platforms, names, editions, quantities).
+- Do NOT mention the source link inside the body.
+
+Output requirements (HTML):
+- content_html_fa must be valid HTML using <p>, <h2>, <ul><li>.
+- Structure MUST be exactly:
+  1) <h2>خلاصه سریع</h2> + one short <p> (2–3 sentences).
+  2) <h2>اطلاعات کلیدی</h2> + <ul> with 6–12 bullets of FACTS ONLY.
+  3) <h2>جزئیات و زمینه</h2> + 3–6 <p> explaining what happened and why it matters (no new claims).
+  4) <h2>پرسش و پاسخ</h2> + exactly 2 Q&A pairs in Persian
+     (each Q in <p><strong>سوال:</strong> ... and each A in <p><strong>پاسخ:</strong> ...).
+
+Length:
+- 600–750 Persian words total. Prefer clarity over filler.
+
+Tone:
+- Natural Persian newsroom tone; no excessive hype; no کلی‌گویی.
 """.strip()
 
-
-    # Prefer structured outputs (json_schema). If the model/account doesn't support it,
-    # we fallback to JSON mode + strict parsing.
+    # Try JSON schema
     try:
         resp = client.chat.completions.create(
             model=OPENAI_MODEL,
+            temperature=OPENAI_TEMPERATURE,
             messages=[
-                {"role": "system", "content": "خروجی را فقط و فقط به صورت JSON معتبر مطابق اسکیمای داده شده برگردان. هیچ متن اضافه ننویس."},
+                {"role": "system", "content": "Return valid JSON only."},
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_schema", "json_schema": ARTICLE_JSON_SCHEMA},
@@ -510,132 +624,54 @@ Rules:
         text = (resp.choices[0].message.content or "").strip()
         data = _parse_json_strict(text)
     except Exception as e:
-        # Fallback: JSON mode (still better than free-form). Then strict-parse it.
-        print("WARN: structured outputs failed, falling back to json_object mode. Error:", repr(e))
+        print("WARN: structured outputs failed; falling back to json_object mode. Error:", repr(e))
         resp = client.chat.completions.create(
             model=OPENAI_MODEL,
+            temperature=OPENAI_TEMPERATURE,
             messages=[
-                {"role": "system", "content": "فقط JSON معتبر برگردان. بدون مارکداون و بدون متن اضافه."},
-                {"role": "user", "content": prompt + "\n\nReturn valid JSON ONLY with keys: title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa"},
+                {"role": "system", "content": "Return valid JSON only."},
+                {"role": "user", "content": prompt + "\n\nReturn JSON with keys: title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa"},
             ],
             response_format={"type": "json_object"},
         )
         text = (resp.choices[0].message.content or "").strip()
         data = _parse_json_strict(text)
 
+    # Validate required fields
     required = ["title_fa", "meta_title_fa", "meta_description_fa", "focus_keyword_fa", "content_html_fa"]
     for k in required:
         if k not in data:
             raise ValueError(f"Missing key in OpenAI JSON: {k}")
 
-    data["title_fa"] = clean_text(data["title_fa"])
-    data["meta_title_fa"] = clean_text(data["meta_title_fa"])[:70]
-    data["meta_description_fa"] = clean_text(data["meta_description_fa"])[:160]
-    data["focus_keyword_fa"] = clean_text(data["focus_keyword_fa"])
-    data["content_html_fa"] = (data["content_html_fa"] or "").strip()
+    # Clean meta strings
+    data["title_fa"] = clean_text(data.get("title_fa", ""))
+    data["meta_title_fa"] = clean_text(data.get("meta_title_fa", ""))[:70]
+    data["meta_description_fa"] = clean_text(data.get("meta_description_fa", ""))[:160]
+    data["focus_keyword_fa"] = clean_text(data.get("focus_keyword_fa", ""))
 
-    # Remove repeated "go to source" + any extra source lines inside body
-    bad_phrases = [
-        "جزئیات کامل در منبع",
-     "برای اطلاعات بیشتر به لینک منبع مراجعه کنید",
-     "برای اطلاعات بیشتر به منبع مراجعه کنید",
-   ]
+    html_out = (data.get("content_html_fa") or "").strip()
 
-    html = data["content_html_fa"] or ""
+    # Remove accidental source URL if model leaked it
+    if source_url:
+        html_out = html_out.replace(source_url, "").strip()
 
-    # 1) remove common phrases
-    for bp in bad_phrases:
-        html = html.replace(bp, "").strip()
+    # Remove repeated "see source" phrases (optional)
+    html_out = re.sub(r"(?im)\b(برای اطلاعات بیشتر.*|جزئیات بیشتر.*|در منبع.*)\b", "", html_out).strip()
 
-    # 2) remove any extra "منبع:" lines or raw source URL inside body
-    html = re.sub(r'(?im)^\s*منبع\s*:\s*.*$', '', html).strip()
-    html = html.replace(source_url, "").strip()
-
-    data["content_html_fa"] = html
+    data["content_html_fa"] = html_out
     return data
 
 
-
 # =======================
-# Images (source -> pexels)...
-# =======================
-def extract_image_url_from_html(html: str, base_url: str) -> str | None:
-    html = html or ""
-    # og:image
-    m = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', html, re.I)
-    if m:
-        return m.group(1).strip()
-    # twitter:image
-    m = re.search(r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']', html, re.I)
-    if m:
-        return m.group(1).strip()
-    # first img
-    m = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', html, re.I)
-    if m:
-        return urljoin(base_url, m.group(1).strip())
-    return None
-
-def fetch_source_image_url(source_url: str) -> str | None:
-    headers = {"User-Agent": USER_AGENT, "Accept": "text/html,*/*"}
-    r = requests.get(source_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
-    print("SOURCE HTML:", r.status_code, "bytes=", len(r.content))
-    if r.status_code >= 400:
-        print("SOURCE HTML fetch failed:", r.status_code)
-        return None
-    return extract_image_url_from_html(r.text, source_url)
-
-def download_image_bytes(img_url: str) -> tuple[bytes, str, str] | tuple[None, None, None]:
-    headers = {"User-Agent": USER_AGENT, "Accept": "image/avif,image/webp,image/*,*/*"}
-    r = requests.get(img_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
-    if r.status_code >= 400 or not r.content:
-        print("IMG download failed:", r.status_code, img_url)
-        return None, None, None
-    ext, mime = guess_ext_and_mime(r.headers.get("Content-Type"))
-    return r.content, ext, mime
-
-def pexels_search_photo(query: str) -> dict | None:
-    if not (PEXELS_ENABLED and PEXELS_API_KEY):
-        return None
-    q = (query or "").strip() or "technology"
-    endpoint = "https://api.pexels.com/v1/search"
-    url = f"{endpoint}?query={quote_plus(q)}&per_page={PEXELS_PER_PAGE}&orientation={quote_plus(PEXELS_ORIENTATION)}"
-    headers = {"Authorization": PEXELS_API_KEY, "User-Agent": USER_AGENT, "Accept": "application/json"}
-    r = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
-    print("PEXELS SEARCH:", r.status_code, "| query=", q)
-    if r.status_code >= 400:
-        print("PEXELS ERROR (first 300):", r.text[:300])
-        return None
-    data = r.json() or {}
-    photos = data.get("photos") or []
-    return photos[0] if photos else None
-
-def pexels_pick_image_url(photo: dict) -> str | None:
-    src = (photo or {}).get("src") or {}
-    return (src.get("large2x") or src.get("large") or src.get("original") or src.get("medium"))
-
-def pexels_attribution_html(photo: dict) -> str:
-    if not photo:
-        return ""
-    photographer = clean_text(photo.get("photographer", ""))
-    photo_page = (photo.get("url") or "").strip()
-    if photo_page and photographer:
-        return f"\n\nاعتبار عکس: Pexels / {photographer}"
-    if photo_page:
-        return "\n\nاعتبار عکس: Pexels"
-    return "\n\nاعتبار عکس: Pexels"
-
-# =======================
-# WordPress REST
+# WordPress API
 # =======================
 def wp_request_headers(json_mode: bool = False) -> dict:
-    h = {
-        "Authorization": wp_auth_header(WP_USERNAME, WP_APP_PASSWORD),
-        "User-Agent": USER_AGENT,
-    }
+    h = {"Authorization": wp_auth_header(WP_USERNAME, WP_APP_PASSWORD), "User-Agent": USER_AGENT}
     if json_mode:
         h["Content-Type"] = "application/json"
         h["Accept"] = "application/json"
     return h
+
 
 def wp_check_me():
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/users/me"
@@ -643,20 +679,25 @@ def wp_check_me():
     print("WP ME:", r.status_code)
     if r.status_code >= 400:
         print("WP ME error body (first 300):", r.text[:300])
-    r.raise_for_status()
+        r.raise_for_status()
     return r.json()
+
 
 def wp_upload_media(image_bytes: bytes, filename: str, mime_type: str, alt_text: str = "") -> dict:
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/media"
     headers = wp_request_headers()
     headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     headers["Content-Type"] = mime_type
+
     r = requests.post(endpoint, headers=headers, data=image_bytes, timeout=HTTP_TIMEOUT)
     print("WP MEDIA UPLOAD:", r.status_code)
     if r.status_code >= 400:
         print("WP MEDIA ERROR (first 400):", r.text[:400])
-    r.raise_for_status()
+        r.raise_for_status()
+
     media = r.json()
+
+    # Set alt text (optional)
     if alt_text:
         patch = requests.post(
             f"{WP_BASE_URL}/wp-json/wp/v2/media/{media['id']}",
@@ -665,57 +706,48 @@ def wp_upload_media(image_bytes: bytes, filename: str, mime_type: str, alt_text:
             timeout=HTTP_TIMEOUT,
         )
         print("WP MEDIA ALT PATCH:", patch.status_code)
+
     return media
 
-def create_wp_post(title: str, content_html: str, categories: list[int], featured_media_id: int | None) -> int:
+
+def create_wp_post(title: str, content_html: str, categories: list[int], featured_media_id: int | None = None) -> int:
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/posts"
     payload = {"title": title, "content": content_html, "status": WP_POST_STATUS}
     if categories:
         payload["categories"] = categories
-    if featured_media_id:
+    if featured_media_id is not None:
         payload["featured_media"] = featured_media_id
+
     r = requests.post(endpoint, headers=wp_request_headers(json_mode=True), json=payload, timeout=HTTP_TIMEOUT)
     print("WP POST:", r.status_code)
     if r.status_code >= 400:
         print("WP POST ERROR (first 500):", r.text[:500])
-    r.raise_for_status()
+        r.raise_for_status()
+
     return int(r.json()["id"])
 
-def push_rankmath_meta(post_id: int, meta_title: str, meta_desc: str, focus_kw: str):
-    if not (RANKMATH_UPDATER_URL and RANKMATH_UPDATER_TOKEN):
-        print("RankMath updater disabled (missing env).")
-        return
-    payload = {
-        "token": RANKMATH_UPDATER_TOKEN,
-        "post_id": int(post_id),
-        "meta_title": meta_title or "",
-        "meta_description": meta_desc or "",
-        "focus_keyword": focus_kw or "",
-    }
-    r = requests.post(RANKMATH_UPDATER_URL, json=payload, timeout=HTTP_TIMEOUT)
-    print("RANKMATH UPDATE:", r.status_code, r.text[:200])
-    if r.status_code >= 400:
-        print("RANKMATH ERROR (first 300):", r.text[:300])
-    r.raise_for_status()
 
 def wp_search_similar_posts(title_en: str) -> tuple[bool, str]:
-    """ Layer 2: Ask WP if a similar post already exists (draft/publish). Uses wp/v2/posts?search=... which supports `search`. """
+    """
+    Layer 2 dedup: ask WP if a similar post already exists (draft/publish).
+    Uses wp/v2/posts?search=...
+    """
     if not DEDUP_WP_CHECK:
         return False, ""
+
     q = basic_keywords_for_wp_search(title_en)
     if not q:
         return False, ""
+
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/posts"
-    params = {
-        "search": q,
-        "per_page": str(DEDUP_WP_SEARCH_PER_PAGE),
-        "status": "any",  # requires auth
-    }
+    params = {"search": q, "per_page": str(DEDUP_WP_SEARCH_PER_PAGE), "status": "any"}
+
     r = requests.get(endpoint, headers=wp_request_headers(), params=params, timeout=HTTP_TIMEOUT)
-    print("WP SEARCH:", r.status_code, "| q=", q)
+    print("WP SEARCH:", r.status_code, "| q:", q)
     if r.status_code >= 400:
         print("WP SEARCH error (first 300):", r.text[:300])
         return False, ""
+
     posts = r.json() or []
     best = 0.0
     best_title = ""
@@ -726,27 +758,148 @@ def wp_search_similar_posts(title_en: str) -> tuple[bool, str]:
         if score > best:
             best = score
             best_title = rendered
+
     if best >= DEDUP_SIM_THRESHOLD:
-        return True, f"wp-sim={best:.3f} title='{best_title[:80]}'"
+        return True, f"wp-sim={best:.3f} title={best_title[:80]}"
     return False, ""
 
-def build_wp_content(final_body_html: str, source_name: str, source_url: str, published_at: str, image_html: str = "", image_credit_html: str = "") -> str:
+
+def push_rankmath_meta(post_id: int, meta_title: str, meta_desc: str, focus_kw: str):
+    if not (RANKMATH_UPDATER_URL and RANKMATH_UPDATER_TOKEN):
+        print("RankMath updater disabled (missing env).")
+        return
+
+    payload = {
+        "token": RANKMATH_UPDATER_TOKEN,
+        "postid": int(post_id),
+        "metatitle": meta_title or "",
+        "metadescription": meta_desc or "",
+        "focuskeyword": focus_kw or "",
+    }
+
+    r = requests.post(RANKMATH_UPDATER_URL, json=payload, timeout=HTTP_TIMEOUT)
+    print("RANKMATH UPDATE:", r.status_code, "| body:", (r.text or "")[:200])
+    if r.status_code >= 400:
+        print("RANKMATH ERROR (first 300):", r.text[:300])
+        r.raise_for_status()
+
+
+# =======================
+# Images
+# =======================
+def extract_image_url_from_html(html: str, base_url: str) -> str | None:
+    """
+    Try to get a representative image from source HTML.
+    Priority: og:image, twitter:image, then first <img src>.
+    """
+    html = html or ""
+
+    m = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', html, re.I)
+    if m:
+        return urljoin(base_url, m.group(1).strip())
+
+    m = re.search(r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']', html, re.I)
+    if m:
+        return urljoin(base_url, m.group(1).strip())
+
+    m = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', html, re.I)
+    if m:
+        return urljoin(base_url, m.group(1).strip())
+
+    return None
+
+
+def fetch_source_image_url(source_url: str) -> str | None:
+    headers = {"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
+    r = requests.get(source_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
+    print("SOURCE HTML:", r.status_code, "| bytes:", len(r.content))
+    if r.status_code >= 400:
+        print("SOURCE HTML fetch failed:", r.status_code)
+        return None
+    return extract_image_url_from_html(r.text, source_url)
+
+
+def download_image_bytes(img_url: str) -> tuple[bytes | None, str | None, str | None]:
+    headers = {"User-Agent": USER_AGENT, "Accept": "image/avif,image/webp,image/*,*/*;q=0.8"}
+    r = requests.get(img_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
+    if r.status_code >= 400 or not r.content:
+        print("IMG download failed:", r.status_code, img_url)
+        return None, None, None
+    ext, mime = guess_ext_and_mime(r.headers.get("Content-Type"))
+    return r.content, ext, mime
+
+
+def pexels_search_photo(query: str) -> dict | None:
+    if not (PEXELS_ENABLED and PEXELS_API_KEY):
+        return None
+
+    q = (query or "").strip() or "technology"
+    endpoint = "https://api.pexels.com/v1/search"
+    url = f"{endpoint}?query={quote_plus(q)}&per_page={PEXELS_PER_PAGE}&orientation={quote_plus(PEXELS_ORIENTATION)}"
+    headers = {"Authorization": PEXELS_API_KEY, "User-Agent": USER_AGENT, "Accept": "application/json"}
+
+    r = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
+    print("PEXELS SEARCH:", r.status_code, "| query:", q)
+    if r.status_code >= 400:
+        print("PEXELS ERROR (first 300):", r.text[:300])
+        return None
+
+    data = r.json() or {}
+    photos = data.get("photos") or []
+    return photos[0] if photos else None
+
+
+def pexels_pick_image_url(photo: dict) -> str | None:
+    if not photo:
+        return None
+    src = (photo.get("src") or {})
+    return src.get("large2x") or src.get("large") or src.get("original") or src.get("medium")
+
+
+def pexels_attribution_html(photo: dict) -> str:
+    if not photo:
+        return ""
+    photographer = clean_text(photo.get("photographer", ""))
+    photopage = (photo.get("url") or "").strip()
+    if photopage and photographer:
+        return f"<p><small>Image: Pexels — {photographer} — <a href=\"{photopage}\" target=\"_blank\" rel=\"nofollow noopener\">Link</a></small></p>"
+    if photopage:
+        return f"<p><small>Image: Pexels — <a href=\"{photopage}\" target=\"_blank\" rel=\"nofollow noopener\">Link</a></small></p>"
+    return "<p><small>Image: Pexels</small></p>"
+
+
+# =======================
+# Content builder
+# =======================
+def build_wp_content(
+    final_body_html: str,
+    source_name: str,
+    source_url: str,
+    published_at: str,
+    image_html: str = "",
+    image_credit_html: str = "",
+) -> str:
     nice_date = format_rss_date(published_at)
+
     header_media = ""
     if image_html and EMBED_IMAGE_IN_CONTENT:
-        header_media = (image_html.strip() + "\n" + (image_credit_html or "").strip()).strip()
+        header_media = (image_html or "").strip() + "\n" + (image_credit_html or "").strip()
+
     footer = (
-        f"\n\n<hr/>\n"
+        "<hr/>"
         f"<p><strong>منبع:</strong> {clean_text(source_name)} — "
         f"<a href=\"{source_url}\" target=\"_blank\" rel=\"nofollow noopener\">لینک</a>"
         f"<br/><strong>زمان انتشار منبع:</strong> {clean_text(nice_date)}</p>"
     )
+
     parts = []
-    if header_media:
-        parts.append(header_media)
+    if header_media.strip():
+        parts.append(header_media.strip())
     parts.append((final_body_html or "").strip())
     parts.append(footer)
+
     return "\n\n".join([p for p in parts if p]).strip()
+
 
 # =======================
 # Main
@@ -757,6 +910,7 @@ def run():
 
     if LANG.lower() != "fa":
         die("LANG باید fa باشد")
+
     if not (WP_BASE_URL and WP_USERNAME and WP_APP_PASSWORD):
         die("WP_BASE_URL / WP_USERNAME / WP_APP_PASSWORD خالی است")
 
@@ -775,13 +929,14 @@ def run():
     total_added = 0
     for s in sources:
         entries = fetch_feed_entries(s["feed"])
-        newest = entries[:max(1, FEED_ENTRIES_LIMIT)]
+        newest = entries[: max(1, FEED_ENTRIES_LIMIT)]
         added = upsert_new_items(s["name"], newest)
         print(f"ADDED from {s['name']}: {added}")
         total_added += added
 
     # 2) Post up to MAX_POSTS_PER_RUN, respecting rotation
     processed_posts = 0
+
     for _ in range(max(1, MAX_POSTS_PER_RUN)):
         src, src_idx = choose_next_source_with_pending(rotation)
         if src is None:
@@ -801,6 +956,7 @@ def run():
                 break
 
             (item_id, source_name, title_en, snippet_en, url, published_at) = row
+
             print("\n--- ITEM ---")
             print("Source:", source_name)
             print("URL:", url)
@@ -822,8 +978,16 @@ def run():
                 categories = pick_categories(title_en, snippet_en)
                 print("Picked categories:", categories)
 
-                gen = openai_generate_fa_article(title_en, snippet_en, source_name, url)
+                # Build page_text
+                page_text = ""
+                if USE_SOURCE_PAGE_TEXT:
+                    page_text = fetch_source_text_excerpt(url)
+                    print("page_text chars:", len(page_text))
 
+                # Generate Persian article
+                gen = openai_generate_fa_article(title_en, snippet_en, source_name, url, page_text=page_text)
+
+                # Featured image handling
                 featured_media_id = None
                 image_html = ""
                 image_credit_html = ""
@@ -860,6 +1024,7 @@ def run():
                     else:
                         print("No image found (source + pexels).")
 
+                # Build full WP post body
                 content_html = build_wp_content(
                     final_body_html=gen["content_html_fa"],
                     source_name=source_name,
@@ -869,6 +1034,7 @@ def run():
                     image_credit_html=image_credit_html,
                 )
 
+                # Create WP post
                 post_id = create_wp_post(
                     title=gen["title_fa"],
                     content_html=content_html,
@@ -876,6 +1042,7 @@ def run():
                     featured_media_id=featured_media_id,
                 )
 
+                # RankMath meta (optional)
                 push_rankmath_meta(
                     post_id=post_id,
                     meta_title=gen["meta_title_fa"],
@@ -886,6 +1053,7 @@ def run():
                 print("POSTED:", post_id)
                 mark_posted(item_id, post_id)
                 processed_posts += 1
+
                 time.sleep(1.2)
                 break  # done with this source for this "turn"
 
@@ -901,13 +1069,6 @@ def run():
 
     print(f"\nDone. Added from feeds: {total_added}, posted now: {processed_posts}")
 
+
 if __name__ == "__main__":
     run()
-
-
-
-
-
-
-
-
