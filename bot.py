@@ -552,7 +552,13 @@ ARTICLE_JSON_SCHEMA = {
             "focus_keyword_fa": {"type": "string"},
             "content_html_fa": {"type": "string"},
         },
-        "required": ["title_fa", "meta_title_fa", "meta_description_fa", "focus_keyword_fa", "content_html_fa"],
+        "required": [
+            "title_fa",
+            "meta_title_fa",
+            "meta_description_fa",
+            "focus_keyword_fa",
+            "content_html_fa",
+        ],
     },
 }
 
@@ -562,13 +568,11 @@ def _parse_json_strict(text: str) -> dict:
     if not text:
         raise ValueError("OpenAI returned empty content")
 
-    # 1) Normal parse
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
 
-    # 2) Try extracting {...}
     start = text.find("{")
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
@@ -577,43 +581,50 @@ def _parse_json_strict(text: str) -> dict:
     raise ValueError("OpenAI returned non-JSON content that could not be parsed")
 
 
-def openai_generate_fa_article(title_en: str, snippet_en: str, source_name: str, source_url: str, page_text: str = "") -> dict:
+def _is_too_short(htmlout: str) -> bool:
+    htmlout = htmlout or ""
+    if len(htmlout) < 2500:
+        return True
+    if htmlout.count("<p") < 10:
+        return True
+    if htmlout.count("<h2") < 3:
+        return True
+    return False
+
+
+def openai_generate_fa_article(
+    title_en: str,
+    snippet_en: str,
+    source_name: str,
+    source_url: str,
+    page_text: str = "",
+) -> dict:
     if not OPENAI_API_KEY:
         die("OPENAI_API_KEY is missing")
 
     client = OpenAI(api_key=OPENAI_API_KEY)
 
-    # Prompt: forces fact coverage while staying original
     prompt = f"""
-You are a professional Persian (Farsi) gaming/tech news editor.
+You are a Persian (Farsi) tech & gaming news editor for a WordPress site.
 
-INPUT (English):
-Title: {title_en}
-Snippet: {snippet_en}
-Source excerpt: {page_text}
+Input (English):
+- Title: {title_en}
+- Snippet: {snippet_en}
+- Source name: {source_name}
+- Source URL: {source_url}
+- Source page excerpt (English, may be long): {page_text}
 
-RULES:
-- Fluent Persian rewrite (not word-for-word).
-- Use ONLY facts explicitly present in the input; do not invent.
-- Do not omit concrete details (names, numbers, dates, platforms, modes, editions).
-- If a detail is missing/unclear: «در گزارش جزئیات بیشتری ارائه نشده است.»
+Hard constraints:
+- Write ORIGINAL Persian content according to the page_text. Do not copy phrases verbatim.
+- Do NOT invent facts/specs/numbers. You may ONLY use facts that appear in the input.
+- IMPORTANT: Do NOT omit factual details that appear in the input (dates, prices, platforms, names, editions, quantities).
+- Do NOT mention the source link inside the body.
 
-OUTPUT JSON ONLY:
-titlefa, metatitlefa (<=70), metadescriptionfa (<=160), focuskeywordfa, contenthtmlfa
-
-contenthtmlfa (valid HTML using only <h2> and <p>):
-- 3 to 5 <h2> section headings, BUT they must be story-specific (derived from the news).
-- Do NOT use generic headings like: "متن خبر", "چرا مهم است", "خبر در یک نگاه", "جزئیات و زمینه", "اطلاعات کلیدی".
-- Under each <h2>, write 2–4 short <p> paragraphs (each 2–3 sentences).
-- End with a final <h2> that contains exactly 2 Q/A pairs in <p> (سوال/پاسخ).
-
-Length: 600–700 Persian words.
-Do NOT include the source URL inside the body.
-Before writing, ensure every concrete fact from the input appears somewhere in the article.
-
+Output requirements (HTML):
+- content_html_fa must be valid HTML using <p>, <h2>, <ul><li>.
 """.strip()
 
-    # Try JSON schema
+    # 1) Try Structured Outputs (json_schema)
     try:
         resp = client.chat.completions.create(
             model=OPENAI_MODEL,
@@ -626,6 +637,8 @@ Before writing, ensure every concrete fact from the input appears somewhere in t
         )
         text = (resp.choices[0].message.content or "").strip()
         data = _parse_json_strict(text)
+
+    # 2) Fallback json_object
     except Exception as e:
         print("WARN: structured outputs failed; falling back to json_object mode. Error:", repr(e))
         resp = client.chat.completions.create(
@@ -633,7 +646,11 @@ Before writing, ensure every concrete fact from the input appears somewhere in t
             temperature=OPENAI_TEMPERATURE,
             messages=[
                 {"role": "system", "content": "Return valid JSON only."},
-                {"role": "user", "content": prompt + "\n\nReturn JSON with keys: title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa"},
+                {
+                    "role": "user",
+                    "content": prompt
+                    + "\n\nReturn JSON with keys: title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa",
+                },
             ],
             response_format={"type": "json_object"},
         )
@@ -641,28 +658,39 @@ Before writing, ensure every concrete fact from the input appears somewhere in t
         data = _parse_json_strict(text)
 
     # Validate required fields
-    required = ["title_fa", "meta_title_fa", "meta_description_fa", "focus_keyword_fa", "content_html_fa"]
+    required = [
+        "title_fa",
+        "meta_title_fa",
+        "meta_description_fa",
+        "focus_keyword_fa",
+        "content_html_fa",
+    ]
     for k in required:
         if k not in data:
             raise ValueError(f"Missing key in OpenAI JSON: {k}")
 
-    # Clean meta strings
+    # Clean meta strings (assuming clean_text exists in your file)
     data["title_fa"] = clean_text(data.get("title_fa", ""))
     data["meta_title_fa"] = clean_text(data.get("meta_title_fa", ""))[:70]
     data["meta_description_fa"] = clean_text(data.get("meta_description_fa", ""))[:160]
     data["focus_keyword_fa"] = clean_text(data.get("focus_keyword_fa", ""))
 
-    html_out = (data.get("content_html_fa") or "").strip()
+    htmlout = (data.get("content_html_fa") or "").strip()
 
     # Remove accidental source URL if model leaked it
     if source_url:
-        html_out = html_out.replace(source_url, "").strip()
+        htmlout = htmlout.replace(source_url, "").strip()
 
-    # Remove repeated "see source" phrases (optional)
-    html_out = re.sub(r"(?im)\b(برای اطلاعات بیشتر.*|جزئیات بیشتر.*|در منبع.*)\b", "", html_out).strip()
+    # Optional: remove “see source” phrases
+    htmlout = re.sub(r"(?im)\b(برای اطلاعات بیشتر.*|جزئیات بیشتر.*|در منبع.*)\b", "", htmlout).strip()
 
-    data["content_html_fa"] = html_out
+    # Enforce minimum length/structure
+    if _is_too_short(htmlout):
+        raise ValueError("Model output too short")
+
+    data["content_html_fa"] = htmlout
     return data
+
 
 
 # =======================
@@ -1069,6 +1097,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
