@@ -596,23 +596,39 @@ def openai_generate_fa_article(
     client = OpenAI(api_key=OPENAI_API_KEY)
 
     prompt = f"""
-You are a Persian (Farsi) tech & gaming news editor for a WordPress site.
+You are a Persian (Farsi) tech/gaming news editor. Using the English inputs below, write a **publish-ready**, fuller Persian news article.
 
-Input (English):
+Inputs (English):
 - Title: {title_en}
 - Snippet: {snippet_en}
 - Source name: {source_name}
 - Source URL: {source_url}
-- Source page excerpt (English, may be long): {page_text}
+- Source page excerpt: {page_text}
 
-Hard constraints:
-- Write ORIGINAL Persian content according to the page_text. Do not copy phrases verbatim.
-- Do NOT invent facts/specs/numbers. You may ONLY use facts that appear in the input.
-- IMPORTANT: Do NOT omit factual details that appear in the input (dates, prices, platforms, names, editions, quantities).
-- Do NOT mention the source link inside the body.
+Hard rules (must-follow):
+- Do NOT invent any facts, numbers, quotes, timings, names, or claims. Use ONLY what appears in the inputs.
+- Rewrite in your own Persian words; do not copy sentences verbatim.
+- Do NOT include the source URL inside the body content.
+- If details are missing for a part, explicitly say: "جزئیات بیشتری در متن منبع نیامده" and continue.
 
-Output requirements (HTML):
-- content_html_fa must be valid HTML using <p>, <h2>, <ul><li>.
+Length & structure requirements (to avoid short output):
+- content_html_fa must be at least 900 Persian words.
+- Must include at least 10 <p> paragraphs.
+- Create exactly 4 <h2> headings with these exact titles:
+  1) خلاصه خبر
+  2) ماجرا دقیقاً چه بود؟
+  3) چرا این حرف مهم است؟
+  4) پیامدها و نگاه بازار
+- Add at least one <ul> with 5 <li> bullets titled as "نکات کلیدی".
+- Start with a 2-paragraph introduction, and end with a cautious final paragraph (no speculation).
+
+Output:
+Return JSON only with these keys:
+- title_fa
+- meta_title_fa (max 70 chars)
+- meta_description_fa (max 160 chars)
+- focus_keyword_fa
+- content_html_fa (valid HTML using only <p>, <h2>, <ul><li>)
 """.strip()
 
     # 1) Try Structured Outputs (json_schema)
@@ -1084,6 +1100,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
