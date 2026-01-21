@@ -4,9 +4,10 @@ sources:
   - name: Wccftech
     feed: "https://wccftech.com/feed/"
   - name: Videocardz
-    feed: "https://rss.app/feeds/r6xHD25guWbmwLBB.xml"
+    feed: "https://videocardz.com/rss-feed"
   - name: Instant Gaming News
     feed: "https://news.instant-gaming.com/en/rss.xml"
   - name: PC Gamer
     feed: "https://www.pcgamer.com/rss/"
+
 
