@@ -1,11 +1,44 @@
-- name: Install deps
-  run: npm ci
-  working-directory: videocardz-fetcher
+name: Videocardz fetch full page text
 
-- name: Install Playwright
-  run: npx playwright install --with-deps
-  working-directory: videocardz-fetcher
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"   # هر ۳۰ دقیقه
 
-- name: Run fetcher
-  run: node scripts/videocardz-fetch.js
-  working-directory: videocardz-fetcher
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v3
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (browsers + deps)
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps
+
+      - name: Run fetcher
+        run: node scripts/videocardz-fetch.js
+        env:
+          TARGET_URL: ${{ secrets.TARGET_URL }}
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: videocardz-page-text
+          path: output/
