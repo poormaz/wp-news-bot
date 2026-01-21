@@ -3,11 +3,10 @@ sources:
     feed: "https://www.dsogaming.com/feed/"
   - name: Wccftech
     feed: "https://wccftech.com/feed/"
-  - name: Videocardz
-    feed: "https://videocardz.com/rss-feed"
   - name: Instant Gaming News
     feed: "https://news.instant-gaming.com/en/rss.xml"
   - name: PC Gamer
     feed: "https://www.pcgamer.com/rss/"
+
 
 
