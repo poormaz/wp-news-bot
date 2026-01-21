@@ -25,7 +25,7 @@ load_dotenv()
 # ENV
 # =======================
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini").strip()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "1").strip() or "1")
 
 WP_BASE_URL = os.getenv("WP_BASE_URL", "").strip().rstrip("/")
@@ -523,11 +523,17 @@ def fetch_source_text_excerpt(source_url: str, max_chars: int = SOURCE_TEXT_MAX_
     text = re.sub(r"(?s)<[^>]+>", " ", raw)
     text = html_lib.unescape(text)
     text = re.sub(r"\s+", " ", text).strip()
+    # حذف پترن‌های رایج "Read more >" و فلش/چورون‌های تنها
+    text = re.sub(r"(?i)\b(read more|continue reading|see more|learn more)\b\s*[›>]+", " ", text)
+    text = re.sub(r"\s*[›>]+\s*", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
 
     if not text:
         return ""
 
     return text[:max_chars]
+    
+
 
 
 # =======================
@@ -1063,6 +1069,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
