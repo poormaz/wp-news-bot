@@ -73,7 +73,7 @@ PEXELS_PER_PAGE = int(os.getenv("PEXELS_PER_PAGE", "1").strip() or "1")
 
 # Source page text extraction (page_text)
 USE_SOURCE_PAGE_TEXT = os.getenv("USE_SOURCE_PAGE_TEXT", "1").strip() == "1"
-SOURCE_TEXT_MAX_CHARS = int(os.getenv("SOURCE_TEXT_MAX_CHARS", "7000").strip() or "7000")
+SOURCE_TEXT_MAX_CHARS = int(os.getenv("SOURCE_TEXT_MAX_CHARS", "3000").strip() or "3000")
 
 # Dedup (fuzzy by title_en)
 DEDUP_WINDOW_HOURS = int(os.getenv("DEDUP_WINDOW_HOURS", "48").strip() or "48")
@@ -579,35 +579,32 @@ def openai_generate_fa_article(title_en: str, snippet_en: str, source_name: str,
 
     # Prompt: forces fact coverage while staying original
     prompt = f"""
-You are a Persian (Farsi) tech & gaming news editor for a WordPress site.
+You are a professional Persian (Farsi) gaming/tech news editor.
 
-Input (English):
-- Title: {title_en}
-- Snippet: {snippet_en}
-- Source name: {source_name}
-- Source URL: {source_url}
-- Source page excerpt (English, may be long): {page_text}
+INPUT (English):
+Title: {title_en}
+Snippet: {snippet_en}
+Source excerpt: {page_text}
 
-Hard constraints:
-- Write ORIGINAL Persian content according the {page_text}. Do not copy phrases verbatim.
-- Do NOT invent facts/specs/numbers. You may ONLY use facts that appear in the input.
-- IMPORTANT: Do NOT omit factual details that appear in the input (dates, prices, platforms, names, editions, quantities).
-- Do NOT mention the source link inside the body.
+RULES:
+- Fluent Persian rewrite (not word-for-word).
+- Use ONLY facts explicitly present in the input; do not invent.
+- Do not omit concrete details (names, numbers, dates, platforms, modes, editions).
+- If a detail is missing/unclear: «در گزارش جزئیات بیشتری ارائه نشده است.»
 
-Output requirements (HTML):
-- content_html_fa must be valid HTML using <p>, <h2>, <ul><li>.
-- Structure MUST be exactly:
-  1) <h2>خلاصه سریع</h2> + one short <p> (2–3 sentences).
-  2) <h2>اطلاعات کلیدی</h2> + <ul> with 6–12 bullets of FACTS ONLY.
-  3) <h2>جزئیات و زمینه</h2> + 3–6 <p> explaining what happened and why it matters (no new claims).
-  4) <h2>پرسش و پاسخ</h2> + exactly 2 Q&A pairs in Persian
-     (each Q in <p><strong>سوال:</strong> ... and each A in <p><strong>پاسخ:</strong> ...).
+OUTPUT JSON ONLY:
+titlefa, metatitlefa (<=70), metadescriptionfa (<=160), focuskeywordfa, contenthtmlfa
 
-Length:
-- 600–750 Persian words total. Prefer clarity over filler.
+contenthtmlfa (valid HTML using only <h2> and <p>):
+- 3 to 5 <h2> section headings, BUT they must be story-specific (derived from the news).
+- Do NOT use generic headings like: "متن خبر", "چرا مهم است", "خبر در یک نگاه", "جزئیات و زمینه", "اطلاعات کلیدی".
+- Under each <h2>, write 2–4 short <p> paragraphs (each 2–3 sentences).
+- End with a final <h2> that contains exactly 2 Q/A pairs in <p> (سوال/پاسخ).
 
-Tone:
-- Natural Persian newsroom tone; no excessive hype; no کلی‌گویی.
+Length: 600–700 Persian words.
+Do NOT include the source URL inside the body.
+Before writing, ensure every concrete fact from the input appears somewhere in the article.
+
 """.strip()
 
     # Try JSON schema
@@ -1066,6 +1063,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
