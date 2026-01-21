@@ -1,0 +1,11 @@
+- name: Install deps
+  run: npm ci
+  working-directory: videocardz-fetcher
+
+- name: Install Playwright
+  run: npx playwright install --with-deps
+  working-directory: videocardz-fetcher
+
+- name: Run fetcher
+  run: node scripts/videocardz-fetch.js
+  working-directory: videocardz-fetcher
