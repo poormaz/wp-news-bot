@@ -527,6 +527,18 @@ def fetch_source_text_excerpt(source_url: str, max_chars: int = SOURCE_TEXT_MAX_
     text = re.sub(r"(?i)\b(read more|continue reading|see more|learn more)\b\s*[›>]+", " ", text)
     text = re.sub(r"\s*[›>]+\s*", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
+    
+    MIN_PAGE_TEXT_CHARS = int(os.getenv("MIN_PAGE_TEXT_CHARS", "600"))
+
+    # ...
+    pagetext = ""
+    if USESOURCEPAGETEXT:
+        pagetext = fetch_source_text_excerpt(url)
+        print("page_text chars:", len(pagetext))
+
+    if USESOURCEPAGETEXT and len(pagetext) < MIN_PAGE_TEXT_CHARS:
+        markskipped(itemid, reason=f"page_text too short ({len(pagetext)})")
+        continue  # برو آیتم بعدی همین سورس
 
     if not text:
         return ""
@@ -1097,6 +1109,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
