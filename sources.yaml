@@ -1,11 +1,10 @@
 sources:
+  - name: Videogameschronicle
+    feed: "https://www.videogameschronicle.com/category/news/feed/"
   - name: DSOGaming
     feed: "https://www.dsogaming.com/feed/"
   - name: Wccftech
     feed: "https://wccftech.com/feed/"
   - name: PC Gamer
     feed: "https://www.pcgamer.com/rss/"
-
-
-
 
