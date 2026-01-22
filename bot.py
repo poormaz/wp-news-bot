@@ -595,31 +595,30 @@ def openai_generate_fa_article(
     client = OpenAI(api_key=OPENAI_API_KEY)
 
     prompt = f"""
-You are a Persian (Farsi) tech/gaming news editor. Using the English inputs below, write a **publish-ready**, fuller Persian news article.
+You are a Persian (Farsi) tech/gaming news editor. Using the English inputs below, write a publish-ready Persian news article.
 
 Inputs (English):
 - Title: {title_en}
 - Snippet: {snippet_en}
 - Source name: {source_name}
-- Source URL: {source_url}
 - Source page excerpt: {page_text}
 
 Hard rules (must-follow):
 - Do NOT invent any facts, numbers, quotes, timings, names, or claims. Use ONLY what appears in the inputs.
 - Rewrite in your own Persian words; do not copy sentences verbatim.
-- Do NOT include the source URL inside the body content.
-- If details are missing for a part, explicitly say: "جزئیات بیشتری در متن منبع نیامده" and continue.
+- Only mention the source at the begining and no need to include URL inside the body content at all.
 
-Length & structure requirements (to avoid short output):
-- content_html_fa must be at least 900 Persian words.
-- Must include at least 10 <p> paragraphs.
-- Create exactly 4 <h2> headings with these exact titles:
-  1) خلاصه خبر
-  2) ماجرا دقیقاً چه بود؟
-  3) چرا این حرف مهم است؟
-  4) پیامدها و نگاه بازار
-- Add at least one <ul> with 5 <li> bullets titled as "نکات کلیدی".
-- Start with a 2-paragraph introduction, and end with a cautious final paragraph (no speculation).
+Style (critical):
+- Write fluent, natural Persian (newsroom tone), not overly formal.
+- Do NOT add any labels or headings inside the content such as: "نتیجه‌گیری"، "بررسی"، etc.
+- Do NOT use colons to introduce named sections (avoid patterns like "X: ...") unless it is part of a quote that appears in the input.
+
+Length & structure:
+- Aim for ~500+ Persian words.
+- Output must be valid HTML using only <p>, <ul>, <li>.
+- Start with 1 short paragraph that acts as a lead/summary (but without any label).
+- Then add 2–4 paragraphs with details and context (only from inputs).
+- End with one final paragraph that wraps up the main point cautiously (no label, no speculation).
 
 Output:
 Return JSON only with these keys:
@@ -627,7 +626,11 @@ Return JSON only with these keys:
 - meta_title_fa (max 70 chars)
 - meta_description_fa (max 160 chars)
 - focus_keyword_fa
-- content_html_fa (valid HTML using only <p>, <h2>, <ul><li>)
+- content_html_fa (valid HTML using only <p>, <ul><li>)
+
+
+
+
 """.strip()
 
     # 1) Try Structured Outputs (json_schema)
@@ -1099,6 +1102,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
