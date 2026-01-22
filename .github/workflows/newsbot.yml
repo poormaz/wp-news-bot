@@ -82,7 +82,7 @@ jobs:
           FEED_ENTRIES_LIMIT: "10"
 
           # Rotation (اگر خالی کنی، از ترتیب sources.yaml می‌چرخه)
-          ROTATION_SOURCES: "Videogameschronicle,DSOGaming,Wccftech,PC Gamer,GameInformer"
+          ROTATION_SOURCES: "Videogameschronicle,Gamingbolt,DSOGaming,Wccftech,PC Gamer,GameInformer"
 
           # Images
           SET_FEATURED_IMAGE: "1"
