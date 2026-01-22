@@ -73,7 +73,7 @@ PEXELS_PER_PAGE = int(os.getenv("PEXELS_PER_PAGE", "1").strip() or "1")
 
 # Source page text extraction (page_text)
 USE_SOURCE_PAGE_TEXT = os.getenv("USE_SOURCE_PAGE_TEXT", "1").strip() == "1"
-SOURCE_TEXT_MAX_CHARS = int(os.getenv("SOURCE_TEXT_MAX_CHARS", "3000").strip() or "3000")
+SOURCE_TEXT_MAX_CHARS = int(os.getenv("SOURCE_TEXT_MAX_CHARS", "7000").strip() or "7000")
 
 # Dedup (fuzzy by title_en)
 DEDUP_WINDOW_HOURS = int(os.getenv("DEDUP_WINDOW_HOURS", "48").strip() or "48")
@@ -579,13 +579,6 @@ def _parse_json_strict(text: str) -> dict:
 
 
 def _is_too_short(htmlout: str) -> bool:
-    htmlout = htmlout or ""
-    if len(htmlout) < 2500:
-        return True
-    if htmlout.count("<p") < 10:
-        return True
-    if htmlout.count("<h2") < 3:
-        return True
     return False
 
 
@@ -1106,6 +1099,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
