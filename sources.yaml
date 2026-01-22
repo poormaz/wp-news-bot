@@ -1,6 +1,4 @@
 sources:
-  - name: Videogameschronicle
-    feed: "https://www.videogameschronicle.com/category/news/feed/"
   - name: Gamingbolt
     feed: "https://gamingbolt.com/feed/"
   - name: DSOGaming
@@ -11,5 +9,3 @@ sources:
     feed: "https://www.pcgamer.com/rss/"
   - name: Insider-Gaming
     feed: "https://insider-gaming.com/feed/"
-
-
