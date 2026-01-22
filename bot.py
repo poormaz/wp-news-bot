@@ -436,14 +436,20 @@ def load_sources():
 
 def fetch_feed_entries(feed_url: str):
     headers = {"User-Agent": USER_AGENT}
-    r = requests.get(feed_url, headers=headers, timeout=HTTP_TIMEOUT)
-    print(f"FEED GET: {feed_url} | status={r.status_code} | bytes={len(r.content)}")
-    if r.status_code >= 400:
-        print("FEED ERROR BODY (first 250):", r.text[:250])
+    try:
+        r = requests.get(feed_url, headers=headers, timeout=HTTP_TIMEOUT)
+    except requests.RequestException as e:
+        print("FEED GET failed:", feed_url, "err:", repr(e))
         return []
+
+    print("FEED GET", feed_url, "status", r.status_code, "| bytes", len(r.content))
+    if r.status_code >= 400:
+        print("FEED ERROR BODY first 250:", (r.text or "")[:250])
+        return []
+
     parsed = feedparser.parse(r.text)
     entries = parsed.entries or []
-    print(f"FEED PARSED: entries={len(entries)}")
+    print("FEED PARSED entries", len(entries))
     return entries
 
 
@@ -1100,6 +1106,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
