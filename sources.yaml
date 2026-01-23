@@ -7,5 +7,6 @@ sources:
     feed: "https://wccftech.com/feed/"
   - name: PC Gamer
     feed: "https://www.pcgamer.com/rss/"
-  - name: Insider-Gaming
+  - name: Insider Gaming
     feed: "https://insider-gaming.com/feed/"
+
