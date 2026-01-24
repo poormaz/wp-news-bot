@@ -72,8 +72,8 @@ PEXELS_ORIENTATION = os.getenv("PEXELS_ORIENTATION", "landscape").strip()
 PEXELS_PER_PAGE = int(os.getenv("PEXELS_PER_PAGE", "1").strip() or "1")
 
 # Source page text extraction (page_text)
-USE_SOURCE_PAGE_TEXT = os.getenv("USE_SOURCE_PAGE_TEXT", "1").strip() == "1"
-SOURCE_TEXT_MAX_CHARS = int(os.getenv("SOURCE_TEXT_MAX_CHARS", "7000").strip() or "7000")
+USESOURCEPAGETEXT = (os.getenv("USESOURCEPAGETEXT") or os.getenv("USE_SOURCE_PAGE_TEXT") or "1").strip() == "1"
+SOURCETEXTMAXCHARS = int((os.getenv("SOURCETEXTMAXCHARS") or os.getenv("SOURCE_TEXT_MAX_CHARS") or "7000").strip() or "7000")
 
 # Dedup (fuzzy by title_en)
 DEDUP_WINDOW_HOURS = int(os.getenv("DEDUP_WINDOW_HOURS", "48").strip() or "48")
@@ -1102,6 +1102,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
