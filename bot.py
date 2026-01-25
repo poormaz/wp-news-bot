@@ -181,6 +181,17 @@ def process_manual_links_if_any() -> bool:
             # snippet کوتاه (اگر page_text داریم)
             snippet_en = clean_text((page_text or "")[:500])
 
+            # Dedup (مثل RSS) - قبل از OpenAI برای صرفه‌جویی
+            dup, why = is_duplicate_by_db(title_en)
+            if dup:
+                print("MANUAL SKIP duplicate (db):", why)
+                continue
+
+            dup2, why2 = wp_search_similar_posts(title_en)
+            if dup2:
+                print("MANUAL SKIP duplicate (wp):", why2)
+                continue
+
             # تولید مقاله
             gen = openai_generate_fa_article(
                 title_en=title_en,
@@ -1250,6 +1261,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
