@@ -9,7 +9,7 @@ import traceback
 import html as html_lib
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from urllib.parse import urljoin, quote_plus
+from urllib.parse import urljoin, quote_plus, urlparse
 
 import yaml
 import feedparser
@@ -1250,6 +1250,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
