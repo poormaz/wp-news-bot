@@ -40,6 +40,7 @@ USER_AGENT = os.getenv("USER_AGENT", "Mozilla/5.0 (WPNewsBot/1.0; +https://examp
 
 DB_FILE = os.getenv("DB_FILE", "news_cache.db").strip()
 SOURCES_FILE = os.getenv("SOURCES_FILE", "sources.yaml").strip()
+MANUAL_LINKS_FILE = os.getenv("MANUAL_LINKS_FILE", "manual_links.txt").strip()
 
 # How many posts per run
 MAX_POSTS_PER_RUN = int(os.getenv("MAX_POSTS_PER_RUN", "1").strip() or "1")
@@ -123,6 +124,148 @@ def clean_text(s: str) -> str:
     s = re.sub(r"<[^>]+>", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
+
+def read_manual_links() -> list[str]:
+    if not os.path.exists(MANUAL_LINKS_FILE):
+        return []
+    with open(MANUAL_LINKS_FILE, "r", encoding="utf-8") as f:
+        urls = []
+        for line in f:
+            line = (line or "").strip()
+            if not line:
+                continue
+            if line.startswith("#"):
+                continue
+            urls.append(line)
+
+    # unique با حفظ ترتیب
+    seen = set()
+    out = []
+    for u in urls:
+        if u not in seen:
+            out.append(u)
+            seen.add(u)
+    return out
+
+def clear_manual_links():
+    with open(MANUAL_LINKS_FILE, "w", encoding="utf-8") as f:
+        f.write("")
+
+def title_from_url(url: str) -> str:
+    p = urlparse(url)
+    slug = (p.path.strip("/").split("/")[-1] if p.path else p.netloc) or p.netloc
+    slug = re.sub(r"\.[a-z0-9]{3,4}$", "", slug, flags=re.I)
+    slug = slug.replace("-", " ").replace("_", " ").strip()
+    return clean_text(slug) or clean_text(p.netloc) or "News"
+
+def process_manual_links_if_any() -> bool:
+    urls = read_manual_links()
+    if not urls:
+        return False
+
+    print("=== MANUAL MODE: urls =", len(urls), "===")
+
+    try:
+        for url in urls:
+            print("\nMANUAL URL:", url)
+
+            # page_text (مثل روال فعلی)
+            page_text = ""
+            if USE_SOURCE_PAGE_TEXT:
+                page_text = fetch_source_text_excerpt(url)
+                print("page_text chars:", len(page_text))
+
+            # عنوان از URL (سریع و بدون الکی‌کاری)
+            title_en = title_from_url(url)
+
+            # snippet کوتاه (اگر page_text داریم)
+            snippet_en = clean_text((page_text or "")[:500])
+
+            # تولید مقاله
+            gen = openai_generate_fa_article(
+                title_en=title_en,
+                snippet_en=snippet_en,
+                source_name="Manual",
+                source_url=url,
+                page_text=page_text,
+            )
+
+            # تصویر (همان منطق فعلی: سورس -> پیکسلز)
+            featured_media_id = None
+            image_html = ""
+            image_credit_html = ""
+            used_image_kind = "none"
+
+            if SET_FEATURED_IMAGE:
+                img_url = fetch_source_image_url(url)
+                print("Source Image URL:", img_url)
+
+                if not img_url:
+                    photo = pexels_search_photo(normalize_en_title(title_en))
+                    if photo:
+                        img_url = pexels_pick_image_url(photo)
+                        image_credit_html = pexels_attribution_html(photo)
+                        used_image_kind = "pexels"
+                        print("Pexels Image URL:", img_url)
+                    else:
+                        print("Pexels: no photo found.")
+                else:
+                    used_image_kind = "source"
+
+                if img_url:
+                    img_bytes, ext, mime = download_image_bytes(img_url)
+                    if img_bytes:
+                        fn = f"manual-{url_hash(url)[:12]}.{ext}"
+                        media = wp_upload_media(
+                            img_bytes,
+                            fn,
+                            mime_type=mime,
+                            alt_text=gen["title_fa"],
+                        )
+                        featured_media_id = int(media["id"])
+                        wp_src = (media.get("source_url") or "").strip()
+                        if wp_src:
+                            image_html = f'<p><img src="{wp_src}" alt="{gen["title_fa"]}"></p>'
+                        print("Featured media id:", featured_media_id, "| kind:", used_image_kind)
+                    else:
+                        print("No image bytes downloaded.")
+                else:
+                    print("No image found (source + pexels).")
+
+            # ساخت محتوا + ارسال پست
+            content_html = build_wp_content(
+                final_body_html=gen["content_html_fa"],
+                source_name="Manual",
+                source_url=url,
+                published_at=datetime.utcnow().isoformat(),
+                image_html=image_html,
+                image_credit_html=image_credit_html,
+            )
+
+            categories = pick_categories(title_en, snippet_en)
+
+            post_id = create_wp_post(
+                title=gen["title_fa"],
+                content_html=content_html,
+                categories=categories,
+                featured_media_id=featured_media_id,
+            )
+
+            push_rankmath_meta_wp(
+                post_id=post_id,
+                meta_title=gen["meta_title_fa"],
+                meta_desc=gen["meta_description_fa"],
+                focus_kw=gen["focus_keyword_fa"],
+            )
+
+            print("MANUAL POSTED:", post_id)
+            time.sleep(1.2)
+
+        return True
+
+    finally:
+        clear_manual_links()
+        print("MANUAL MODE done. manual_links.txt cleared.")
 
 
 def url_hash(url: str) -> str:
@@ -948,7 +1091,10 @@ def run():
 
     wp_check_me()
     init_db()
-
+    
+    if process_manual_links_if_any():
+        return
+    
     sources = load_sources()
     print("Sources loaded:", len(sources))
     for s in sources:
@@ -1104,6 +1250,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
