@@ -159,6 +159,7 @@ def title_from_url(url: str) -> str:
     return clean_text(slug) or clean_text(p.netloc) or "News"
 
 def process_manual_links_if_any() -> bool:
+    print("MANUAL_LINKS_FILE =", os.path.abspath(MANUAL_LINKS_FILE))
     urls = read_manual_links()
     if not urls:
         return False
@@ -168,13 +169,18 @@ def process_manual_links_if_any() -> bool:
     try:
         for url in urls:
             print("\nMANUAL URL:", url)
-
+            
+            source_name = urlparse(url).netloc.replace("www.", "") or "Source"
+            print("MANUAL source_name:", source_name)
+            
             # page_text (مثل روال فعلی)
             page_text = ""
             if USE_SOURCE_PAGE_TEXT:
                 page_text = fetch_source_text_excerpt(url)
                 print("page_text chars:", len(page_text))
+                
 
+            
             # عنوان از URL (سریع و بدون الکی‌کاری)
             title_en = title_from_url(url)
 
@@ -192,11 +198,12 @@ def process_manual_links_if_any() -> bool:
                 print("MANUAL SKIP duplicate (wp):", why2)
                 continue
 
+
             # تولید مقاله
             gen = openai_generate_fa_article(
                 title_en=title_en,
                 snippet_en=snippet_en,
-                source_name="Manual",
+                source_name=source_name,
                 source_url=url,
                 page_text=page_text,
             )
@@ -246,9 +253,9 @@ def process_manual_links_if_any() -> bool:
             # ساخت محتوا + ارسال پست
             content_html = build_wp_content(
                 final_body_html=gen["content_html_fa"],
-                source_name="Manual",
+                source_name=source_name,
                 source_url=url,
-                published_at=datetime.utcnow().isoformat(),
+                published_at=""
                 image_html=image_html,
                 image_credit_html=image_credit_html,
             )
@@ -276,7 +283,7 @@ def process_manual_links_if_any() -> bool:
 
     finally:
         clear_manual_links()
-        print("MANUAL MODE done. manual_links.txt cleared.")
+        print("CLEARED:", os.path.abspath(MANUAL_LINKS_FILE), "size=", os.path.getsize(MANUAL_LINKS_FILE))
 
 
 def url_hash(url: str) -> str:
@@ -1065,7 +1072,7 @@ def build_wp_content(
     image_html: str = "",
     image_credit_html: str = "",
 ) -> str:
-    nice_date = format_rss_date(published_at)
+    nice_date = format_rss_date(published_at) if (published_at or "").strip() else ""
 
     header_media = ""
     if image_html and EMBED_IMAGE_IN_CONTENT:
@@ -1261,6 +1268,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
