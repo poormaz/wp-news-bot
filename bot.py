@@ -867,7 +867,10 @@ Return JSON only with these keys:
 
 
 """.strip()
-
+    
+    ARTICLEJSONSCHEMA = { ... }          # همون schema اصلی
+    ARTICLE_JSON_SCHEMA = ARTICLEJSONSCHEMA  # alias ثابت
+    
     # 1) Try Structured Outputs (json_schema)
     try:
         resp = client.chat.completions.create(
@@ -881,6 +884,7 @@ Return JSON only with these keys:
         )
         text = (resp.choices[0].message.content or "").strip()
         data = _parse_json_strict(text)
+
 
     # 2) Fallback json_object
     except Exception as e:
@@ -1384,6 +1388,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
