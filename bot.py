@@ -682,17 +682,17 @@ def choose_next_source_with_pending(rotation: list[str]) -> tuple[str | None, in
 # Categories
 # =======================
 def pick_categories(title_en: str, snippet_en: str) -> list[int]:
-    text = (title_en + " " + snippet_en).lower()
+    title = (title_en or "").lower()
 
-    if CAT_REVIEWS and any(k in text for k in ["review", "hands-on", "preview", "impressions", "benchmark"]):
+    if CAT_REVIEWS and any(k in title for k in ["review", "hands-on", "preview", "impressions", "benchmark"]):
         return [CAT_REVIEWS]
 
     if CAT_HARDWARE and any(
-        k in text for k in ["gpu", "rtx", "radeon", "cpu", "intel", "amd", "nvidia", "laptop", "ssd", "ram", "motherboard", "dlss", "fsr"]
+        k in title for k in ["gpu", "rtx", "radeon", "cpu", "intel", "amd", "nvidia", "laptop", "ssd", "ram", "motherboard", "dlss", "fsr"]
     ):
         return [CAT_ALL, CAT_HARDWARE] if CAT_ALL else [CAT_HARDWARE]
 
-    if CAT_GAMING and any(k in text for k in ["game", "gaming", "steam", "ps5", "xbox", "nintendo", "dlc", "trailer"]):
+    if CAT_GAMING and any(k in title for k in ["game", "gaming", "steam", "ps5", "xbox", "nintendo", "dlc", "trailer"]):
         return [CAT_ALL, CAT_GAMING] if CAT_ALL else [CAT_GAMING]
 
     if CAT_ALL:
@@ -707,12 +707,40 @@ def pick_categories(title_en: str, snippet_en: str) -> list[int]:
 # =======================
 # Source page text (page_text)
 # =======================
-def fetch_source_text_excerpt(source_url: str, max_chars: int = SOURCE_TEXT_MAX_CHARS) -> str:
+def fetch_source_html(source_url: str) -> str:
     headers = {"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
     r = requests.get(source_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
     if r.status_code >= 400:
-        print("SOURCE TEXT fetch failed:", r.status_code)
+        print("SOURCE HTML fetch failed:", r.status_code)
         return ""
+    return r.text or ""
+
+
+def extract_text_from_html(html: str, max_chars: int = SOURCE_TEXT_MAX_CHARS) -> str:
+    raw = html or ""
+    raw = re.sub(r"(?is)<script[^>]*>.*?</script>", " ", raw)
+    raw = re.sub(r"(?is)<style[^>]*>.*?</style>", " ", raw)
+    raw = re.sub(r"(?is)<noscript[^>]*>.*?</noscript>", " ", raw)
+    raw = re.sub(r"(?s)<!--.*?-->", " ", raw)
+
+    text = re.sub(r"(?s)<[^>]+>", " ", raw)
+    text = html_lib.unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"(?i)\b(read more|continue reading|see more|learn more)\b\s*[›>]+", " ", text)
+    text = re.sub(r"\s*[›>]+\s*", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    if not text:
+        return ""
+    return text[:max_chars]
+
+
+def fetch_source_text_excerpt(source_url: str, max_chars: int = SOURCE_TEXT_MAX_CHARS) -> str:
+    html = fetch_source_html(source_url)
+    if not html:
+        return ""
+    return extract_text_from_html(html, max_chars=max_chars)
+    
 
     raw = r.text or ""
     raw = re.sub(r"(?is)<script[^>]*>.*?</script>", " ", raw)
@@ -775,11 +803,7 @@ def _parse_json_strict(text: str) -> dict:
         return json.loads(text[start : end + 1])
 
     raise ValueError("OpenAI returned non-JSON content that could not be parsed")
-
-
-def _is_too_short(htmlout: str) -> bool:
-    return False
-
+    
 
 def openai_generate_fa_article(
     title_en: str,
@@ -1051,7 +1075,6 @@ def extract_published_at_from_html(html: str) -> str:
         if m:
             return (m.group(1) or "").strip()
     return ""
-
 
 def fetch_source_published_at(source_url: str) -> str:
     headers = {"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
@@ -1349,6 +1372,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
