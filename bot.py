@@ -251,11 +251,13 @@ def process_manual_links_if_any() -> bool:
                     print("No image found (source + pexels).")
 
             # ساخت محتوا + ارسال پست
+            published_at = fetch_source_published_at(url) or datetime.utcnow().isoformat()
+
             content_html = build_wp_content(
                 final_body_html=gen["content_html_fa"],
                 source_name=source_name,
                 source_url=url,
-                published_at=""
+                published_at=published_at,
                 image_html=image_html,
                 image_credit_html=image_credit_html,
             )
@@ -1268,6 +1270,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
