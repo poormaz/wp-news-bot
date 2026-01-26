@@ -261,7 +261,7 @@ def process_manual_links_if_any() -> bool:
                 image_html=image_html,
                 image_credit_html=image_credit_html,
             )
-        categories = pick_categories_manual(title_en, snippet_en)
+            categories = pick_categories_manual(title_en, snippet_en)
             post_id = create_wp_post(
                 title=gen["title_fa"],
                 content_html=content_html,
@@ -1383,6 +1383,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
