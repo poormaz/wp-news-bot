@@ -308,11 +308,45 @@ def parse_published_ts(published_at: str) -> int:
 
 
 def format_rss_date(published_at: str) -> str:
+    months_fa = {
+        1: "ژانویه",
+        2: "فوریه",
+        3: "مارس",
+        4: "اپریل",
+        5: "می",
+        6: "جوئن",
+        7: "جولای",
+        8: "آگوست",
+        9: "سپتامبر",
+        10: "اکتبر",
+        11: "نوامبر",
+        12: "دسامبر",
+    }
+
+    s = (published_at or "").strip()
+    if not s:
+        return ""
+
+    dt = None
+
+    # RSS/RFC dates
     try:
-        dt = parsedate_to_datetime(published_at)
-        return dt.strftime("%a, %d %b %Y")
+        dt = parsedate_to_datetime(s)
     except Exception:
-        return (published_at or "").split("+")[0].strip()
+        dt = None
+
+    # ISO-8601 dates (common in meta tags / JSON-LD)
+    if dt is None:
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except Exception:
+            dt = None
+
+    if dt is None:
+        return (s.split("+")[0]).strip()
+
+    return f"{dt.day} {months_fa.get(dt.month, '')} {dt.year}"
+
 
 
 def guess_ext_and_mime(content_type: str | None) -> tuple[str, str]:
@@ -1003,6 +1037,28 @@ def extract_image_url_from_html(html: str, base_url: str) -> str | None:
 
     return None
 
+def extract_published_at_from_html(html: str) -> str:
+    html = html or ""
+    patterns = [
+        r'<meta[^>]+property=["\']article:published_time["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+property=["\']og:published_time["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+name=["\']pubdate["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<time[^>]+datetime=["\']([^"\']+)["\']',
+        r'"datePublished"\\s*:\\s*"([^"]+)"',  # JSON-LD
+    ]
+    for pat in patterns:
+        m = re.search(pat, html, re.I)
+        if m:
+            return (m.group(1) or "").strip()
+    return ""
+
+
+def fetch_source_published_at(source_url: str) -> str:
+    headers = {"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
+    r = requests.get(source_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
+    if r.status_code >= 400:
+        return ""
+    return extract_published_at_from_html(r.text)
 
 def fetch_source_image_url(source_url: str) -> str | None:
     headers = {"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
@@ -1012,6 +1068,29 @@ def fetch_source_image_url(source_url: str) -> str | None:
         print("SOURCE HTML fetch failed:", r.status_code)
         return None
     return extract_image_url_from_html(r.text, source_url)
+
+def extract_published_at_from_html(html: str) -> str:
+    html = html or ""
+    patterns = [
+        r'<meta[^>]+property=["\']article:published_time["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+property=["\']og:published_time["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+name=["\']pubdate["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<time[^>]+datetime=["\']([^"\']+)["\']',
+        r'"datePublished"\\s*:\\s*"([^"]+)"',  # JSON-LD
+    ]
+    for pat in patterns:
+        m = re.search(pat, html, re.I)
+        if m:
+            return (m.group(1) or "").strip()
+    return ""
+
+
+def fetch_source_published_at(source_url: str) -> str:
+    headers = {"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
+    r = requests.get(source_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
+    if r.status_code >= 400:
+        return ""
+    return extract_published_at_from_html(r.text)
 
 
 def download_image_bytes(img_url: str) -> tuple[bytes | None, str | None, str | None]:
@@ -1270,6 +1349,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
