@@ -1286,8 +1286,9 @@ def run():
                 if dup2:
                     mark_skipped(item_id, reason=f"duplicate: {why2}")
                     continue
-        categories = pick_categories_manual(title_en, snippet_en)
+                categories = pick_categories(title_en, snippet_en)   # RSS = مثل قبل
                 print("Picked categories:", categories)
+
 
                 # Build page_text
                 page_text = ""
@@ -1383,6 +1384,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
