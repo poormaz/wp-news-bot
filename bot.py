@@ -882,19 +882,25 @@ Return JSON only with these keys:
 
     ARTICLE_JSON_SCHEMA_SAFE = _jsonable(ARTICLE_JSON_SCHEMA)
 
-    # 1) Try Structured Outputs (json_schema)
-    try:
-        resp = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            temperature=OPENAI_TEMPERATURE,
-            messages=[
-                {"role": "system", "content": "Return valid JSON only."},
-                {"role": "user", "content": prompt},
-            ],
-            response_format={"type": "json_schema", "json_schema": ARTICLE_JSON_SCHEMA_SAFE},
-        )
-        text = (resp.choices[0].message.content or "").strip()
-        data = _parse_json_strict(text)
+    # 1) Try Structured Outputs (json_object)
+    resp = client.chat.completions.create(
+        model=OPENAI_MODEL,
+        temperature=OPENAI_TEMPERATURE,
+        messages=[
+            {"role": "system", "content": "Return valid JSON only."},
+            {
+                "role": "user",
+                "content": (
+                    prompt
+                    + "\n\nReturn JSON with keys: title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa"
+                ),
+            },
+        ],
+        response_format={"type": "json_object"},
+    )
+    text = (resp.choices[0].message.content or "").strip()
+    data = _parse_json_strict(text)
+        
 
     # 2) Fallback json_object
     except Exception as e:
@@ -1400,6 +1406,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
