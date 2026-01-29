@@ -867,44 +867,8 @@ Return JSON only with these keys:
 
 
 """.strip()
-    # --- schema (define once somewhere global is بهتر) ---
-    ARTICLEJSONSCHEMA = { ... }  # schema اصلی تو (هر چی هست)
-    ARTICLE_JSON_SCHEMA = ARTICLEJSONSCHEMA  # alias
 
-    def _jsonable(x):
-        if isinstance(x, set):
-            return list(x)
-        if isinstance(x, dict):
-            return {k: _jsonable(v) for k, v in x.items()}
-        if isinstance(x, list):
-            return [_jsonable(v) for v in x]
-        return x
-
-    ARTICLE_JSON_SCHEMA_SAFE = _jsonable(ARTICLE_JSON_SCHEMA)
-
-    # 1) Try Structured Outputs (json_object)
-    resp = client.chat.completions.create(
-        model=OPENAI_MODEL,
-        temperature=OPENAI_TEMPERATURE,
-        messages=[
-            {"role": "system", "content": "Return valid JSON only."},
-            {
-                "role": "user",
-                "content": (
-                    prompt
-                    + "\n\nReturn JSON with keys: title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa"
-                ),
-            },
-        ],
-        response_format={"type": "json_object"},
-    )
-    text = (resp.choices[0].message.content or "").strip()
-    data = _parse_json_strict(text)
-        
-
-    # 2) Fallback json_object
-    except Exception as e:
-        print("WARN: structured outputs failed; falling back to json_object mode. Error:", repr(e))
+    try:
         resp = client.chat.completions.create(
             model=OPENAI_MODEL,
             temperature=OPENAI_TEMPERATURE,
@@ -914,7 +878,7 @@ Return JSON only with these keys:
                     "role": "user",
                     "content": (
                         prompt
-                        + "\n\nReturn JSON with keys: titlefa, metatitlefa, metadescriptionfa, focuskeywordfa, contenthtmlfa"
+                        + "\n\nReturn JSON with keys: title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa"
                     ),
                 },
             ],
@@ -922,6 +886,27 @@ Return JSON only with these keys:
         )
         text = (resp.choices[0].message.content or "").strip()
         data = _parse_json_strict(text)
+
+    except Exception as e:
+        print("WARN: json_object failed; retrying once. Error:", repr(e))
+        resp = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            temperature=OPENAI_TEMPERATURE,
+            messages=[
+                {"role": "system", "content": "Return valid JSON only."},
+                {
+                    "role": "user",
+                    "content": (
+                        prompt
+                        + "\n\nReturn JSON with keys: title_fa, meta_title_fa, meta_description_fa, focus_keyword_fa, content_html_fa"
+                    ),
+                },
+            ],
+            response_format={"type": "json_object"},
+        )
+        text = (resp.choices[0].message.content or "").strip()
+        data = _parse_json_strict(text)
+
 
     # Validate required fields
     required = [
@@ -1406,6 +1391,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
