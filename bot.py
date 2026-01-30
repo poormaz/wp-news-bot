@@ -849,7 +849,7 @@ Style (critical):
 - Do NOT use colons to introduce named sections (avoid patterns like "X: ...") unless it is part of a quote that appears in the input.
 
 Length & structure:
-- Aim for ~500+ Persian words.
+- Aim for 600+ Persian words.
 - Output must be valid HTML using only <p>, <ul>, <li>.
 - Start with 1 short paragraph that acts as a lead/summary (but without any label).
 - Then add 2–4 paragraphs with details and context (only from inputs).
@@ -1391,6 +1391,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
