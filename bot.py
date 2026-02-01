@@ -74,7 +74,7 @@ PEXELS_PER_PAGE = int(os.getenv("PEXELS_PER_PAGE", "1").strip() or "1")
 
 # Source page text extraction (page_text)
 USESOURCEPAGETEXT = (os.getenv("USESOURCEPAGETEXT") or os.getenv("USE_SOURCE_PAGE_TEXT") or "1").strip() == "1"
-SOURCETEXTMAXCHARS = int((os.getenv("SOURCETEXTMAXCHARS") or os.getenv("SOURCE_TEXT_MAX_CHARS") or "7000").strip() or "7000")
+SOURCETEXTMAXCHARS = int((os.getenv("SOURCETEXTMAXCHARS") or os.getenv("SOURCE_TEXT_MAX_CHARS") or "15000").strip() or "15000")
 SOURCE_TEXT_MAX_CHARS = SOURCETEXTMAXCHARS
 USE_SOURCE_PAGE_TEXT = USESOURCEPAGETEXT
 
@@ -1391,6 +1391,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
