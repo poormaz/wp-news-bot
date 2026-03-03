@@ -67,7 +67,7 @@ SET_FEATURED_IMAGE = os.getenv("SET_FEATURED_IMAGE", "1").strip() == "1"
 EMBED_IMAGE_IN_CONTENT = os.getenv("EMBED_IMAGE_IN_CONTENT", "1").strip() == "1"
 
 # Pexels fallback
-PEXELS_ENABLED = os.getenv("PEXELS_ENABLED", "1").strip() == "1"
+PEXELS_ENABLED = os.getenv("PEXELS_ENABLED", "0").strip() == "1"
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
 PEXELS_ORIENTATION = os.getenv("PEXELS_ORIENTATION", "landscape").strip()
 PEXELS_PER_PAGE = int(os.getenv("PEXELS_PER_PAGE", "1").strip() or "1")
@@ -1074,6 +1074,11 @@ def extract_image_url_from_html(html: str, base_url: str) -> str | None:
     if m:
         return urljoin(base_url, m.group(1).strip())
 
+        # background-image: url(...)
+    m = re.search(r'background-image\s*:\s*url\(["\']?([^"\')]+)["\']?\)', html, re.I)
+    if m:
+        return urljoin(base_url, m.group(1).strip())
+
     m = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', html, re.I)
     if m:
         return urljoin(base_url, m.group(1).strip())
@@ -1391,6 +1396,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
