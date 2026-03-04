@@ -19,3 +19,6 @@
 - Videocardz https://videocardz.com/rss-feed
 
 - PC Gamer https://www.pcgamer.com/rss/
+
+  - name: Insider Gaming
+    feed: "https://insider-gaming.com/feed/"
