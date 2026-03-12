@@ -849,7 +849,9 @@ Style (critical):
 - Do NOT use colons to introduce named sections (avoid patterns like "X: ...") unless it is part of a quote that appears in the input.
 
 Length & structure:
-- Aim for 600+ Persian words.
+- MINIMUM length: 600 Persian words. This is mandatory, not optional.
+- Aim for 700–900 Persian words for thorough coverage.
+- If input content is limited, expand with relevant context, background, and implications — but ONLY based on facts already in the inputs.
 - Output must be valid HTML using only <p>, <ul>, <li>.
 - Start with 1 short paragraph that acts as a lead/summary (but without any label).
 - Then add 2–4 paragraphs with details and context (only from inputs).
@@ -872,6 +874,7 @@ Return JSON only with these keys:
         resp = client.chat.completions.create(
             model=OPENAI_MODEL,
             temperature=OPENAI_TEMPERATURE,
+            max_tokens=1400,
             messages=[
                 {"role": "system", "content": "Return valid JSON only."},
                 {
@@ -892,6 +895,7 @@ Return JSON only with these keys:
         resp = client.chat.completions.create(
             model=OPENAI_MODEL,
             temperature=OPENAI_TEMPERATURE,
+            max_tokens=1400,
             messages=[
                 {"role": "system", "content": "Return valid JSON only."},
                 {
@@ -1396,6 +1400,7 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
 
 
