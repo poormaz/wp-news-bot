@@ -3,8 +3,8 @@ name: wp-news-bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */3 * * *' # هر ساعت (UTC)
-    
+    - cron: '0 */3 * * *'
+
 concurrency:
   group: wp-news-bot
   cancel-in-progress: false
@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -27,9 +27,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          
+
       - name: Cache bot database (news_cache.db)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: news_cache.db
           key: wp-news-bot-db-${{ github.run_id }}
@@ -89,7 +89,7 @@ jobs:
           EMBED_IMAGE_IN_CONTENT: "1"
 
           # Pexels
-          PEXELS_ENABLED: "1"
+          PEXELS_ENABLED: "0"
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PEXELS_ORIENTATION: "landscape"
           PEXELS_PER_PAGE: "1"
