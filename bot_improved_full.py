@@ -8,8 +8,10 @@ import sqlite3
 import traceback
 import html as html_lib
 import logging
+import sys
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, quote_plus, urlparse, urlsplit, urlunsplit, parse_qsl, urlencode
 
@@ -22,22 +24,25 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from difflib import SequenceMatcher
 
-try:
-    from bs4 import BeautifulSoup
-except Exception:
-    BeautifulSoup = None
-
-try:
-    from pydantic import BaseModel, Field
-except Exception:
-    BaseModel = None
-    Field = None
-
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("wp_news_bot")
+
+
+def log_print(*args, sep=" ", end="\n", file=None, flush=False):
+    """Route legacy print calls through logging without changing call sites."""
+    message = sep.join(str(a) for a in args)
+    if end and end != "\n":
+        message += end
+    if file is sys.stderr:
+        logger.error(message)
+    else:
+        logger.info(message)
+
+
+print = log_print
 
 # =======================
 # ENV
@@ -885,23 +890,27 @@ def _parse_json_strict(text: str) -> dict:
 
 
 
-if BaseModel is not None:
-    class ArticleOut(BaseModel):
-        title_fa: str = Field(min_length=3)
-        meta_title_fa: str = Field(min_length=3, max_length=70)
-        meta_description_fa: str = Field(min_length=3, max_length=160)
-        focus_keyword_fa: str = Field(min_length=2)
-        content_html_fa: str = Field(min_length=20)
+def _required_str(data: dict, key: str, min_len: int = 1, max_len: int | None = None) -> str:
+    value = str(data.get(key) or "").strip()
+    if len(value) < min_len:
+        raise ValueError(f"Missing/too-short OpenAI field: {key}")
+    if max_len is not None and len(value) > max_len:
+        value = value[:max_len].rstrip()
+    return value
 
 
 def validate_article_payload(data: dict) -> dict:
-    if BaseModel is not None:
-        return ArticleOut.model_validate(data).model_dump()
-    required = ["title_fa", "meta_title_fa", "meta_description_fa", "focus_keyword_fa", "content_html_fa"]
-    for k in required:
-        if not (data.get(k) or "").strip():
-            raise ValueError(f"Missing/empty key: {k}")
-    return data
+    """Validate and lightly normalize OpenAI output without extra runtime dependencies."""
+    if not isinstance(data, dict):
+        raise ValueError("OpenAI article payload must be a JSON object")
+
+    out = dict(data)
+    out["title_fa"] = _required_str(out, "title_fa", min_len=3)
+    out["meta_title_fa"] = _required_str(out, "meta_title_fa", min_len=3, max_len=70)
+    out["meta_description_fa"] = _required_str(out, "meta_description_fa", min_len=3, max_len=160)
+    out["focus_keyword_fa"] = _required_str(out, "focus_keyword_fa", min_len=2)
+    out["content_html_fa"] = _required_str(out, "content_html_fa", min_len=20)
+    return out
 
 
 def openai_generate_fa_article(
@@ -1151,26 +1160,42 @@ def push_rankmath_meta_wp(post_id: int, meta_title: str, meta_desc: str, focus_k
 # =======================
 # Images
 # =======================
+class _ImageMetaParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.og_image = ""
+        self.twitter_image = ""
+        self.first_img = ""
+
+    def handle_starttag(self, tag: str, attrs):
+        attr = {k.lower(): (v or "") for k, v in attrs}
+        if tag.lower() == "meta":
+            prop = attr.get("property", "").lower()
+            name = attr.get("name", "").lower()
+            content = attr.get("content", "").strip()
+            if prop == "og:image" and content and not self.og_image:
+                self.og_image = content
+            elif name == "twitter:image" and content and not self.twitter_image:
+                self.twitter_image = content
+        elif tag.lower() == "img" and not self.first_img:
+            src = attr.get("src", "").strip()
+            if src:
+                self.first_img = src
+
+
 def extract_image_url_from_html(html: str, base_url: str) -> str | None:
-    """
-    Try to get a representative image from source HTML.
-    Uses BeautifulSoup first (if installed), then regex fallback.
-    """
-    if BeautifulSoup is not None:
-        soup = BeautifulSoup(html or "", "html.parser")
-        og = soup.find("meta", attrs={"property": "og:image"})
-        if og and og.get("content"):
-            return urljoin(base_url, og["content"].strip())
+    """Extract a representative image using stdlib HTML parsing, then regex fallback."""
+    parser = _ImageMetaParser()
+    try:
+        parser.feed(html or "")
+    except Exception:
+        logger.debug("HTML parser could not fully parse image metadata", exc_info=True)
 
-        tw = soup.find("meta", attrs={"name": "twitter:image"})
-        if tw and tw.get("content"):
-            return urljoin(base_url, tw["content"].strip())
+    for candidate in (parser.og_image, parser.twitter_image, parser.first_img):
+        if candidate:
+            return urljoin(base_url, candidate.strip())
 
-        img = soup.find("img", src=True)
-        if img:
-            return urljoin(base_url, img["src"].strip())
-
-    # Regex fallback
+    # Regex fallback for malformed markup
     m = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', html or "", re.I)
     if m:
         return urljoin(base_url, m.group(1).strip())
@@ -1478,34 +1503,5 @@ def run():
 
 if __name__ == "__main__":
     run()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
