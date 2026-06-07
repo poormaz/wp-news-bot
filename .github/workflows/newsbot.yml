@@ -63,9 +63,19 @@ jobs:
           WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
-
+          WP_TAGS_ENABLED: ${{ vars.WP_TAGS_ENABLED }}
+          WP_TAGS_MAX: ${{ vars.WP_TAGS_MAX }}
+          
           RANKMATH_UPDATER_URL: ${{ secrets.RANKMATH_UPDATER_URL }}
           RANKMATH_UPDATER_TOKEN: ${{ secrets.RANKMATH_UPDATER_TOKEN }}
+
+          SEO_INTERNAL_LINKS_ENABLED: ${{ vars.SEO_INTERNAL_LINKS_ENABLED }}
+          SEO_INTERNAL_LINKS_MAX: ${{ vars.SEO_INTERNAL_LINKS_MAX }}
+          SEO_INTERNAL_LINKS_SEARCH_PER_PAGE: ${{ vars.SEO_INTERNAL_LINKS_SEARCH_PER_PAGE }}
+          SEO_MIN_WORDS: ${{ vars.SEO_MIN_WORDS }}
+          SEO_REJECT_SHORT_POSTS: ${{ vars.SEO_REJECT_SHORT_POSTS }}
+          SEO_USE_LATIN_SLUG: ${{ vars.SEO_USE_LATIN_SLUG }}
+
 
           # Categories
           CAT_ALL: "2"
