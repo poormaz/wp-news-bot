@@ -55,7 +55,7 @@ OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "2200").strip() or "2200"
 WP_BASE_URL = os.getenv("WP_BASE_URL", "").strip().rstrip("/")
 WP_USERNAME = os.getenv("WP_USERNAME", "").strip()
 WP_APP_PASSWORD = os.getenv("WP_APP_PASSWORD", "").strip()
-WP_POST_STATUS = os.getenv("WP_POST_STATUS", "publish").strip()
+WP_POST_STATUS = os.getenv("WP_POST_STATUS", "draft").strip()
 
 LANG = os.getenv("LANG", "fa").strip()
 
