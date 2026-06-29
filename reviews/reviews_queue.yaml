@@ -1,9 +1,9 @@
 reviews:
-  - game: "GAME NAME HERE"
+  - game: "Crimson Desert"
     platform: "PC"
-    release_date: "YYYY-MM-DD"
-    metacritic_url: "METACRITIC GAME URL HERE"
+    release_date: "2026-03-19"
+    metacritic_url: "https://www.metacritic.com/game/crimson-desert/"
     review_urls:
-      - "IGN REVIEW URL HERE"
-      - "GAMESPOT OR PC GAMER REVIEW URL HERE"
-      - "THIRD REVIEW URL HERE"
+      - "https://www.gamespot.com/reviews/crimson-desert-review-highest-fantasy/1900-6418474/"
+      - "https://www.pcgamer.com/games/action/crimson-desert-review/"
+      - "https://wccftech.com/review/crimson-desert-review-blissfully-lost-in-pywell/"
