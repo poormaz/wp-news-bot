@@ -1,1 +1,9 @@
-reviews: []
+reviews:
+  - game: "GAME NAME HERE"
+    platform: "PC"
+    release_date: "YYYY-MM-DD"
+    metacritic_url: "METACRITIC GAME URL HERE"
+    review_urls:
+      - "IGN REVIEW URL HERE"
+      - "GAMESPOT OR PC GAMER REVIEW URL HERE"
+      - "THIRD REVIEW URL HERE"
