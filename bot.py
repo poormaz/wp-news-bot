@@ -1803,6 +1803,7 @@ def build_wp_content(
     source_url_safe = html_lib.escape((source_url or "").strip(), quote=True)
     date_safe = html_lib.escape(clean_text(nice_date))
     footer_inner = (
+        '<hr style="width:120px; margin:32px auto 22px; border:0; border-top:2px solid #888;">'
         f"<strong>منبع:</strong> "
         f'<a href="{source_url_safe}" target="_blank" rel="nofollow noopener noreferrer">{source_name_safe}</a>'
         f"<br/><strong>زمان انتشار منبع:</strong> {date_safe}"
