@@ -1,0 +1,31 @@
+name: Run Review Bot
+
+on:
+  workflow_dispatch:
+
+jobs:
+  review-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run review bot queue check
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          REVIEW_POST_STATUS: draft
+          REVIEW_MIN_SOURCES: 3
+          REVIEW_SCORE_MAX_DELTA: 0.4
+        run: python reviews/review_bot.py
