@@ -780,29 +780,6 @@ def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
         "url": page.get("url", ""),
     }
 
-    # 3. امتیازهای نوشته‌شده و برچسب‌دار در صفحه
-    labelled_patterns = [
-        r"(?is)\b(?:review(?:\s+score)?|final\s+score|rating|verdict)\b.{0,80}?(\d{1,3}(?:\.\d+)?)\s*(?:/|out\s+of)\s*(\d{1,3})",
-        r"(?is)\b(?:review(?:\s+score)?|final\s+score|rating|verdict)\b.{0,45}?\b(\d{1,3}(?:\.\d+)?)\b",
-    ]
-
-    for pattern_index, pattern in enumerate(labelled_patterns):
-        for match in re.finditer(pattern, visible_text):
-            raw_value = match.group(1)
-            raw_best = match.group(2) if match.lastindex and match.lastindex >= 2 else None
-
-            evidence = visible_text[
-                max(0, match.start() - 70): match.end() + 70
-            ]
-
-            add_candidate(
-                raw_value,
-                raw_best,
-                method="visible_labelled_score",
-                confidence=86 if pattern_index == 0 else 75,
-                evidence=evidence,
-            )
-
     # 4. امتیازهای 8/10 یا 80/100 نزدیک ابتدای نقد
     for match in re.finditer(
         r"(?<![\d/])(\d{1,3}(?:\.\d+)?)\s*/\s*(10|5|100)\b",
