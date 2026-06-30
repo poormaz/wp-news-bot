@@ -444,8 +444,9 @@ def _extract_json_ld_objects(html: str) -> list[object]:
 
 def extract_review_score(page: dict) -> dict:
     """
-    نمره را قطعی از خود HTML استخراج می‌کند.
-    مدل زبانی فقط نکات مثبت، منفی و جمع‌بندی را می‌نویسد.
+    فقط نمره‌هایی را قبول می‌کند که از JSON-LD، meta معتبر،
+    یا عبارت صریح x/10، x/5 یا x/100 کنار برچسب نمره آمده باشند.
+    عددهای تنها مثل «30 hours» عمداً نادیده گرفته می‌شوند.
     """
     candidates = []
     html = page.get("html", "") or ""
@@ -476,8 +477,7 @@ def extract_review_score(page: dict) -> dict:
         if normalized is None:
             return
 
-        evidence_clean = _compact_evidence(evidence)
-        lowered = evidence_clean.lower()
+        evidence_clean = _compact_evidence(evidence).lower()
 
         blocked_words = (
             "user score",
@@ -486,9 +486,11 @@ def extract_review_score(page: dict) -> dict:
             "reader rating",
             "audience score",
             "metascore",
+            "hours",
+            "hour",
         )
 
-        if any(word in lowered for word in blocked_words):
+        if any(word in evidence_clean for word in blocked_words):
             return
 
         candidates.append(
@@ -497,16 +499,19 @@ def extract_review_score(page: dict) -> dict:
                 "review_score_10": normalized,
                 "score_method": method,
                 "score_confidence": confidence,
-                "score_evidence": evidence_clean,
+                "score_evidence": _compact_evidence(evidence),
             }
         )
 
-    # 1. Structured JSON-LD
+    # 1) JSON-LD: معتبرترین منبع برای نمره‌ی همان نقد
     for obj in _extract_json_ld_objects(html):
         for node in _walk_json(obj):
             node_type = node.get("@type", "")
             node_types = node_type if isinstance(node_type, list) else [node_type]
             node_types = [str(item).lower() for item in node_types]
+
+            if "review" not in node_types:
+                continue
 
             review_rating = node.get("reviewRating")
 
@@ -526,55 +531,254 @@ def extract_review_score(page: dict) -> dict:
                     ),
                 )
 
-            if "review" in node_types and node.get("ratingValue") is not None:
+            elif node.get("ratingValue") is not None:
                 add_candidate(
                     node.get("ratingValue"),
                     node.get("bestRating"),
                     node.get("worstRating"),
                     method="jsonld_review_node",
-                    confidence=96,
+                    confidence=95,
                     evidence=json.dumps(node, ensure_ascii=False)[:400],
                 )
 
-    # 2. Meta tags
+    # 2) Meta tagهای مشخصاً مربوط به امتیاز نقد
     for attrs in page.get("meta_items", []) or []:
         key = (
             attrs.get("property", "")
             or attrs.get("name", "")
             or attrs.get("itemprop", "")
-        ).lower()
+        ).lower().strip()
 
-        value = attrs.get("content", "")
+        value = attrs.get("content", "").strip()
 
         if not key or not value:
             continue
 
-        if "user" in key or "community" in key:
+        if "user" in key or "community" in key or "audience" in key:
             continue
 
-        if any(
-            token in key
-            for token in (
-                "review:rating",
-                "ratingvalue",
-                "review_score",
-                "score",
-            )
-        ):
-            best = (
-                attrs.get("best-rating")
-                or attrs.get("bestrating")
-                or attrs.get("rating-scale")
-                or attrs.get("scale")
-            )
+        allowed_keys = (
+            "review:rating",
+            "review_rating",
+            "reviewrating",
+            "ratingvalue",
+        )
+
+        if not any(token in key for token in allowed_keys):
+            continue
+
+        best = (
+            attrs.get("best-rating")
+            or attrs.get("bestrating")
+            or attrs.get("rating-scale")
+            or attrs.get("scale")
+        )
+
+        add_candidate(
+            value,
+            best,
+            method="meta_review_rating",
+            confidence=90,
+            evidence=f"{key}: {value}" + (f" / {best}" if best else ""),
+        )
+
+    # 3) فقط نمره‌های دارای کسر صریح، مثل 8/10
+    visible_patterns = [
+        r"(?is)\b(?:review\s*score|final\s*score|rating|verdict)\b"
+        r"[^0-9]{0,50}(\d{1,3}(?:\.\d+)?)\s*(?:/|out\s+of)\s*(10|5|100)\b",
+
+        r'(?is)<(?:span|div|p)[^>]+(?:class|data-testid)=["\'][^"\']*'
+        r'(?:review[-_ ]?score|rating|score)[^"\']*["\'][^>]*>'
+        r"\s*(\d{1,3}(?:\.\d+)?)\s*(?:/|out\s+of)\s*(10|5|100)\b",
+    ]
+
+    for pattern_index, pattern in enumerate(visible_patterns):
+        haystack = visible_text if pattern_index == 0 else html
+
+        for match in re.finditer(pattern, haystack):
+            evidence = haystack[max(0, match.start() - 90): match.end() + 90]
 
             add_candidate(
-                value,
-                best,
-                method="meta_rating",
-                confidence=90,
-                evidence=f"{key}: {value}" + (f" / {best}" if best else ""),
+                match.group(1),
+                match.group(2),
+                method=(
+                    "visible_labelled_fraction"
+                    if pattern_index == 0
+                    else "html_score_element"
+                ),
+                confidence=82 if pattern_index == 0 else 86,
+                evidence=evidence,
             )
+
+    if not candidates:
+        return {
+            "original_score": None,
+            "review_score_10": None,
+            "score_method": "not_found",
+            "score_confidence": 0,
+            "score_evidence": "",
+        }
+
+    candidates.sort(
+        key=lambda item: (
+            item["score_confidence"],
+            item["review_score_10"],
+        ),
+        reverse=True,
+    )
+
+    return candidates[0]
+
+
+def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
+    """
+    نمره‌ی متاکریتیک را فقط از ساختارهای اختصاصی Critic Score Summary
+    یا عبارت مستقیم Metascore می‌گیرد، نه از نمره‌ی منتقدهای داخل صفحه.
+    """
+    html = page.get("html", "") or ""
+    visible_text = clean_text(page.get("score_text", "") or "")
+    description = clean_text(page.get("description", "") or "")
+
+    score_candidates = []
+    count_candidates = []
+
+    def add_score(score, method, confidence, evidence):
+        score = as_score_100(score)
+
+        if score is None:
+            return
+
+        score_candidates.append(
+            {
+                "score": score,
+                "method": method,
+                "confidence": confidence,
+                "evidence": _compact_evidence(evidence),
+            }
+        )
+
+    def add_count(value, method, confidence, evidence):
+        try:
+            count = int(str(value).replace(",", "").strip())
+        except (TypeError, ValueError):
+            return
+
+        if count < 1 or count > 10000:
+            return
+
+        count_candidates.append(
+            {
+                "count": count,
+                "method": method,
+                "confidence": confidence,
+                "evidence": _compact_evidence(evidence),
+            }
+        )
+
+    # 1) JSON / Next.js data مخصوص خلاصه‌ی امتیاز منتقدها
+    summary_pattern = re.compile(
+        r'(?is)"(?:criticScoreSummary|metascoreSummary)"\s*:\s*\{'
+    )
+
+    for match in summary_pattern.finditer(html):
+        window = html[match.end(): match.end() + 1200]
+        end = window.find("}")
+
+        if end != -1:
+            window = window[:end + 1]
+
+        score_match = re.search(
+            r'(?is)"(?:score|metascore)"\s*:\s*"?(\d{1,3})"?',
+            window,
+        )
+
+        count_match = re.search(
+            r'(?is)"(?:count|reviewCount|criticReviewCount)"\s*:\s*"?(\d{1,5})"?',
+            window,
+        )
+
+        if score_match:
+            add_score(
+                score_match.group(1),
+                "critic_score_summary",
+                100,
+                window,
+            )
+
+        if count_match:
+            add_count(
+                count_match.group(1),
+                "critic_score_summary",
+                100,
+                window,
+            )
+
+    # 2) توضیح متا، اگر خود سایت صریحاً Metascore را نوشته باشد
+    for source_name, text in (
+        ("meta_description", description),
+        ("visible_heading", visible_text[:30000]),
+    ):
+        score_match = re.search(
+            r"(?is)\bmetascore\b\s*(?:of|:|-)?\s*(\d{1,3})\b",
+            text,
+        )
+
+        if score_match:
+            add_score(
+                score_match.group(1),
+                source_name,
+                88 if source_name == "meta_description" else 80,
+                text[
+                    max(0, score_match.start() - 80):
+                    score_match.end() + 100
+                ],
+            )
+
+        count_match = re.search(
+            r"(?is)\b(?:based\s+on\s+)?(\d{1,5})\s+critic\s+reviews?\b",
+            text,
+        )
+
+        if count_match:
+            add_count(
+                count_match.group(1),
+                source_name,
+                85 if source_name == "meta_description" else 76,
+                text[
+                    max(0, count_match.start() - 80):
+                    count_match.end() + 100
+                ],
+            )
+
+    score_candidates.sort(
+        key=lambda item: item["confidence"],
+        reverse=True,
+    )
+
+    count_candidates.sort(
+        key=lambda item: item["confidence"],
+        reverse=True,
+    )
+
+    best_score = score_candidates[0] if score_candidates else None
+    best_count = count_candidates[0] if count_candidates else None
+
+    if best_score:
+        note = (
+            "نمره متاکریتیک از ساختار اختصاصی صفحه یا عبارت مستقیم Metascore استخراج شده است."
+        )
+    else:
+        note = "نمره متاکریتیک به‌صورت قطعی در HTML صفحه پیدا نشد."
+
+    return {
+        "metascore_100": best_score["score"] if best_score else None,
+        "critic_review_count": best_count["count"] if best_count else None,
+        "platform_found": requested_platform,
+        "confidence_note_fa": note,
+        "metascore_method": best_score["method"] if best_score else "not_found",
+        "metascore_evidence": best_score["evidence"] if best_score else "",
+        "url": page.get("url", ""),
+    }
 
     # 3. امتیازهای نوشته‌شده و برچسب‌دار در صفحه
     labelled_patterns = [
