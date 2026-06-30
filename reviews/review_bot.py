@@ -871,7 +871,7 @@ Rules:
 - evidence_en must be between 8 and 22 English words.
 - Do not use quotes longer than 22 words.
 - If there is no direct evidence for a claim, omit it.
-- technical_notes_fa must be empty unless the review explicitly discusses
+- technical_notes must be empty unless the review explicitly discusses
   performance, bugs, optimization, controls, UI, or technical problems.
 - Never use information from your own knowledge.
 
