@@ -18,7 +18,7 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
-OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.2") or "0.2")
+OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.1") or "0.1")
 
 REVIEW_MIN_SOURCES = int(os.getenv("REVIEW_MIN_SOURCES", "3") or "3")
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "30") or "30")
@@ -26,14 +26,16 @@ SOURCE_TEXT_LIMIT = int(os.getenv("REVIEW_SOURCE_TEXT_LIMIT", "18000") or "18000
 
 USER_AGENT = os.getenv(
     "USER_AGENT",
-    "Mozilla/5.0 (PoormazReviewBot/1.0; +https://poormaz.com)"
+    "Mozilla/5.0 (PoormazReviewBot/1.0; +https://poormaz.com)",
 ).strip()
 
 SESSION = requests.Session()
-SESSION.headers.update({
-    "User-Agent": USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-})
+SESSION.headers.update(
+    {
+        "User-Agent": USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+)
 
 
 def fail(message: str):
@@ -69,6 +71,7 @@ class MetaParser(HTMLParser):
         self.title_parts = []
         self.in_title = False
         self.meta = {}
+        self.meta_items = []
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
@@ -78,6 +81,8 @@ class MetaParser(HTMLParser):
             self.in_title = True
 
         if tag == "meta":
+            self.meta_items.append(attrs_dict)
+
             key = (
                 attrs_dict.get("property", "")
                 or attrs_dict.get("name", "")
@@ -85,6 +90,7 @@ class MetaParser(HTMLParser):
             ).lower().strip()
 
             content = attrs_dict.get("content", "").strip()
+
             if key and content and key not in self.meta:
                 self.meta[key] = content
 
@@ -101,8 +107,14 @@ class MetaParser(HTMLParser):
 
 class VisibleTextParser(HTMLParser):
     SKIP_TAGS = {
-        "script", "style", "noscript", "svg", "iframe",
-        "canvas", "template", "form"
+        "script",
+        "style",
+        "noscript",
+        "svg",
+        "iframe",
+        "canvas",
+        "template",
+        "form",
     }
 
     def __init__(self):
@@ -130,19 +142,11 @@ class VisibleTextParser(HTMLParser):
 def select_main_html(html: str) -> str:
     html = html or ""
 
-    article_matches = re.findall(
-        r"(?is)<article\b[^>]*>(.*?)</article>",
-        html
-    )
-
+    article_matches = re.findall(r"(?is)<article\b[^>]*>(.*?)</article>", html)
     if article_matches:
         return max(article_matches, key=len)
 
-    main_matches = re.findall(
-        r"(?is)<main\b[^>]*>(.*?)</main>",
-        html
-    )
-
+    main_matches = re.findall(r"(?is)<main\b[^>]*>(.*?)</main>", html)
     if main_matches:
         return max(main_matches, key=len)
 
@@ -157,17 +161,12 @@ def html_to_text(html: str) -> str:
     except Exception:
         pass
 
-    text = clean_text(" ".join(parser.parts))
-    return text
+    return clean_text(" ".join(parser.parts))
 
 
 def extract_page_info(url: str) -> dict:
     try:
-        response = SESSION.get(
-            url,
-            timeout=HTTP_TIMEOUT,
-            allow_redirects=True,
-        )
+        response = SESSION.get(url, timeout=HTTP_TIMEOUT, allow_redirects=True)
     except requests.RequestException as exc:
         return {
             "ok": False,
@@ -224,7 +223,10 @@ def extract_page_info(url: str) -> dict:
         "title": title,
         "description": description,
         "text": page_text[:SOURCE_TEXT_LIMIT],
+        "score_text": page_text,
         "text_chars": len(page_text),
+        "html": html,
+        "meta_items": meta_parser.meta_items,
     }
 
 
@@ -256,6 +258,7 @@ def validate_review_item(item: dict, index: int) -> list[str]:
         errors.append("platform ندارد.")
 
     metacritic_url = str(item.get("metacritic_url", "")).strip()
+
     if not metacritic_url:
         errors.append("metacritic_url ندارد.")
     elif not is_valid_url(metacritic_url):
@@ -304,18 +307,16 @@ def ask_openai_json(client: OpenAI, prompt: str) -> dict:
                         "role": "system",
                         "content": (
                             "Return exactly one valid JSON object. "
-                            "Never invent facts or scores."
+                            "Never invent facts, scores, performance claims, or quotations."
                         ),
                     },
-                    {
-                        "role": "user",
-                        "content": prompt,
-                    },
+                    {"role": "user", "content": prompt},
                 ],
             )
 
-            raw = response.choices[0].message.content or ""
-            return parse_json_response(raw)
+            return parse_json_response(
+                response.choices[0].message.content or ""
+            )
 
         except Exception as exc:
             last_error = exc
@@ -324,28 +325,13 @@ def ask_openai_json(client: OpenAI, prompt: str) -> dict:
     raise RuntimeError(f"OpenAI failed twice: {repr(last_error)}")
 
 
-def as_score_10(value) -> float | None:
-    try:
-        score = float(value)
-    except (TypeError, ValueError):
-        return None
-
-    if 0 <= score <= 10:
-        return round(score, 1)
-
-    return None
-
-
 def as_score_100(value) -> int | None:
     try:
         score = int(float(value))
     except (TypeError, ValueError):
         return None
 
-    if 0 <= score <= 100:
-        return score
-
-    return None
+    return score if 0 <= score <= 100 else None
 
 
 def short_list(value, max_items=4) -> list[str]:
@@ -356,6 +342,7 @@ def short_list(value, max_items=4) -> list[str]:
 
     for item in value:
         text = clean_text(str(item))
+
         if text and text not in result:
             result.append(text)
 
@@ -365,47 +352,365 @@ def short_list(value, max_items=4) -> list[str]:
     return result
 
 
-def analyze_metacritic(client: OpenAI, game: str, platform: str, page: dict) -> dict:
-    prompt = f"""
-You are extracting factual Metacritic data for a game review dossier.
+def _score_to_10(raw_value, raw_best=None, raw_worst=None) -> float | None:
+    try:
+        value = float(str(raw_value).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
 
-Game: {game}
-Target platform: {platform}
-Page title: {page["title"]}
-Page URL: {page["url"]}
+    try:
+        best = (
+            float(str(raw_best).replace(",", "").strip())
+            if raw_best is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        best = None
 
-Extract only information visibly supported by the provided page text.
+    try:
+        worst = (
+            float(str(raw_worst).replace(",", "").strip())
+            if raw_worst is not None
+            else 0.0
+        )
+    except (TypeError, ValueError):
+        worst = 0.0
 
-Return JSON with exactly:
-- metascore_100: integer from 0 to 100, or null
-- critic_review_count: integer, or null
-- platform_found: string, or null
-- confidence_note_fa: very short Persian note about any uncertainty
+    if best is not None and best > worst:
+        score = ((value - worst) / (best - worst)) * 10
+    elif 0 <= value <= 10:
+        score = value
+    elif 0 <= value <= 100:
+        score = value / 10
+    else:
+        return None
 
-Page text:
-{page["text"]}
-""".strip()
+    return round(score, 1) if 0 <= score <= 10 else None
 
-    raw = ask_openai_json(client, prompt)
+
+def _display_score(raw_value, raw_best=None) -> str:
+    raw = clean_text(str(raw_value))
+    best = clean_text(str(raw_best)) if raw_best is not None else ""
+
+    if not raw:
+        return ""
+
+    if best and best not in {"0", "0.0"}:
+        return f"{raw}/{best}"
+
+    try:
+        value = float(raw)
+    except ValueError:
+        return raw
+
+    return f"{raw}/10" if value <= 10 else f"{raw}/100"
+
+
+def _compact_evidence(value: str, max_len: int = 240) -> str:
+    return clean_text(value)[:max_len].rstrip()
+
+
+def _walk_json(value):
+    if isinstance(value, dict):
+        yield value
+
+        for child in value.values():
+            yield from _walk_json(child)
+
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_json(child)
+
+
+def _extract_json_ld_objects(html: str) -> list[object]:
+    objects = []
+
+    for match in re.finditer(
+        r'(?is)<script\b[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+        html or "",
+    ):
+        raw = unescape(match.group(1) or "").strip()
+
+        if not raw:
+            continue
+
+        try:
+            objects.append(json.loads(raw))
+        except json.JSONDecodeError:
+            continue
+
+    return objects
+
+
+def extract_review_score(page: dict) -> dict:
+    """
+    نمره را قطعی از خود HTML استخراج می‌کند.
+    مدل زبانی فقط نکات مثبت، منفی و جمع‌بندی را می‌نویسد.
+    """
+    candidates = []
+    html = page.get("html", "") or ""
+    visible_text = clean_text(page.get("score_text", "") or "")
+
+    def add_candidate(
+        raw_value,
+        raw_best=None,
+        raw_worst=None,
+        method="unknown",
+        confidence=0,
+        evidence="",
+    ):
+        raw_value = str(raw_value or "").strip()
+        raw_best = str(raw_best or "").strip() or None
+
+        fraction = re.fullmatch(
+            r"(\d{1,3}(?:\.\d+)?)\s*/\s*(\d{1,3}(?:\.\d+)?)",
+            raw_value,
+        )
+
+        if fraction and raw_best is None:
+            raw_value = fraction.group(1)
+            raw_best = fraction.group(2)
+
+        normalized = _score_to_10(raw_value, raw_best, raw_worst)
+
+        if normalized is None:
+            return
+
+        evidence_clean = _compact_evidence(evidence)
+        lowered = evidence_clean.lower()
+
+        blocked_words = (
+            "user score",
+            "user rating",
+            "community rating",
+            "reader rating",
+            "audience score",
+            "metascore",
+        )
+
+        if any(word in lowered for word in blocked_words):
+            return
+
+        candidates.append(
+            {
+                "original_score": _display_score(raw_value, raw_best),
+                "review_score_10": normalized,
+                "score_method": method,
+                "score_confidence": confidence,
+                "score_evidence": evidence_clean,
+            }
+        )
+
+    # 1. Structured JSON-LD
+    for obj in _extract_json_ld_objects(html):
+        for node in _walk_json(obj):
+            node_type = node.get("@type", "")
+            node_types = node_type if isinstance(node_type, list) else [node_type]
+            node_types = [str(item).lower() for item in node_types]
+
+            review_rating = node.get("reviewRating")
+
+            if isinstance(review_rating, dict):
+                add_candidate(
+                    review_rating.get("ratingValue"),
+                    review_rating.get("bestRating"),
+                    review_rating.get("worstRating"),
+                    method="jsonld_reviewRating",
+                    confidence=100,
+                    evidence=json.dumps(
+                        {
+                            "@type": node.get("@type"),
+                            "reviewRating": review_rating,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+
+            if "review" in node_types and node.get("ratingValue") is not None:
+                add_candidate(
+                    node.get("ratingValue"),
+                    node.get("bestRating"),
+                    node.get("worstRating"),
+                    method="jsonld_review_node",
+                    confidence=96,
+                    evidence=json.dumps(node, ensure_ascii=False)[:400],
+                )
+
+    # 2. Meta tags
+    for attrs in page.get("meta_items", []) or []:
+        key = (
+            attrs.get("property", "")
+            or attrs.get("name", "")
+            or attrs.get("itemprop", "")
+        ).lower()
+
+        value = attrs.get("content", "")
+
+        if not key or not value:
+            continue
+
+        if "user" in key or "community" in key:
+            continue
+
+        if any(
+            token in key
+            for token in (
+                "review:rating",
+                "ratingvalue",
+                "review_score",
+                "score",
+            )
+        ):
+            best = (
+                attrs.get("best-rating")
+                or attrs.get("bestrating")
+                or attrs.get("rating-scale")
+                or attrs.get("scale")
+            )
+
+            add_candidate(
+                value,
+                best,
+                method="meta_rating",
+                confidence=90,
+                evidence=f"{key}: {value}" + (f" / {best}" if best else ""),
+            )
+
+    # 3. امتیازهای نوشته‌شده و برچسب‌دار در صفحه
+    labelled_patterns = [
+        r"(?is)\b(?:review(?:\s+score)?|final\s+score|rating|verdict)\b.{0,80}?(\d{1,3}(?:\.\d+)?)\s*(?:/|out\s+of)\s*(\d{1,3})",
+        r"(?is)\b(?:review(?:\s+score)?|final\s+score|rating|verdict)\b.{0,45}?\b(\d{1,3}(?:\.\d+)?)\b",
+    ]
+
+    for pattern_index, pattern in enumerate(labelled_patterns):
+        for match in re.finditer(pattern, visible_text):
+            raw_value = match.group(1)
+            raw_best = match.group(2) if match.lastindex and match.lastindex >= 2 else None
+
+            evidence = visible_text[
+                max(0, match.start() - 70): match.end() + 70
+            ]
+
+            add_candidate(
+                raw_value,
+                raw_best,
+                method="visible_labelled_score",
+                confidence=86 if pattern_index == 0 else 75,
+                evidence=evidence,
+            )
+
+    # 4. امتیازهای 8/10 یا 80/100 نزدیک ابتدای نقد
+    for match in re.finditer(
+        r"(?<![\d/])(\d{1,3}(?:\.\d+)?)\s*/\s*(10|5|100)\b",
+        visible_text,
+    ):
+        context = visible_text[
+            max(0, match.start() - 120): match.end() + 120
+        ]
+
+        if match.start() >= 2800:
+            continue
+
+        context_lower = context.lower()
+
+        if not any(
+            word in context_lower
+            for word in (
+                "review",
+                "score",
+                "rating",
+                "verdict",
+                "wccftech",
+                "pc gamer",
+                "destructoid",
+                "ign",
+                "gamespot",
+            )
+        ):
+            continue
+
+        add_candidate(
+            match.group(1),
+            match.group(2),
+            method="visible_nearby_fraction",
+            confidence=70,
+            evidence=context,
+        )
+
+    if not candidates:
+        return {
+            "original_score": None,
+            "review_score_10": None,
+            "score_method": "not_found",
+            "score_confidence": 0,
+            "score_evidence": "",
+        }
+
+    candidates.sort(
+        key=lambda item: (
+            item["score_confidence"],
+            1 if "jsonld" in item["score_method"] else 0,
+        ),
+        reverse=True,
+    )
+
+    return candidates[0]
+
+
+def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
+    text = clean_text(page.get("score_text", "") or "")
+    raw = page.get("html", "") or ""
+
+    metascore = None
+
+    for haystack in (text, raw):
+        match = re.search(
+            r"(?is)\bmetascore\b.{0,100}?\b(\d{1,3})\b",
+            haystack,
+        )
+
+        if match:
+            candidate = as_score_100(match.group(1))
+
+            if candidate is not None:
+                metascore = candidate
+                break
+
+    critic_review_count = None
+
+    for haystack in (text, raw):
+        match = re.search(
+            r"(?is)\b(\d{1,5})\s+(?:critic|critics?)\s+reviews?\b",
+            haystack,
+        )
+
+        if match:
+            critic_review_count = int(match.group(1))
+            break
 
     return {
-        "metascore_100": as_score_100(raw.get("metascore_100")),
-        "critic_review_count": (
-            int(raw["critic_review_count"])
-            if str(raw.get("critic_review_count", "")).isdigit()
-            else None
+        "metascore_100": metascore,
+        "critic_review_count": critic_review_count,
+        "platform_found": requested_platform,
+        "confidence_note_fa": (
+            "نمره و تعداد نقد به‌صورت مستقیم از صفحه متاکریتیک استخراج شده‌اند."
+            if metascore is not None
+            else "نمره متاکریتیک به‌صورت قطعی در HTML صفحه پیدا نشد."
         ),
-        "platform_found": clean_text(str(raw.get("platform_found") or "")) or None,
-        "confidence_note_fa": clean_text(
-            str(raw.get("confidence_note_fa") or "")
-        ),
-        "url": page["url"],
+        "url": page.get("url", ""),
     }
 
 
-def analyze_review_source(client: OpenAI, game: str, platform: str, page: dict) -> dict:
+def analyze_review_source(
+    client: OpenAI,
+    game: str,
+    platform: str,
+    page: dict,
+) -> dict:
+    score = extract_review_score(page)
+
     prompt = f"""
-You are extracting structured information from one professional game review.
+You are extracting only evidence-based editorial themes from one professional game review.
 
 Game: {game}
 Requested platform: {platform}
@@ -413,22 +718,24 @@ Website: {page["site_name"]}
 Review title: {page["title"]}
 Review URL: {page["url"]}
 
+The score was extracted deterministically before this request:
+- original_score: {score["original_score"]}
+- review_score_10: {score["review_score_10"]}
+- score_method: {score["score_method"]}
+
 Rules:
+- Do NOT change, infer, or discuss the score.
 - Use only the supplied page text.
-- Never quote the review directly.
-- Do not infer a score from tone.
-- Set review_score_10 to null unless the review explicitly gives a score.
-- If an explicit score is out of 10, normalize it to 0-10.
-- Write all analysis fields in fluent Persian.
-- Keep every list item short and factual.
+- Do not invent details, including performance, bugs, hardware results, story specifics, or localization issues.
+- Every point must be a concise Persian paraphrase of a clear point in the review.
+- If there is no clear evidence for a field, return an empty array.
+- Never quote the review verbatim.
 
 Return JSON with exactly:
-- original_score: string or null
-- review_score_10: number from 0 to 10, or null
-- positives_fa: array of 2 to 4 short points
-- negatives_fa: array of 2 to 4 short points
-- technical_notes_fa: array of 0 to 3 short points about performance, bugs, controls, UI or optimization
-- verdict_fa: one concise Persian paragraph
+- positives_fa: array of 0 to 4 short Persian points
+- negatives_fa: array of 0 to 4 short Persian points
+- technical_notes_fa: array of 0 to 3 short Persian points, only if explicitly discussed
+- verdict_fa: one concise Persian paragraph based only on the review
 - platform_mentioned: string or null
 
 Page text:
@@ -441,11 +748,13 @@ Page text:
         "site_name": page["site_name"],
         "title": page["title"],
         "url": page["url"],
-        "original_score": clean_text(str(raw.get("original_score") or "")) or None,
-        "review_score_10": as_score_10(raw.get("review_score_10")),
+        **score,
         "positives_fa": short_list(raw.get("positives_fa")),
         "negatives_fa": short_list(raw.get("negatives_fa")),
-        "technical_notes_fa": short_list(raw.get("technical_notes_fa"), 3),
+        "technical_notes_fa": short_list(
+            raw.get("technical_notes_fa"),
+            3,
+        ),
         "verdict_fa": clean_text(str(raw.get("verdict_fa") or "")),
         "platform_mentioned": clean_text(
             str(raw.get("platform_mentioned") or "")
@@ -456,14 +765,17 @@ Page text:
 def safe_filename(value: str) -> str:
     value = re.sub(r"[^a-zA-Z0-9_-]+", "-", value or "")
     value = re.sub(r"-+", "-", value).strip("-")
+
     return value.lower() or "review-dossier"
 
 
 def save_dossier(game: str, dossier: dict) -> str:
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    filename = f"{safe_filename(game)}-dossier.json"
-    output_path = os.path.join(OUTPUT_DIR, filename)
+    output_path = os.path.join(
+        OUTPUT_DIR,
+        f"{safe_filename(game)}-dossier.json",
+    )
 
     with open(output_path, "w", encoding="utf-8") as file:
         json.dump(dossier, file, ensure_ascii=False, indent=2)
@@ -494,10 +806,7 @@ def process_review_job(client: OpenAI, item: dict):
 
         if page["ok"]:
             source_pages.append(page)
-            print(
-                f"Loaded: {page['site_name']} "
-                f"| {page['title'][:80]}"
-            )
+            print(f"Loaded: {page['site_name']} | {page['title'][:80]}")
         else:
             print(f"Skipped source: {url} | HTTP {page['status']}")
 
@@ -508,16 +817,22 @@ def process_review_job(client: OpenAI, item: dict):
         )
         return
 
-    metacritic_data = analyze_metacritic(
-        client,
-        game,
-        platform,
+    metacritic_data = extract_metacritic_data(
         metacritic_page,
+        platform,
     )
 
     source_analyses = []
 
     for page in source_pages:
+        detected = extract_review_score(page)
+
+        print(
+            f"Score scan: {page['site_name']} | "
+            f"{detected['original_score'] or 'not found'} | "
+            f"{detected['score_method']}"
+        )
+
         print(f"Analyzing with OpenAI: {page['site_name']}")
 
         source_analyses.append(
@@ -549,7 +864,8 @@ def process_review_job(client: OpenAI, item: dict):
     for source in source_analyses:
         print(
             f"- {source['site_name']}: "
-            f"{source['original_score'] or 'No visible score'}"
+            f"{source['original_score'] or 'No deterministic score found'} "
+            f"[{source['score_method']}]"
         )
 
     print(f"\nSaved: {output_path}")
@@ -559,7 +875,7 @@ def process_review_job(client: OpenAI, item: dict):
 
 
 def main():
-    print("=== Poormaz Review Bot: Dossier Builder ===")
+    print("=== Poormaz Review Bot: Verified Dossier Builder ===")
 
     if not OPENAI_API_KEY:
         fail("OPENAI_API_KEY is missing.")
@@ -577,8 +893,10 @@ def main():
 
         if errors:
             print(f"\nINVALID ITEM #{index}")
+
             for error in errors:
                 print(f"- {error}")
+
             continue
 
         process_review_job(client, item)
