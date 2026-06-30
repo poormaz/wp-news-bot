@@ -860,51 +860,6 @@ def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
 
     return candidates[0]
 
-
-def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
-    text = clean_text(page.get("score_text", "") or "")
-    raw = page.get("html", "") or ""
-
-    metascore = None
-
-    for haystack in (text, raw):
-        match = re.search(
-            r"(?is)\bmetascore\b.{0,100}?\b(\d{1,3})\b",
-            haystack,
-        )
-
-        if match:
-            candidate = as_score_100(match.group(1))
-
-            if candidate is not None:
-                metascore = candidate
-                break
-
-    critic_review_count = None
-
-    for haystack in (text, raw):
-        match = re.search(
-            r"(?is)\b(\d{1,5})\s+(?:critic|critics?)\s+reviews?\b",
-            haystack,
-        )
-
-        if match:
-            critic_review_count = int(match.group(1))
-            break
-
-    return {
-        "metascore_100": metascore,
-        "critic_review_count": critic_review_count,
-        "platform_found": requested_platform,
-        "confidence_note_fa": (
-            "نمره و تعداد نقد به‌صورت مستقیم از صفحه متاکریتیک استخراج شده‌اند."
-            if metascore is not None
-            else "نمره متاکریتیک به‌صورت قطعی در HTML صفحه پیدا نشد."
-        ),
-        "url": page.get("url", ""),
-    }
-
-
 def analyze_review_source(
     client: OpenAI,
     game: str,
