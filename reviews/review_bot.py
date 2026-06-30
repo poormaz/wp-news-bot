@@ -779,7 +779,7 @@ def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
         "metascore_evidence": best_score["evidence"] if best_score else "",
         "url": page.get("url", ""),
     }
-
+def analyze_review_source(
     client: OpenAI,
     game: str,
     platform: str,
