@@ -800,7 +800,9 @@ def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
         "metascore_evidence": best_score["evidence"] if best_score else "",
         "url": page.get("url", ""),
     }
-    def verified_points(items, source_text: str, max_items: int = 4) -> list[dict]:
+
+
+def verified_points(items, source_text: str, max_items: int = 4) -> list[dict]:
     """
     فقط نکاتی را نگه می‌دارد که شاهد انگلیسی کوتاه‌شان واقعاً
     در متن همان نقد پیدا شود.
@@ -821,7 +823,6 @@ def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
         if len(point_fa) < 3 or len(evidence_en) < 8:
             continue
 
-        # شاهد باید عیناً در متن صفحه باشد، نه برداشت یا خیال‌پردازی مدل.
         if evidence_en.casefold() not in normalized_source:
             continue
 
