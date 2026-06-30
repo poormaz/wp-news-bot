@@ -800,6 +800,43 @@ def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
         "metascore_evidence": best_score["evidence"] if best_score else "",
         "url": page.get("url", ""),
     }
+    def verified_points(items, source_text: str, max_items: int = 4) -> list[dict]:
+    """
+    فقط نکاتی را نگه می‌دارد که شاهد انگلیسی کوتاه‌شان واقعاً
+    در متن همان نقد پیدا شود.
+    """
+    if not isinstance(items, list):
+        return []
+
+    normalized_source = clean_text(source_text).casefold()
+    output = []
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+
+        point_fa = clean_text(str(item.get("point_fa") or ""))
+        evidence_en = clean_text(str(item.get("evidence_en") or ""))
+
+        if len(point_fa) < 3 or len(evidence_en) < 8:
+            continue
+
+        # شاهد باید عیناً در متن صفحه باشد، نه برداشت یا خیال‌پردازی مدل.
+        if evidence_en.casefold() not in normalized_source:
+            continue
+
+        output.append(
+            {
+                "point_fa": point_fa,
+                "evidence_en": evidence_en,
+            }
+        )
+
+        if len(output) >= max_items:
+            break
+
+    return output
+    
 def analyze_review_source(
     client: OpenAI,
     game: str,
@@ -825,16 +862,23 @@ The score was extracted deterministically before this request:
 Rules:
 - Do NOT change, infer, or discuss the score.
 - Use only the supplied page text.
-- Do not invent details, including performance, bugs, hardware results, story specifics, or localization issues.
-- Every point must be a concise Persian paraphrase of a clear point in the review.
-- If there is no clear evidence for a field, return an empty array.
-- Never quote the review verbatim.
+- Do not invent details, including performance, bugs, hardware results,
+  story specifics, localization issues, or technical results.
+- Every returned point MUST include:
+  1) point_fa: a concise Persian paraphrase
+  2) evidence_en: an exact short English quote from the supplied page text
+- evidence_en must be between 8 and 22 English words.
+- Do not use quotes longer than 22 words.
+- If there is no direct evidence for a claim, omit it.
+- technical_notes_fa must be empty unless the review explicitly discusses
+  performance, bugs, optimization, controls, UI, or technical problems.
+- Never use information from your own knowledge.
 
 Return JSON with exactly:
-- positives_fa: array of 0 to 4 short Persian points
-- negatives_fa: array of 0 to 4 short Persian points
-- technical_notes_fa: array of 0 to 3 short Persian points, only if explicitly discussed
-- verdict_fa: one concise Persian paragraph based only on the review
+- positives: array of objects with point_fa and evidence_en
+- negatives: array of objects with point_fa and evidence_en
+- technical_notes: array of objects with point_fa and evidence_en
+- verdict_fa: one concise Persian paragraph based only on supported points
 - platform_mentioned: string or null
 
 Page text:
@@ -848,10 +892,11 @@ Page text:
         "title": page["title"],
         "url": page["url"],
         **score,
-        "positives_fa": short_list(raw.get("positives_fa")),
-        "negatives_fa": short_list(raw.get("negatives_fa")),
-        "technical_notes_fa": short_list(
-            raw.get("technical_notes_fa"),
+        "positives": verified_points(raw.get("positives"), page["text"], 4),
+        "negatives": verified_points(raw.get("negatives"), page["text"], 4),
+        "technical_notes": verified_points(
+            raw.get("technical_notes"),
+            page["text"],
             3,
         ),
         "verdict_fa": clean_text(str(raw.get("verdict_fa") or "")),
