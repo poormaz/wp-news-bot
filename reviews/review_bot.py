@@ -780,64 +780,6 @@ def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
         "url": page.get("url", ""),
     }
 
-    # 4. امتیازهای 8/10 یا 80/100 نزدیک ابتدای نقد
-    for match in re.finditer(
-        r"(?<![\d/])(\d{1,3}(?:\.\d+)?)\s*/\s*(10|5|100)\b",
-        visible_text,
-    ):
-        context = visible_text[
-            max(0, match.start() - 120): match.end() + 120
-        ]
-
-        if match.start() >= 2800:
-            continue
-
-        context_lower = context.lower()
-
-        if not any(
-            word in context_lower
-            for word in (
-                "review",
-                "score",
-                "rating",
-                "verdict",
-                "wccftech",
-                "pc gamer",
-                "destructoid",
-                "ign",
-                "gamespot",
-            )
-        ):
-            continue
-
-        add_candidate(
-            match.group(1),
-            match.group(2),
-            method="visible_nearby_fraction",
-            confidence=70,
-            evidence=context,
-        )
-
-    if not candidates:
-        return {
-            "original_score": None,
-            "review_score_10": None,
-            "score_method": "not_found",
-            "score_confidence": 0,
-            "score_evidence": "",
-        }
-
-    candidates.sort(
-        key=lambda item: (
-            item["score_confidence"],
-            1 if "jsonld" in item["score_method"] else 0,
-        ),
-        reverse=True,
-    )
-
-    return candidates[0]
-
-def analyze_review_source(
     client: OpenAI,
     game: str,
     platform: str,
