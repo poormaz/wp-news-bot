@@ -674,7 +674,28 @@ def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
                 "evidence": _compact_evidence(evidence),
             }
         )
-
+        
+    # 0) ساختار متنی رایج صفحه Metacritic:
+    # Metascore -> Based on N Critic Reviews -> score
+    for match in re.finditer(
+        r"(?is)\bmetascore\b.{0,450}?"
+        r"\bbased\s+on\s+(\d{1,5})\s+critic\s+reviews?\b"
+        r".{0,180}?\b(\d{1,3})\b",
+        visible_text,
+    ):
+        add_count(
+            match.group(1),
+            "metacritic_visible_summary",
+            99,
+            match.group(0),
+        )
+        add_score(
+            match.group(2),
+            "metacritic_visible_summary",
+            99,
+            match.group(0),
+        )
+        
     # 1) JSON / Next.js data مخصوص خلاصه‌ی امتیاز منتقدها
     summary_pattern = re.compile(
         r'(?is)"(?:criticScoreSummary|metascoreSummary)"\s*:\s*\{'
