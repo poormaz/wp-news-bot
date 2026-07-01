@@ -84,9 +84,28 @@ CAT_REVIEWS = int(os.getenv("CAT_REVIEWS", "0").strip() or "0")
 WP_CATEGORY_ID_DEFAULT = int(os.getenv("WP_CATEGORY_ID", "0").strip() or "0")
 
 # WordPress taxonomy (native tags + more reliable category routing)
-AUTO_TAGS_ENABLED = os.getenv("AUTO_TAGS_ENABLED", "1").strip() == "1"
-AUTO_TAGS_CREATE_MISSING = os.getenv("AUTO_TAGS_CREATE_MISSING", "1").strip() == "1"
-AUTO_TAGS_MAX = max(0, min(5, int(os.getenv("AUTO_TAGS_MAX", "3").strip() or "3")))
+AUTO_TAGS_ENABLED = (
+    os.getenv("WP_TAGS_ENABLED")
+    or os.getenv("AUTO_TAGS_ENABLED")
+    or "1"
+).strip() == "1"
+
+AUTO_TAGS_CREATE_MISSING = (
+    os.getenv("AUTO_TAGS_CREATE_MISSING")
+    or "1"
+).strip() == "1"
+
+AUTO_TAGS_MAX = max(
+    0,
+    min(
+        5,
+        int(
+            os.getenv("WP_TAGS_MAX")
+            or os.getenv("AUTO_TAGS_MAX")
+            or "3"
+        )
+    )
+)
 
 # RankMath updater (optional)
 RANKMATH_UPDATER_URL = os.getenv("RANKMATH_UPDATER_URL", "").strip()
