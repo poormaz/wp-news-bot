@@ -1744,31 +1744,32 @@ def html_to_gutenberg_blocks(fragment_html: str) -> str:
 
 
 def gutenberg_image_block(image_url: str, alt_text: str = "", media_id: int | None = None) -> str:
-    """
-    Embed the uploaded file as WordPress' full-size rendition.
-
-    The previous version marked the block as ``size-large``. That makes Gutenberg
-    request WordPress' generated "large" sub-size on the front end even when the
-    uploaded source itself is high-resolution.
-    """
     image_url = (image_url or "").strip()
     if not image_url:
         return ""
 
     url_attr = html_lib.escape(image_url, quote=True)
     alt_attr = html_lib.escape(clean_text(alt_text), quote=True)
-    if media_id:
-        attrs = json.dumps({"id": int(media_id), "sizeSlug": "full", "linkDestination": "none"}, ensure_ascii=False)
-        image_class = f"wp-image-{int(media_id)}"
-    else:
-        attrs = json.dumps({"sizeSlug": "full", "linkDestination": "none"}, ensure_ascii=False)
-        image_class = ""
 
+    attrs_data = {
+        "sizeSlug": "full",
+        "linkDestination": "none",
+        "width": "100%",
+    }
+
+    image_class = ""
+    if media_id:
+        attrs_data["id"] = int(media_id)
+        image_class = f"wp-image-{int(media_id)}"
+
+    attrs = json.dumps(attrs_data, ensure_ascii=False)
     class_attr = f' class="{image_class}"' if image_class else ""
+
     return (
         f"<!-- wp:image {attrs} -->\n"
-        '<figure class="wp-block-image size-full">'
-        f'<img src="{url_attr}" alt="{alt_attr}"{class_attr}/>'
+        '<figure class="wp-block-image size-full is-resized">'
+        f'<img src="{url_attr}" alt="{alt_attr}"{class_attr} '
+        'style="width:100%;height:auto;"/>'
         "</figure>\n<!-- /wp:image -->"
     )
 
