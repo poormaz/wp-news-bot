@@ -1,0 +1,23 @@
+{
+  "cache_version": "source_evidence_cache_v1",
+  "created_at_utc": "2026-07-01T18:20:48+00:00",
+  "game": "Crimson Desert",
+  "platform": "PC",
+  "requested_url": "https://wccftech.com/review/crimson-desert-review-blissfully-lost-in-pywell",
+  "final_url": "https://wccftech.com/review/crimson-desert-review-blissfully-lost-in-pywell",
+  "source_text_sha256": "41878ecc3a9c331b7cac6efa4895529f06e7a83a17c9ac93e3c2fae513bee777",
+  "analysis": {
+    "site_name": "Wccftech",
+    "title": "Crimson Desert Review - Blissfully Lost in Pywel",
+    "url": "https://wccftech.com/review/crimson-desert-review-blissfully-lost-in-pywell/",
+    "original_score": "9.0/10",
+    "review_score_10": 9.0,
+    "score_method": "wccftech_header_score",
+    "score_confidence": 98,
+    "score_evidence": "Gaming 9.0 Crimson Desert Review – Blissfully Lost in Pywel Francesco De Meo • Mar 27, 2026 at 07:36am EDT Comments Game Info Crim",
+    "positives": [],
+    "negatives": [],
+    "technical_notes": [],
+    "platform_mentioned": "PC"
+  }
+}

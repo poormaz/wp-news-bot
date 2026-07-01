@@ -1,0 +1,32 @@
+{
+  "cache_version": "source_evidence_cache_v1",
+  "created_at_utc": "2026-07-01T18:20:42+00:00",
+  "game": "Crimson Desert",
+  "platform": "PC",
+  "requested_url": "https://www.pcgamer.com/games/action/crimson-desert-review",
+  "final_url": "https://www.pcgamer.com/games/action/crimson-desert-review",
+  "source_text_sha256": "296e9ba879a55a4b4997dcdc056c9d7dc92f7f4767420bc6a7aa23b59aa27d73",
+  "analysis": {
+    "site_name": "PC Gamer",
+    "title": "Crimson Desert review: The most fascinating, frustratingly obtuse game ever",
+    "url": "https://www.pcgamer.com/games/action/crimson-desert-review/",
+    "original_score": "80/100",
+    "review_score_10": 8.0,
+    "score_method": "jsonld_reviewRating",
+    "score_confidence": 100,
+    "score_evidence": "{\"@type\": \"Review\", \"reviewRating\": {\"@context\": \"https://schema.org\", \"@type\": \"Rating\", \"ratingValue\": \"80\", \"worstRating\": \"0\", \"bestRating\": \"100\"}}",
+    "positives": [
+      {
+        "point_fa": "بازی Crimson Desert تجربه‌ای جذاب و شگفت‌انگیز است.",
+        "evidence_en": "Crimson Desert is a fascinating journey, even when the destination isn't all that."
+      },
+      {
+        "point_fa": "بازی شامل تنوع زیادی از سیستم‌ها و مکانیک‌ها است.",
+        "evidence_en": "It's stuffed to the brim with just about every mechanic and idea that has ever existed."
+      }
+    ],
+    "negatives": [],
+    "technical_notes": [],
+    "platform_mentioned": "PC"
+  }
+}
