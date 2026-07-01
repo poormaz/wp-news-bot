@@ -83,6 +83,11 @@ jobs:
           CAT_HARDWARE: "19"
           CAT_REVIEWS: "3"
 
+          # Auto Tag
+          AUTO_TAGS_ENABLED: "1"
+          AUTO_TAGS_CREATE_MISSING: "1"
+          AUTO_TAGS_MAX: "5"
+
           # Posting
           WP_POST_STATUS: publish
           MAX_POSTS_PER_RUN: "1"
