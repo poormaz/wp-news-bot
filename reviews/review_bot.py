@@ -452,6 +452,24 @@ def extract_review_score(page: dict) -> dict:
     html = page.get("html", "") or ""
     visible_text = clean_text(page.get("score_text", "") or "")
 
+        # امتیاز هدر نقدهای Wccftech، مثل: Gaming 9.0
+    host = (urlparse(page.get("url", "")).hostname or "").lower()
+
+    if host.endswith("wccftech.com"):
+        header_match = re.search(
+            r"(?is)\bGaming\s+(\d(?:\.\d+)?)\b.{0,250}?\bReview\b",
+            visible_text[:2000],
+        )
+
+        if header_match:
+            add_candidate(
+                header_match.group(1),
+                "10",
+                method="wccftech_header_score",
+                confidence=98,
+                evidence=header_match.group(0),
+            )
+            
     def add_candidate(
         raw_value,
         raw_best=None,
