@@ -3,6 +3,8 @@ import re
 import sys
 import json
 import yaml
+import hashlib
+from datetime import datetime, timezone
 import requests
 from html import unescape
 from html.parser import HTMLParser
@@ -15,6 +17,19 @@ load_dotenv()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 QUEUE_FILE = os.path.join(BASE_DIR, "reviews_queue.yaml")
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
+EVIDENCE_CACHE_DIR = os.path.join(BASE_DIR, "cache", "evidence")
+EVIDENCE_CACHE_VERSION = "source_evidence_cache_v1"
+
+
+def env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name, "1" if default else "0").strip().casefold()
+    return value in {"1", "true", "yes", "on"}
+
+
+# شواهد تأییدشده‌ی هر منبع بعد از اولین تحلیل ذخیره می‌شوند.
+# Refresh فقط با تنظیم صریح انجام می‌شود، نه به‌خاطر نوسان مدل.
+REVIEW_EVIDENCE_CACHE_ENABLED = env_flag("REVIEW_EVIDENCE_CACHE", True)
+REVIEW_REFRESH_EVIDENCE = env_flag("REVIEW_REFRESH_EVIDENCE", False)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
@@ -64,6 +79,170 @@ SESSION.headers.update(
     }
 )
 
+
+
+def canonical_cache_url(url: str) -> str:
+    """URLهای یکسان با slash یا پارامترهای رهگیری متفاوت را یکی می‌کند."""
+    parsed = urlparse((url or "").strip())
+    scheme = (parsed.scheme or "https").lower()
+    host = (parsed.netloc or "").lower()
+    path = re.sub(r"/+", "/", parsed.path or "/")
+
+    if path != "/":
+        path = path.rstrip("/")
+
+    # لینک‌های نقد در صف query کاربردی ندارند؛ UTM و مشابه آن نباید cache جدا بسازند.
+    return f"{scheme}://{host}{path}"
+
+
+def _cache_key(game: str, platform: str, review_url: str) -> str:
+    payload = "|".join(
+        [
+            EVIDENCE_CACHE_VERSION,
+            clean_text(game).casefold(),
+            clean_text(platform).casefold(),
+            canonical_cache_url(review_url),
+        ]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def evidence_cache_path(game: str, platform: str, review_url: str) -> str:
+    return os.path.join(EVIDENCE_CACHE_DIR, f"{_cache_key(game, platform, review_url)}.json")
+
+
+def _json_copy(value):
+    return json.loads(json.dumps(value, ensure_ascii=False))
+
+
+def load_evidence_cache(game: str, platform: str, review_url: str) -> tuple[dict | None, dict]:
+    """فقط cache هم‌نسخه و هم‌URL را برمی‌گرداند؛ داده‌ی قدیمی یا بی‌ربط رد می‌شود."""
+    path = evidence_cache_path(game, platform, review_url)
+    info = {"path": path, "status": "miss", "created_at_utc": ""}
+
+    if not REVIEW_EVIDENCE_CACHE_ENABLED:
+        info["status"] = "disabled"
+        return None, info
+
+    if not os.path.exists(path):
+        return None, info
+
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            cached = json.load(file)
+    except (OSError, json.JSONDecodeError) as exc:
+        info["status"] = "invalid"
+        info["reason"] = repr(exc)
+        return None, info
+
+    expected_url = canonical_cache_url(review_url)
+
+    if (
+        cached.get("cache_version") != EVIDENCE_CACHE_VERSION
+        or clean_text(str(cached.get("game") or "")).casefold()
+        != clean_text(game).casefold()
+        or clean_text(str(cached.get("platform") or "")).casefold()
+        != clean_text(platform).casefold()
+        or canonical_cache_url(str(cached.get("requested_url") or "")) != expected_url
+        or not isinstance(cached.get("analysis"), dict)
+    ):
+        info["status"] = "invalid"
+        return None, info
+
+    analysis = _json_copy(cached["analysis"])
+    required = {"site_name", "title", "url", "positives", "negatives", "technical_notes"}
+
+    if not required.issubset(analysis):
+        info["status"] = "invalid"
+        return None, info
+
+    for key in ("positives", "negatives", "technical_notes"):
+        if not isinstance(analysis.get(key), list):
+            info["status"] = "invalid"
+            return None, info
+
+    info.update(
+        {
+            "status": "hit",
+            "created_at_utc": clean_text(str(cached.get("created_at_utc") or "")),
+            "source_text_sha256": clean_text(str(cached.get("source_text_sha256") or "")),
+        }
+    )
+    return analysis, info
+
+
+def save_evidence_cache(
+    game: str,
+    platform: str,
+    requested_url: str,
+    page: dict,
+    analysis: dict,
+) -> dict:
+    """فقط نتیجه‌ی نهاییِ تأییدشده را ذخیره می‌کند، نه HTML کامل نقد را."""
+    path = evidence_cache_path(game, platform, requested_url)
+    os.makedirs(EVIDENCE_CACHE_DIR, exist_ok=True)
+
+    payload = {
+        "cache_version": EVIDENCE_CACHE_VERSION,
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "game": clean_text(game),
+        "platform": clean_text(platform),
+        "requested_url": canonical_cache_url(requested_url),
+        "final_url": canonical_cache_url(str(page.get("url") or requested_url)),
+        "source_text_sha256": hashlib.sha256(
+            clean_text(str(page.get("text") or "")).encode("utf-8")
+        ).hexdigest(),
+        "analysis": _json_copy(analysis),
+    }
+
+    temp_path = f"{path}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as file:
+        json.dump(payload, file, ensure_ascii=False, indent=2)
+    os.replace(temp_path, path)
+
+    return {
+        "status": "saved",
+        "path": path,
+        "created_at_utc": payload["created_at_utc"],
+        "source_text_sha256": payload["source_text_sha256"],
+    }
+
+
+def item_refresh_requested(item: dict) -> bool:
+    """Refresh سراسری با ENV یا فقط برای یک بازی با YAML فعال می‌شود."""
+    if REVIEW_REFRESH_EVIDENCE:
+        return True
+
+    value = item.get("refresh_evidence", item.get("force_refresh_evidence", False))
+
+    if isinstance(value, bool):
+        return value
+
+    return str(value).strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def attach_cache_metadata(analysis: dict, info: dict) -> dict:
+    output = _json_copy(analysis)
+    output["evidence_cache"] = {
+        "status": info.get("status", "miss"),
+        "created_at_utc": info.get("created_at_utc", ""),
+        "source_text_sha256": info.get("source_text_sha256", ""),
+    }
+    return output
+
+
+def run_evidence_cache_regression_checks():
+    assert canonical_cache_url(
+        "HTTPS://WWW.Example.COM/review/game/?utm_source=test"
+    ) == "https://www.example.com/review/game"
+    assert canonical_cache_url(
+        "https://www.example.com/review/game/"
+    ) == "https://www.example.com/review/game"
+    assert item_refresh_requested({"refresh_evidence": True}) or REVIEW_REFRESH_EVIDENCE
+    assert not (
+        item_refresh_requested({"refresh_evidence": "false"})
+        and not REVIEW_REFRESH_EVIDENCE
+    )
 
 def fail(message: str):
     print(f"ERROR: {message}")
@@ -2187,7 +2366,7 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
     ])
 
     return {
-        "status": "preview_only_template_grounded_v7",
+        "status": "preview_only_template_grounded_v9",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
@@ -2245,9 +2424,17 @@ def save_dossier(game: str, dossier: dict) -> str:
 def process_review_job(client: OpenAI, item: dict):
     game = str(item["game"]).strip()
     platform = str(item["platform"]).strip()
+    refresh_evidence = item_refresh_requested(item)
 
     print("\n" + "=" * 72)
     print(f"ANALYZING: {game} | {platform}")
+
+    if refresh_evidence:
+        print("Evidence cache: REFRESH forced for this job")
+    elif REVIEW_EVIDENCE_CACHE_ENABLED:
+        print("Evidence cache: enabled")
+    else:
+        print("Evidence cache: disabled")
 
     metacritic_page = extract_page_info(item["metacritic_url"])
 
@@ -2258,24 +2445,6 @@ def process_review_job(client: OpenAI, item: dict):
         )
         return
 
-    source_pages = []
-
-    for url in item["review_urls"]:
-        page = extract_page_info(url)
-
-        if page["ok"]:
-            source_pages.append(page)
-            print(f"Loaded: {page['site_name']} | {page['title'][:80]}")
-        else:
-            print(f"Skipped source: {url} | HTTP {page['status']}")
-
-    if len(source_pages) < REVIEW_MIN_SOURCES:
-        print(
-            f"SKIP: only {len(source_pages)} usable review sources. "
-            f"Need at least {REVIEW_MIN_SOURCES}."
-        )
-        return
-
     metacritic_data = extract_metacritic_data(
         metacritic_page,
         platform,
@@ -2283,7 +2452,44 @@ def process_review_job(client: OpenAI, item: dict):
 
     source_analyses = []
 
-    for page in source_pages:
+    for url in item["review_urls"]:
+        requested_url = str(url).strip()
+
+        cached_analysis = None
+        cache_info = {"status": "miss"}
+
+        if not refresh_evidence:
+            cached_analysis, cache_info = load_evidence_cache(
+                game,
+                platform,
+                requested_url,
+            )
+
+        if cached_analysis is not None:
+            source_analyses.append(
+                attach_cache_metadata(cached_analysis, cache_info)
+            )
+            print(
+                f"Evidence cache: HIT | {cached_analysis.get('site_name', 'Unknown Source')} "
+                f"| OpenAI skipped"
+            )
+            continue
+
+        if refresh_evidence:
+            print(f"Evidence cache: REFRESH | {requested_url}")
+        elif cache_info.get("status") not in {"miss", "disabled"}:
+            print(
+                f"Evidence cache: {cache_info.get('status', 'miss').upper()} "
+                f"| {requested_url}"
+            )
+
+        page = extract_page_info(requested_url)
+
+        if not page["ok"]:
+            print(f"Skipped source: {requested_url} | HTTP {page['status']}")
+            continue
+
+        print(f"Loaded: {page['site_name']} | {page['title'][:80]}")
         detected = extract_review_score(page)
 
         print(
@@ -2291,17 +2497,35 @@ def process_review_job(client: OpenAI, item: dict):
             f"{detected['original_score'] or 'not found'} | "
             f"{detected['score_method']}"
         )
-
         print(f"Analyzing with OpenAI: {page['site_name']}")
 
-        source_analyses.append(
-            analyze_review_source(
-                client,
+        analysis = analyze_review_source(
+            client,
+            game,
+            platform,
+            page,
+        )
+
+        if REVIEW_EVIDENCE_CACHE_ENABLED:
+            cache_info = save_evidence_cache(
                 game,
                 platform,
+                requested_url,
                 page,
+                analysis,
             )
+            print(f"Evidence cache: SAVED | {analysis['site_name']}")
+        else:
+            cache_info = {"status": "disabled"}
+
+        source_analyses.append(attach_cache_metadata(analysis, cache_info))
+
+    if len(source_analyses) < REVIEW_MIN_SOURCES:
+        print(
+            f"SKIP: only {len(source_analyses)} usable review sources. "
+            f"Need at least {REVIEW_MIN_SOURCES}."
         )
+        return
 
     dossier = {
         "game": game,
@@ -2309,6 +2533,15 @@ def process_review_job(client: OpenAI, item: dict):
         "release_date": str(item.get("release_date") or ""),
         "metacritic": metacritic_data,
         "review_sources": source_analyses,
+        "evidence_cache": {
+            "enabled": REVIEW_EVIDENCE_CACHE_ENABLED,
+            "refresh_requested": refresh_evidence,
+            "version": EVIDENCE_CACHE_VERSION,
+            "policy_fa": (
+                "شواهد تأییدشده‌ی منابع پس از اولین تحلیل ذخیره می‌شوند و "
+                "فقط با refresh صریح دوباره از مدل استخراج خواهند شد."
+            ),
+        },
         "status": "analysis_only",
         "wordpress_post_created": False,
     }
@@ -2337,10 +2570,12 @@ def process_review_job(client: OpenAI, item: dict):
     print(f"Review count: {metacritic_data['critic_review_count']}")
 
     for source in source_analyses:
+        cache_status = (source.get("evidence_cache", {}) or {}).get("status", "")
+        cache_suffix = f" | cache: {cache_status}" if cache_status else ""
         print(
             f"- {source['site_name']}: "
             f"{source['original_score'] or 'No deterministic score found'} "
-            f"[{source['score_method']}]"
+            f"[{source['score_method']}]{cache_suffix}"
         )
 
     assessment = dossier.get("poormaz_assessment", {})
@@ -2373,6 +2608,8 @@ def main():
     print("=== Poormaz Review Bot: Verified Dossier Builder ===")
     run_rule_based_regression_checks()
     print("Rule-based regression checks: passed")
+    run_evidence_cache_regression_checks()
+    print("Evidence cache regression checks: passed")
 
     if not OPENAI_API_KEY:
         fail("OPENAI_API_KEY is missing.")
