@@ -834,8 +834,8 @@ def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
 
 def verified_points(items, source_text: str, max_items: int = 4) -> list[dict]:
     """
-    فقط نکاتی را نگه می‌دارد که شاهد انگلیسی کوتاه‌شان واقعاً
-    در متن همان نقد پیدا شود.
+    فقط نکاتی را نگه می‌دارد که شاهد انگلیسی‌شان واقعاً در متن نقد باشد
+    و طول شاهد هم برای تأیید یک ادعا کافی باشد.
     """
     if not isinstance(items, list):
         return []
@@ -853,6 +853,13 @@ def verified_points(items, source_text: str, max_items: int = 4) -> list[dict]:
         if len(point_fa) < 3 or len(evidence_en) < 8:
             continue
 
+        word_count = len(re.findall(r"\b[\w'-]+\b", evidence_en))
+
+        # شاهدهای خیلی کوتاه یا بیش‌ازحد بلند قابل استناد نیستند.
+        if word_count < 8 or word_count > 22:
+            continue
+
+        # شاهد باید دقیقاً از متن همان نقد آمده باشد.
         if evidence_en.casefold() not in normalized_source:
             continue
 
