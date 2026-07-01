@@ -2,6 +2,15 @@ name: Run Review Bot
 
 on:
   workflow_dispatch:
+    inputs:
+      refresh_evidence:
+        description: 'Re-extract and replace cached evidence for this run'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
 
 jobs:
   review-bot:
@@ -10,16 +19,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run review bot queue check
+      - name: Run review bot
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
@@ -28,4 +39,20 @@ jobs:
           REVIEW_POST_STATUS: draft
           REVIEW_MIN_SOURCES: 3
           REVIEW_SCORE_MAX_DELTA: 0.4
+          REVIEW_EVIDENCE_CACHE: '1'
+          REVIEW_REFRESH_EVIDENCE: ${{ inputs.refresh_evidence }}
         run: python reviews/review_bot.py
+
+      - name: Commit updated evidence cache
+        shell: bash
+        run: |
+          if [[ -z "$(git status --porcelain -- reviews/cache/evidence)" ]]; then
+            echo "Evidence cache unchanged."
+            exit 0
+          fi
+
+          git config user.name "Poormaz Review Bot"
+          git config user.email "actions@github.com"
+          git add -f reviews/cache/evidence
+          git commit -m "chore(reviews): update verified evidence cache"
+          git push
