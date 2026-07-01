@@ -9,6 +9,7 @@ import traceback
 import html as html_lib
 import logging
 import sys
+import struct
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from html.parser import HTMLParser
@@ -288,6 +289,7 @@ def process_manual_links_if_any() -> bool:
             print("Picked category type:", gen.get("content_type"), "| categories:", categories, "| entity tags:", gen.get("entity_tags", []))
 
             featured_media_id = None
+            image_width = 0
             image_html = ""
             image_credit_html = ""
             used_image_kind = "none"
@@ -317,6 +319,7 @@ def process_manual_links_if_any() -> bool:
                         fn = f"manual-{url_hash(url)[:12]}.{ext}"
                         media = wp_upload_media(img_bytes, fn, mime_type=mime, alt_text=gen["title_fa"])
                         featured_media_id = int(media["id"])
+                        image_width = int(((media.get("media_details") or {}).get("width") or 0))
                         wp_src = (media.get("source_url") or "").strip()
                         if wp_src:
                             image_html = f'<p><img src="{wp_src}" alt="{html_lib.escape(gen["title_fa"], quote=True)}"></p>'
@@ -336,6 +339,7 @@ def process_manual_links_if_any() -> bool:
                 image_credit_html=image_credit_html,
                 featured_media_id=featured_media_id,
                 image_alt=gen["title_fa"],
+                image_width=image_width,
             )
             post_id = create_wp_post(
                 title=gen["title_fa"],
@@ -1397,17 +1401,13 @@ def push_rankmath_meta_wp(post_id: int, meta_title: str, meta_desc: str, focus_k
 # =======================
 # Images
 # =======================
-# Image extraction deliberately ranks candidates instead of blindly trusting the
-# first `og:image`. Some publishers (including Wccftech on some responses) expose
-# a site logo or an interstitial image there, which is disastrous as a featured image.
+# Important: only use a page-declared social image or the first image that occurs
+# after the article headline. Never rank every image on a publisher page: nav cards,
+# promos and “you may like” modules are not article artwork.
 _IMAGE_URL_REJECT_WORDS = {
     "logo", "favicon", "gravatar", "placeholder", "site-icon",
     "blank.", "blank-", "advert", "advertisement",
     "site-branding", "site-logo", "wccftech-website",
-}
-_IMAGE_ATTR_REJECT_WORDS = {
-    "logo", "branding", "avatar", "author", "advert", "banner-ad", "menu-icon",
-    "site-header", "site-logo", "favicon", "placeholder",
 }
 
 
@@ -1419,33 +1419,36 @@ def _clean_image_candidate(value: str, base_url: str) -> str:
 
 
 def _largest_srcset_url(value: str) -> str:
-    """Pick the last/largest candidate in a normal srcset string."""
-    choices = []
+    """Return the highest-width candidate in a srcset, regardless of its order."""
+    best_url = ""
+    best_width = -1
     for piece in (value or "").split(","):
-        item = piece.strip()
-        if not item:
+        parts = piece.strip().split()
+        if not parts:
             continue
-        bits = item.split()
-        if bits:
-            choices.append(bits[0])
-    return choices[-1] if choices else ""
+        url = parts[0]
+        descriptor = parts[1] if len(parts) > 1 else ""
+        match = re.match(r"(\d+)w$", descriptor)
+        width = int(match.group(1)) if match else 0
+        if width >= best_width:
+            best_url = url
+            best_width = width
+    return best_url
 
 
-def _as_int(value: str) -> int:
-    match = re.search(r"\d+", str(value or ""))
-    return int(match.group(0)) if match else 0
-
-
-class _ImageMetaParser(HTMLParser):
+class _ArticleImageParser(HTMLParser):
+    """Collect only social metadata plus images located after the article <h1>."""
     def __init__(self):
         super().__init__()
-        self.candidates: list[dict] = []
+        self.og_image = ""
+        self.twitter_image = ""
+        self._in_h1 = 0
+        self.after_h1 = False
+        self.after_h1_candidates: list[str] = []
 
-    def _add(self, url: str, kind: str, attrs: dict | None = None):
-        url = (url or "").strip()
-        if not url:
-            return
-        self.candidates.append({"url": url, "kind": kind, "attrs": attrs or {}})
+    def _add_after_h1(self, value: str):
+        if self.after_h1 and value:
+            self.after_h1_candidates.append(value.strip())
 
     def handle_starttag(self, tag: str, attrs):
         tag = tag.lower()
@@ -1454,133 +1457,83 @@ class _ImageMetaParser(HTMLParser):
         if tag == "meta":
             prop = attr.get("property", "").lower()
             name = attr.get("name", "").lower()
-            itemprop = attr.get("itemprop", "").lower()
             content = attr.get("content", "").strip()
-            if content:
-                if prop in {"og:image", "og:image:url", "og:image:secure_url"}:
-                    self._add(content, "og", attr)
-                elif name in {"twitter:image", "twitter:image:src"}:
-                    self._add(content, "twitter", attr)
-                elif itemprop in {"image", "thumbnailurl"}:
-                    self._add(content, "schema-meta", attr)
+            if prop in {"og:image", "og:image:url", "og:image:secure_url"} and content and not self.og_image:
+                self.og_image = content
+            elif name in {"twitter:image", "twitter:image:src"} and content and not self.twitter_image:
+                self.twitter_image = content
+            return
 
-        elif tag == "link":
-            rel = attr.get("rel", "").lower()
-            href = attr.get("href", "").strip()
-            if href and ("image_src" in rel or "thumbnail" in rel):
-                self._add(href, "link-image", attr)
+        if tag == "h1":
+            self._in_h1 += 1
+            return
 
-        elif tag in {"img", "source"}:
-            # Lazy-loading is common. The old parser only saw `src`, which is often
-            # a tiny placeholder or the publication's own logo.
-            for key in ("data-src", "data-lazy-src", "data-original", "data-flickity-lazyload", "src"):
-                if attr.get(key):
-                    self._add(attr[key], "img", attr)
-            for key in ("data-srcset", "srcset"):
-                if attr.get(key):
-                    selected = _largest_srcset_url(attr[key])
-                    if selected:
-                        self._add(selected, "img-srcset", attr)
+        if not self.after_h1 or tag not in {"img", "source"}:
+            return
 
+        # Use the largest declared candidate. If the site has no srcset, use lazy
+        # attributes before src, because src is often a temporary tiny placeholder.
+        for key in ("data-srcset", "srcset"):
+            selected = _largest_srcset_url(attr.get(key, ""))
+            if selected:
+                self._add_after_h1(selected)
 
-def _image_candidate_score(candidate: dict, base_url: str) -> tuple[int, str]:
-    raw = str(candidate.get("url") or "")
-    url = _clean_image_candidate(raw, base_url)
-    if not url:
-        return -10000, "empty-or-inline"
+        for key in ("data-src", "data-lazy-src", "data-original", "data-flickity-lazyload", "src"):
+            if attr.get(key):
+                self._add_after_h1(attr[key])
 
-    parts = urlsplit(url)
-    path = (parts.path or "").lower()
-    attrs = candidate.get("attrs") or {}
-    attr_text = " ".join(
-        str(attrs.get(key, ""))
-        for key in ("class", "id", "alt", "title", "aria-label")
-    ).lower()
-
-    if any(word in path for word in _IMAGE_URL_REJECT_WORDS):
-        return -10000, "rejected-url"
-    if any(word in attr_text for word in _IMAGE_ATTR_REJECT_WORDS):
-        return -10000, "rejected-element"
-
-    width = _as_int(attrs.get("width", ""))
-    height = _as_int(attrs.get("height", ""))
-    # Explicitly tiny images are never a sensible article hero.
-    if (width and width < 420) or (height and height < 180):
-        return -10000, f"too-small-{width}x{height}"
-
-    kind = str(candidate.get("kind") or "")
-    score_by_kind = {
-        "og": 115,
-        "twitter": 110,
-        "schema-meta": 105,
-        "link-image": 100,
-        "img-srcset": 85,
-        "img": 75,
-    }
-    score = score_by_kind.get(kind, 50)
-
-    # Boost likely article/featured elements. This makes a real lazy-loaded hero
-    # beat an otherwise generic social thumbnail when both are present.
-    if any(word in attr_text for word in ("featured", "hero", "post-thumbnail", "wp-post-image", "article-image", "entry-image")):
-        score += 45
-    if width >= 1000 or height >= 600:
-        score += 12
-    elif width >= 700 or height >= 400:
-        score += 6
-
-    return score, "ok"
-
-
-def extract_image_url_from_html(html: str, base_url: str) -> str | None:
-    """Return the best plausible article image, never a logo/placeholder."""
-    raw_html = html or ""
-    parser = _ImageMetaParser()
-    try:
-        parser.feed(raw_html)
-    except Exception:
-        logger.debug("HTML parser could not fully parse image metadata", exc_info=True)
-
-    # JSON-LD commonly contains the canonical article image even where OpenGraph
-    # is populated with a generic site asset.
-    for match in re.finditer(
-        r'(?is)"(?:image|thumbnailUrl)"\s*:\s*(?:"([^"\\]+)"|\[\s*"([^"\\]+)")',
-        raw_html,
-    ):
-        parser._add(match.group(1) or match.group(2) or "", "jsonld", {})
-
-    best_url = ""
-    best_score = -10000
-    debug_rows = []
-    seen = set()
-    for candidate in parser.candidates:
-        url = _clean_image_candidate(str(candidate.get("url") or ""), base_url)
-        if not url or url in seen:
-            continue
-        seen.add(url)
-        score, reason = _image_candidate_score(candidate, base_url)
-        debug_rows.append((score, reason, str(candidate.get("kind") or ""), url))
-        if score > best_score:
-            best_score = score
-            best_url = url
-
-    debug_rows.sort(key=lambda row: row[0], reverse=True)
-    for score, reason, kind, url in debug_rows[:5]:
-        print(f"IMAGE CANDIDATE score={score} kind={kind} reason={reason}: {url}")
-
-    # Do not fall back to the first <img>. Uploading a publisher logo is worse than
-    # skipping the source image and allowing the configured Pexels fallback.
-    if best_score < 0:
-        print("No valid source article image found after logo/placeholder filtering.")
-        return None
-    return best_url or None
+    def handle_endtag(self, tag: str):
+        if tag.lower() == "h1" and self._in_h1:
+            self._in_h1 -= 1
+            if self._in_h1 == 0:
+                self.after_h1 = True
 
 
 def is_valid_source_image_url(image_url: str | None) -> bool:
-    """Extra safety for callers that receive a URL from a cached/older code path."""
     if not image_url:
         return False
     path = (urlsplit(image_url).path or "").lower()
     return not any(word in path for word in _IMAGE_URL_REJECT_WORDS)
+
+
+def extract_image_url_from_html(html: str, base_url: str) -> str | None:
+    """
+    Deterministic and safe:
+    1) declared Open Graph image,
+    2) declared Twitter image,
+    3) the first valid image after <h1>.
+    It deliberately never scans the whole page for the “best-looking” image.
+    """
+    parser = _ArticleImageParser()
+    try:
+        parser.feed(html or "")
+    except Exception:
+        logger.debug("HTML parser could not fully parse page image metadata", exc_info=True)
+
+    for source_kind, raw_url in (
+        ("og:image", parser.og_image),
+        ("twitter:image", parser.twitter_image),
+    ):
+        image_url = _clean_image_candidate(raw_url, base_url)
+        if image_url and is_valid_source_image_url(image_url):
+            print(f"IMAGE PICKED ({source_kind}):", image_url)
+            return image_url
+        if raw_url:
+            print(f"IMAGE REJECTED ({source_kind}):", raw_url)
+
+    seen = set()
+    for raw_url in parser.after_h1_candidates:
+        image_url = _clean_image_candidate(raw_url, base_url)
+        if not image_url or image_url in seen:
+            continue
+        seen.add(image_url)
+        if is_valid_source_image_url(image_url):
+            print("IMAGE PICKED (first-after-h1):", image_url)
+            return image_url
+
+    print("No safe article image found. Skipping source image rather than using an unrelated page thumbnail.")
+    return None
+
 
 def extract_published_at_from_html(html: str) -> str:
     html = html or ""
@@ -1589,43 +1542,102 @@ def extract_published_at_from_html(html: str) -> str:
         r'<meta[^>]+property=["\']og:published_time["\'][^>]+content=["\']([^"\']+)["\']',
         r'<meta[^>]+name=["\']pubdate["\'][^>]+content=["\']([^"\']+)["\']',
         r'<time[^>]+datetime=["\']([^"\']+)["\']',
-        r'"datePublished"\\s*:\\s*"([^"]+)"',  # JSON-LD
+        r'"datePublished"\\s*:\\s*"([^"]+)"',
     ]
     for pat in patterns:
-        m = re.search(pat, html, re.I)
-        if m:
-            return (m.group(1) or "").strip()
+        match = re.search(pat, html, re.I)
+        if match:
+            return (match.group(1) or "").strip()
     return ""
+
 
 def fetch_source_published_at(source_url: str) -> str:
     headers = {"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
-    r = http_request("GET", source_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
-    if r.status_code >= 400:
+    response = http_request("GET", source_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
+    if response.status_code >= 400:
         return ""
-    return extract_published_at_from_html(r.text)
+    return extract_published_at_from_html(response.text)
+
 
 def fetch_source_image_url(source_url: str) -> str | None:
     headers = {"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"}
-    r = http_request("GET", source_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
-    print("SOURCE HTML:", r.status_code, "| bytes:", len(r.content))
-    if r.status_code >= 400:
-        print("SOURCE HTML fetch failed:", r.status_code)
+    response = http_request("GET", source_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
+    print("SOURCE HTML:", response.status_code, "| bytes:", len(response.content))
+    if response.status_code >= 400:
+        print("SOURCE HTML fetch failed:", response.status_code)
         return None
-    return extract_image_url_from_html(r.text, source_url)
+    return extract_image_url_from_html(response.text, source_url)
+
+
+def _image_dimensions(image_bytes: bytes) -> tuple[int, int]:
+    """Read PNG/JPEG/WebP dimensions without adding a Pillow dependency."""
+    data = image_bytes or b""
+    if len(data) >= 24 and data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return struct.unpack(">II", data[16:24])
+
+    if len(data) >= 10 and data[:2] == b"\xff\xd8":
+        index = 2
+        while index + 9 < len(data):
+            if data[index] != 0xFF:
+                index += 1
+                continue
+            while index < len(data) and data[index] == 0xFF:
+                index += 1
+            if index >= len(data):
+                break
+            marker = data[index]
+            index += 1
+            if marker in (0xD8, 0xD9):
+                continue
+            if index + 2 > len(data):
+                break
+            length = struct.unpack(">H", data[index:index + 2])[0]
+            if length < 2 or index + length > len(data):
+                break
+            if marker in {
+                0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
+                0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF,
+            } and index + 7 <= len(data):
+                height, width = struct.unpack(">HH", data[index + 3:index + 7])
+                return width, height
+            index += length
+
+    if len(data) >= 30 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        chunk = data[12:16]
+        if chunk == b"VP8X" and len(data) >= 30:
+            width = 1 + int.from_bytes(data[24:27], "little")
+            height = 1 + int.from_bytes(data[27:30], "little")
+            return width, height
+        if chunk == b"VP8L" and len(data) >= 25 and data[20] == 0x2F:
+            bits = int.from_bytes(data[21:25], "little")
+            width = (bits & 0x3FFF) + 1
+            height = ((bits >> 14) & 0x3FFF) + 1
+            return width, height
+
+    return 0, 0
+
 
 def download_image_bytes(img_url: str) -> tuple[bytes | None, str | None, str | None]:
     headers = {"User-Agent": USER_AGENT, "Accept": "image/avif,image/webp,image/*,*/*;q=0.8"}
-    r = http_request("GET", img_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
-    if r.status_code >= 400 or not r.content:
-        print("IMG download failed:", r.status_code, img_url)
+    response = http_request("GET", img_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
+    if response.status_code >= 400 or not response.content:
+        print("IMG download failed:", response.status_code, img_url)
         return None, None, None
-    content_type = (r.headers.get("Content-Type") or "").lower()
+
+    content_type = (response.headers.get("Content-Type") or "").lower()
     if content_type and not content_type.startswith("image/"):
         print("IMG rejected: response is not an image:", content_type, img_url)
         return None, None, None
-    ext, mime = guess_ext_and_mime(content_type)
-    return r.content, ext, mime
 
+    width, height = _image_dimensions(response.content)
+    print(f"IMG DOWNLOADED: {len(response.content)} bytes | {width or '?'}x{height or '?'} | {img_url}")
+    # A 300px page thumbnail must never be stretched into a hero image.
+    if width and height and (width < 700 or height < 350):
+        print(f"IMG rejected as too small for article display: {width}x{height}")
+        return None, None, None
+
+    ext, mime = guess_ext_and_mime(content_type)
+    return response.content, ext, mime
 
 def pexels_search_photo(query: str) -> dict | None:
     if not (PEXELS_ENABLED and PEXELS_API_KEY):
@@ -1743,7 +1755,12 @@ def html_to_gutenberg_blocks(fragment_html: str) -> str:
     return "\n\n".join(blocks).strip()
 
 
-def gutenberg_image_block(image_url: str, alt_text: str = "", media_id: int | None = None) -> str:
+def gutenberg_image_block(
+    image_url: str,
+    alt_text: str = "",
+    media_id: int | None = None,
+    media_width: int = 0,
+) -> str:
     image_url = (image_url or "").strip()
     if not image_url:
         return ""
@@ -1751,28 +1768,35 @@ def gutenberg_image_block(image_url: str, alt_text: str = "", media_id: int | No
     url_attr = html_lib.escape(image_url, quote=True)
     alt_attr = html_lib.escape(clean_text(alt_text), quote=True)
 
-    attrs_data = {
-        "sizeSlug": "full",
-        "linkDestination": "none",
-        "width": "100%",
-    }
-
+    attrs_data = {"sizeSlug": "full", "linkDestination": "none"}
     image_class = ""
     if media_id:
         attrs_data["id"] = int(media_id)
         image_class = f"wp-image-{int(media_id)}"
 
+    # Never enlarge an image beyond its uploaded/native width. This avoids turning a
+    # small source thumbnail into a blurry banner while still allowing a proper hero
+    # image to fill the article column naturally.
+    try:
+        native_width = int(media_width or 0)
+    except (TypeError, ValueError):
+        native_width = 0
+    display_width = min(native_width, 1400) if native_width > 0 else 0
+
     attrs = json.dumps(attrs_data, ensure_ascii=False)
     class_attr = f' class="{image_class}"' if image_class else ""
+    image_style = (
+        f' style="width:{display_width}px; max-width:100%; height:auto;"'
+        if display_width
+        else ' style="max-width:100%; height:auto;"'
+    )
 
     return (
         f"<!-- wp:image {attrs} -->\n"
-        '<figure class="wp-block-image size-full is-resized">'
-        f'<img src="{url_attr}" alt="{alt_attr}"{class_attr} '
-        'style="width:100%;height:auto;"/>'
+        '<figure class="wp-block-image size-full" style="margin-left:auto;margin-right:auto;">'
+        f'<img src="{url_attr}" alt="{alt_attr}"{class_attr}{image_style}/>'
         "</figure>\n<!-- /wp:image -->"
     )
-
 
 def image_src_from_html(image_html: str) -> str:
     match = re.search(r"(?is)<img\b[^>]*\bsrc=[\"']([^\"']+)[\"']", image_html or "")
@@ -1788,13 +1812,19 @@ def build_wp_content(
     image_credit_html: str = "",
     featured_media_id: int | None = None,
     image_alt: str = "",
+    image_width: int = 0,
 ) -> str:
     nice_date = format_rss_date(published_at) if (published_at or "").strip() else ""
 
     blocks: list[str] = []
     image_url = image_src_from_html(image_html)
     if image_url and EMBED_IMAGE_IN_CONTENT:
-        image_block = gutenberg_image_block(image_url, alt_text=image_alt, media_id=featured_media_id)
+        image_block = gutenberg_image_block(
+            image_url,
+            alt_text=image_alt,
+            media_id=featured_media_id,
+            media_width=image_width,
+        )
         if image_block:
             blocks.append(image_block)
 
@@ -1815,12 +1845,13 @@ def build_wp_content(
         f'<a href="{source_url_safe}" target="_blank" rel="nofollow noopener noreferrer">{source_name_safe}</a>'
         f"<br/><strong>زمان انتشار منبع:</strong> {date_safe}"
     )
-    # Keep the divider in its own valid block. Do not put an <hr> inside
-    # footer_inner: footer_inner is wrapped in a Paragraph block below, and that
-    # creates invalid Gutenberg markup plus a second, unwanted divider.
+    # Standalone Gutenberg HTML block. The divider is intentionally not placed
+    # inside the source paragraph, so Gutenberg will not mark the footer invalid.
     blocks.append(
         "<!-- wp:html -->\n"
-        '<div aria-hidden="true" style="width:120px; margin:32px auto 22px; border-top:2px solid #888;"></div>\n'
+        '<div style="text-align:center; margin:32px 0 22px;">'
+        '<hr style="width:120px; margin:0 auto; border:0; border-top:2px solid #888;">'
+        "</div>\n"
         "<!-- /wp:html -->"
     )
     blocks.append(gutenberg_paragraph_block(footer_inner))
@@ -1923,6 +1954,7 @@ def run():
                 )
 
                 featured_media_id = None
+                image_width = 0
                 image_html = ""
                 image_credit_html = ""
                 used_image_kind = "none"
@@ -1952,6 +1984,7 @@ def run():
                             filename = f"news-{item_id[:12]}.{ext}"
                             media = wp_upload_media(img_bytes, filename, mime_type=mime, alt_text=gen["title_fa"])
                             featured_media_id = int(media["id"])
+                            image_width = int(((media.get("media_details") or {}).get("width") or 0))
                             wp_src = (media.get("source_url") or "").strip()
                             if wp_src:
                                 image_html = f'<p><img src="{wp_src}" alt="{html_lib.escape(gen["title_fa"], quote=True)}"/></p>'
@@ -1970,6 +2003,7 @@ def run():
                     image_credit_html=image_credit_html,
                     featured_media_id=featured_media_id,
                     image_alt=gen["title_fa"],
+                    image_width=image_width,
                 )
 
                 post_id = create_wp_post(
