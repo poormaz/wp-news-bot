@@ -879,7 +879,6 @@ Return JSON with exactly:
 - positives: array of objects with point_fa and evidence_en
 - negatives: array of objects with point_fa and evidence_en
 - technical_notes: array of objects with point_fa and evidence_en
-- verdict_fa: one concise Persian paragraph based only on supported points
 - platform_mentioned: string or null
 
 Page text:
@@ -900,7 +899,6 @@ Page text:
             page["text"],
             3,
         ),
-        "verdict_fa": clean_text(str(raw.get("verdict_fa") or "")),
         "platform_mentioned": clean_text(
             str(raw.get("platform_mentioned") or "")
         ) or None,
