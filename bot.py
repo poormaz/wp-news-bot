@@ -131,7 +131,11 @@ def get_http_session():
             connect=4,
             backoff_factor=0.7,
             status_forcelist=(429, 500, 502, 503, 504),
-            allowed_methods=frozenset(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]),
+            # Only auto-retry safe/idempotent methods. Retrying POST automatically is
+            # dangerous here: create_wp_post / wp_upload_media / tag-creation are POSTs,
+            # and a retried POST after a dropped response can create a duplicate post,
+            # duplicate media upload, or duplicate tag on WordPress.
+            allowed_methods=frozenset(["GET", "HEAD", "OPTIONS"]),
             raise_on_status=False,
         )
         adapter = HTTPAdapter(max_retries=retry)
@@ -401,7 +405,7 @@ def format_rss_date(published_at: str) -> str:
         3: "مارس",
         4: "اپریل",
         5: "می",
-        6: "جوئن",
+        6: "ژوئن",
         7: "جولای",
         8: "آگوست",
         9: "سپتامبر",
@@ -436,7 +440,13 @@ def format_rss_date(published_at: str) -> str:
 
 
 
-def guess_ext_and_mime(content_type: str | None) -> tuple[str, str]:
+def guess_ext_and_mime(content_type: str | None) -> tuple[str | None, str | None]:
+    """
+    Only formats we can both dimension-check (_image_dimensions) and safely upload
+    are accepted. Anything else (e.g. AVIF/HEIC) returns (None, None) instead of
+    silently defaulting to jpg, which would upload a mislabeled file and skip the
+    minimum-size check entirely (since undetected dimensions read as 0x0).
+    """
     ct = (content_type or "").lower()
     if "png" in ct:
         return "png", "image/png"
@@ -444,7 +454,9 @@ def guess_ext_and_mime(content_type: str | None) -> tuple[str, str]:
         return "webp", "image/webp"
     if "gif" in ct:
         return "gif", "image/gif"
-    return "jpg", "image/jpeg"
+    if "jpeg" in ct or "jpg" in ct:
+        return "jpg", "image/jpeg"
+    return None, None
 
 
 STOPWORDS = {
@@ -1542,7 +1554,7 @@ def extract_published_at_from_html(html: str) -> str:
         r'<meta[^>]+property=["\']og:published_time["\'][^>]+content=["\']([^"\']+)["\']',
         r'<meta[^>]+name=["\']pubdate["\'][^>]+content=["\']([^"\']+)["\']',
         r'<time[^>]+datetime=["\']([^"\']+)["\']',
-        r'"datePublished"\\s*:\\s*"([^"]+)"',
+        r'"datePublished"\s*:\s*"([^"]+)"',
     ]
     for pat in patterns:
         match = re.search(pat, html, re.I)
@@ -1618,7 +1630,9 @@ def _image_dimensions(image_bytes: bytes) -> tuple[int, int]:
 
 
 def download_image_bytes(img_url: str) -> tuple[bytes | None, str | None, str | None]:
-    headers = {"User-Agent": USER_AGENT, "Accept": "image/avif,image/webp,image/*,*/*;q=0.8"}
+    # Only request formats we can actually dimension-check and upload safely.
+    # (AVIF/HEIC deliberately omitted: see guess_ext_and_mime.)
+    headers = {"User-Agent": USER_AGENT, "Accept": "image/webp,image/png,image/jpeg,image/gif;q=0.9,*/*;q=0.5"}
     response = http_request("GET", img_url, headers=headers, timeout=HTTP_TIMEOUT, allow_redirects=True)
     if response.status_code >= 400 or not response.content:
         print("IMG download failed:", response.status_code, img_url)
@@ -1629,6 +1643,11 @@ def download_image_bytes(img_url: str) -> tuple[bytes | None, str | None, str | 
         print("IMG rejected: response is not an image:", content_type, img_url)
         return None, None, None
 
+    ext, mime = guess_ext_and_mime(content_type)
+    if not ext:
+        print("IMG rejected: unsupported/undetectable image format:", content_type, img_url)
+        return None, None, None
+
     width, height = _image_dimensions(response.content)
     print(f"IMG DOWNLOADED: {len(response.content)} bytes | {width or '?'}x{height or '?'} | {img_url}")
     # A 300px page thumbnail must never be stretched into a hero image.
@@ -1636,7 +1655,6 @@ def download_image_bytes(img_url: str) -> tuple[bytes | None, str | None, str | 
         print(f"IMG rejected as too small for article display: {width}x{height}")
         return None, None, None
 
-    ext, mime = guess_ext_and_mime(content_type)
     return response.content, ext, mime
 
 def pexels_search_photo(query: str) -> dict | None:
