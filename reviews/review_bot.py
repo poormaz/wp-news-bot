@@ -41,6 +41,25 @@ EVIDENCE_CACHE_MIN_VERIFIED_POINTS = min(
     6,
 )
 
+# بازخوانی انتخابی نباید یک منبع کم‌محتوا را تا ابد به مدل برگرداند.
+# بعد از چند تلاش ناموفق، منبع برای بازبینی دستی علامت می‌خورد.
+EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES = int(
+    os.getenv("EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES", "2") or "2"
+)
+EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES = min(
+    max(EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES, 1),
+    5,
+)
+
+# ادغام cache قبلی و استخراج تازه نباید به رشد بی‌نهایت فهرست شواهد منجر شود.
+EVIDENCE_CACHE_MAX_MERGED_POINTS_PER_SECTION = int(
+    os.getenv("EVIDENCE_CACHE_MAX_MERGED_POINTS_PER_SECTION", "6") or "6"
+)
+EVIDENCE_CACHE_MAX_MERGED_POINTS_PER_SECTION = min(
+    max(EVIDENCE_CACHE_MAX_MERGED_POINTS_PER_SECTION, 2),
+    10,
+)
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0") or "0")
@@ -125,6 +144,148 @@ def _json_copy(value):
     return json.loads(json.dumps(value, ensure_ascii=False))
 
 
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _evidence_key(point: dict) -> str:
+    """کلید پایدار برای حذف نقل‌قول تکراری، حتی با ترجمه‌ی فارسی متفاوت."""
+    quote = clean_text(str((point or {}).get("evidence_en") or "")).casefold()
+    if quote:
+        return quote
+    return clean_text(str((point or {}).get("point_fa") or "")).casefold()
+
+
+def _dedupe_points(points: list, limit: int) -> list[dict]:
+    output = []
+    seen = set()
+
+    for point in points or []:
+        if not isinstance(point, dict):
+            continue
+        point_fa = clean_text(str(point.get("point_fa") or ""))
+        evidence_en = clean_text(str(point.get("evidence_en") or ""))
+        if not point_fa or not evidence_en:
+            continue
+
+        key = _evidence_key({"point_fa": point_fa, "evidence_en": evidence_en})
+        if not key or key in seen:
+            continue
+
+        seen.add(key)
+        output.append({"point_fa": point_fa, "evidence_en": evidence_en})
+        if len(output) >= limit:
+            break
+
+    return output
+
+
+def merge_cached_and_candidate_analysis(cached_analysis: dict, candidate_analysis: dict) -> dict:
+    """شواهد معتبر قدیمی را نگه می‌دارد و فقط یافته‌های تازه را به آن اضافه می‌کند."""
+    merged = _json_copy(candidate_analysis or {})
+
+    # برای متادیتای پایدار، داده‌ی تازه در اولویت است اما هیچ فیلد ضروری گم نمی‌شود.
+    for key in (
+        "site_name", "title", "url", "original_score", "review_score_10",
+        "score_method", "score_confidence", "score_evidence", "platform_mentioned",
+    ):
+        if not clean_text(str(merged.get(key) or "")):
+            merged[key] = _json_copy((cached_analysis or {}).get(key))
+
+    for section in ("positives", "negatives", "technical_notes"):
+        old_points = (cached_analysis or {}).get(section, []) or []
+        new_points = (candidate_analysis or {}).get(section, []) or []
+        # ترتیب عمدی است: cache تأییدشده اول می‌ماند، استخراج تازه فقط پوشش را کامل می‌کند.
+        merged[section] = _dedupe_points(
+            list(old_points) + list(new_points),
+            EVIDENCE_CACHE_MAX_MERGED_POINTS_PER_SECTION,
+        )
+
+    return merged
+
+
+def _refresh_meta(
+    quality_audit: dict,
+    stored_meta: dict | None = None,
+    *,
+    legacy_low_quality_cache: bool = False,
+) -> dict:
+    """وضعیت تلاش‌های ناموفق را مستقل از خود شواهد نگه می‌دارد."""
+    meta = _json_copy(stored_meta) if isinstance(stored_meta, dict) else {}
+
+    try:
+        failed_attempts = int(meta.get("failed_selective_refreshes", 0) or 0)
+    except (TypeError, ValueError):
+        failed_attempts = 0
+
+    # Cacheهای V10 که low-quality هستند، یک کوشش ناموفق داشته‌اند ولی هنوز متادیتا نداشتند.
+    if legacy_low_quality_cache and quality_audit.get("status") == "needs_review":
+        failed_attempts = max(failed_attempts, 1)
+
+    failed_attempts = min(max(failed_attempts, 0), 99)
+    manual_review = bool(meta.get("manual_review", False))
+
+    if quality_audit.get("status") != "needs_review":
+        manual_review = False
+        failed_attempts = 0
+
+    if (
+        quality_audit.get("status") == "needs_review"
+        and failed_attempts >= EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES
+    ):
+        manual_review = True
+
+    return {
+        "failed_selective_refreshes": failed_attempts,
+        "max_failed_selective_refreshes": EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES,
+        "manual_review": manual_review,
+        "manual_review_reason_fa": (
+            "پس از چند بازخوانی ناموفق، این منبع برای بازبینی دستی نگه داشته شده است"
+            if manual_review
+            else ""
+        ),
+        "last_selective_refresh_at_utc": clean_text(
+            str(meta.get("last_selective_refresh_at_utc") or "")
+        ),
+        "last_selective_refresh_outcome": clean_text(
+            str(meta.get("last_selective_refresh_outcome") or "")
+        ),
+    }
+
+
+def _after_selective_refresh(
+    previous_meta: dict | None,
+    quality_audit: dict,
+    *,
+    improved: bool,
+) -> dict:
+    meta = _refresh_meta(quality_audit, previous_meta)
+    meta["last_selective_refresh_at_utc"] = _utc_now_iso()
+
+    if improved:
+        meta["failed_selective_refreshes"] = 0
+        meta["manual_review"] = False
+        meta["manual_review_reason_fa"] = ""
+        meta["last_selective_refresh_outcome"] = "merged_improved"
+        return meta
+
+    meta["failed_selective_refreshes"] = int(
+        meta.get("failed_selective_refreshes", 0) or 0
+    ) + 1
+    meta["last_selective_refresh_outcome"] = "retained_no_new_coverage"
+
+    if (
+        quality_audit.get("status") == "needs_review"
+        and meta["failed_selective_refreshes"] >= EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES
+    ):
+        meta["manual_review"] = True
+        meta["manual_review_reason_fa"] = (
+            "بازخوانی تازه پوشش شواهد را بهتر نکرد؛ ادامه‌ی تلاش خودکار متوقف شد"
+        )
+
+    return meta
+
+
 def load_evidence_cache(game: str, platform: str, review_url: str) -> tuple[dict | None, dict]:
     """فقط cache هم‌نسخه و هم‌URL را برمی‌گرداند؛ داده‌ی قدیمی یا بی‌ربط رد می‌شود."""
     path = evidence_cache_path(game, platform, review_url)
@@ -177,6 +338,11 @@ def load_evidence_cache(game: str, platform: str, review_url: str) -> tuple[dict
         if isinstance(stored_quality, dict)
         else evidence_quality_audit(analysis)
     )
+    refresh_meta = _refresh_meta(
+        quality_audit,
+        cached.get("refresh_meta"),
+        legacy_low_quality_cache=("refresh_meta" not in cached),
+    )
 
     info.update(
         {
@@ -184,10 +350,10 @@ def load_evidence_cache(game: str, platform: str, review_url: str) -> tuple[dict
             "created_at_utc": clean_text(str(cached.get("created_at_utc") or "")),
             "source_text_sha256": clean_text(str(cached.get("source_text_sha256") or "")),
             "quality_audit": quality_audit,
+            "refresh_meta": refresh_meta,
         }
     )
     return analysis, info
-
 
 def save_evidence_cache(
     game: str,
@@ -195,16 +361,18 @@ def save_evidence_cache(
     requested_url: str,
     page: dict,
     analysis: dict,
+    refresh_meta: dict | None = None,
 ) -> dict:
     """فقط نتیجه‌ی نهاییِ تأییدشده را ذخیره می‌کند، نه HTML کامل نقد را."""
     path = evidence_cache_path(game, platform, requested_url)
     os.makedirs(EVIDENCE_CACHE_DIR, exist_ok=True)
 
     quality_audit = evidence_quality_audit(analysis)
+    refresh_meta = _refresh_meta(quality_audit, refresh_meta)
 
     payload = {
         "cache_version": EVIDENCE_CACHE_VERSION,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": _utc_now_iso(),
         "game": clean_text(game),
         "platform": clean_text(platform),
         "requested_url": canonical_cache_url(requested_url),
@@ -214,6 +382,7 @@ def save_evidence_cache(
         ).hexdigest(),
         "analysis": _json_copy(analysis),
         "quality_audit": quality_audit,
+        "refresh_meta": refresh_meta,
     }
 
     temp_path = f"{path}.tmp"
@@ -227,8 +396,8 @@ def save_evidence_cache(
         "created_at_utc": payload["created_at_utc"],
         "source_text_sha256": payload["source_text_sha256"],
         "quality_audit": quality_audit,
+        "refresh_meta": refresh_meta,
     }
-
 
 def item_refresh_requested(item: dict) -> bool:
     """Refresh سراسری با ENV یا فقط برای یک بازی با YAML فعال می‌شود."""
@@ -276,8 +445,18 @@ def _quality_reason_fa(total_points: int, categorized_points: int) -> list[str]:
     return reasons
 
 
+def _coverage_label_fa(category_count: int) -> str:
+    if category_count <= 0:
+        return "بدون پوشش دسته‌ای"
+    if category_count == 1:
+        return "پوشش محدود"
+    if category_count == 2:
+        return "پوشش چندبخشی"
+    return "پوشش گسترده"
+
+
 def evidence_quality_audit(analysis: dict) -> dict:
-    """کیفیت cache را فقط با شمارش شواهد تأییدشده و قابل‌دسته‌بندی می‌سنجد."""
+    """کیفیت cache را با تعداد، قابل‌دسته‌بندی بودن و پوشش دسته‌های شواهد می‌سنجد."""
     section_counts = {}
     categorized_points = 0
     categories = set()
@@ -299,17 +478,21 @@ def evidence_quality_audit(analysis: dict) -> dict:
                 categories.add(category)
 
     total_points = sum(section_counts.values())
+    category_keys = sorted(categories)
     reasons = _quality_reason_fa(total_points, categorized_points)
     status = "acceptable" if not reasons else "needs_review"
 
-    # عدد داخلی فقط برای مقایسه‌ی نسخه‌های یک منبع است، نه نمایش به کاربر.
-    quality_rank = total_points * 100 + categorized_points * 10 + len(categories)
+    # این عدد داخلی فقط برای مقایسه‌ی نسخه‌های همان منبع است.
+    # پوشش دسته‌ای وزن مستقل دارد تا «چند جمله‌ی هم‌موضوع» کیفیت تلقی نشود.
+    quality_rank = total_points * 100 + categorized_points * 20 + len(categories) * 25
 
     return {
         "status": status,
         "verified_point_count": total_points,
         "categorized_point_count": categorized_points,
         "category_count": len(categories),
+        "category_keys": category_keys,
+        "coverage_fa": _coverage_label_fa(len(categories)),
         "section_counts": section_counts,
         "reasons_fa": reasons,
         "quality_rank": quality_rank,
@@ -322,26 +505,31 @@ def evidence_quality_audit(analysis: dict) -> dict:
 
 
 def should_replace_cached_analysis(cached_analysis: dict, candidate_analysis: dict) -> bool:
-    """Refresh انتخابی فقط وقتی cache را عوض می‌کند که خروجی جدید واقعاً قوی‌تر باشد."""
+    """استخراج تازه فقط وقتی کاربرد دارد که پس از ادغام، پوشش واقعاً بهتر شود."""
     old_audit = evidence_quality_audit(cached_analysis)
-    new_audit = evidence_quality_audit(candidate_analysis)
-    return new_audit["quality_rank"] > old_audit["quality_rank"]
-
+    merged_audit = evidence_quality_audit(
+        merge_cached_and_candidate_analysis(cached_analysis, candidate_analysis)
+    )
+    return merged_audit["quality_rank"] > old_audit["quality_rank"]
 
 def attach_cache_metadata(analysis: dict, info: dict) -> dict:
     output = _json_copy(analysis)
     quality = info.get("quality_audit")
     if not isinstance(quality, dict):
         quality = evidence_quality_audit(output)
+    refresh_meta = _refresh_meta(
+        quality,
+        info.get("refresh_meta"),
+    )
 
     output["evidence_cache"] = {
         "status": info.get("status", "miss"),
         "created_at_utc": info.get("created_at_utc", ""),
         "source_text_sha256": info.get("source_text_sha256", ""),
         "quality_audit": quality,
+        "refresh_meta": refresh_meta,
     }
     return output
-
 
 def run_evidence_cache_regression_checks():
     assert canonical_cache_url(
@@ -356,28 +544,51 @@ def run_evidence_cache_regression_checks():
         and not REVIEW_REFRESH_EVIDENCE
     )
 
-    empty = {
-        "positives": [], "negatives": [], "technical_notes": []
-    }
+    empty = {"positives": [], "negatives": [], "technical_notes": []}
     thin = {
-        "positives": [{"evidence_en": "Many puzzles are almost impossible to solve without help."}],
+        "positives": [{"point_fa": "پازل‌ها دشوارند.", "evidence_en": "Many puzzles are almost impossible to solve without help."}],
         "negatives": [],
         "technical_notes": [],
     }
     acceptable = {
         "positives": [
-            {"evidence_en": "The game is stuffed with a huge variety of mechanics and systems."},
-            {"evidence_en": "The horse controls very well across the open world."},
+            {"point_fa": "مکانیک‌ها متنوع‌اند.", "evidence_en": "The game is stuffed with a huge variety of mechanics and systems."},
+            {"point_fa": "کنترل اسب خوب است.", "evidence_en": "The horse controls very well across the open world."},
         ],
         "negatives": [],
+        "technical_notes": [],
+    }
+    supplemental = {
+        "positives": [
+            {"point_fa": "مکانیک‌ها متنوع‌اند.", "evidence_en": "The game is stuffed with a huge variety of mechanics and systems."},
+        ],
+        "negatives": [
+            {"point_fa": "باس‌فایت‌ها سخت‌اند.", "evidence_en": "Boss battles can be brutal and occasionally feel a little unfair."},
+        ],
         "technical_notes": [],
     }
 
     assert evidence_quality_audit(empty)["status"] == "needs_review"
     assert evidence_quality_audit(thin)["status"] == "needs_review"
     assert evidence_quality_audit(acceptable)["status"] == "acceptable"
+    merged = merge_cached_and_candidate_analysis(acceptable, supplemental)
+    assert len(merged["positives"]) == 2, "نقل‌قول تکراری نباید دوباره اضافه شود"
+    assert len(merged["negatives"]) == 1, "شاهد تازه باید به cache افزوده شود"
     assert should_replace_cached_analysis(thin, acceptable)
-    assert not should_replace_cached_analysis(acceptable, thin)
+    assert not should_replace_cached_analysis(acceptable, {"positives": [], "negatives": [], "technical_notes": []})
+
+    legacy_meta = _refresh_meta(
+        evidence_quality_audit(thin),
+        None,
+        legacy_low_quality_cache=True,
+    )
+    assert legacy_meta["failed_selective_refreshes"] == 1
+    capped_meta = _after_selective_refresh(
+        legacy_meta,
+        evidence_quality_audit(thin),
+        improved=False,
+    )
+    assert capped_meta["manual_review"], "منبع کم‌کیفیت نباید بی‌نهایت refresh شود"
 
 def fail(message: str):
     print(f"ERROR: {message}")
@@ -2504,7 +2715,7 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
     ])
 
     return {
-        "status": "preview_only_template_grounded_v10",
+        "status": "preview_only_template_grounded_v11",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
@@ -2567,20 +2778,32 @@ def _source_quality_rows(review_sources: list[dict]) -> list[dict]:
         audit = cache_meta.get("quality_audit")
         if not isinstance(audit, dict):
             audit = evidence_quality_audit(source)
+        refresh_meta = _refresh_meta(audit, cache_meta.get("refresh_meta"))
 
+        status = "manual_review" if refresh_meta.get("manual_review") else audit.get("status", "needs_review")
         rows.append(
             {
                 "site_name": clean_text(str(source.get("site_name") or "Unknown Source")),
-                "status": audit.get("status", "needs_review"),
+                "status": status,
                 "verified_point_count": audit.get("verified_point_count", 0),
                 "categorized_point_count": audit.get("categorized_point_count", 0),
+                "category_count": audit.get("category_count", 0),
+                "coverage_fa": audit.get("coverage_fa", "بدون پوشش دسته‌ای"),
                 "reasons_fa": audit.get("reasons_fa", []),
-                "action_fa": audit.get("action_fa", ""),
+                "action_fa": (
+                    refresh_meta.get("manual_review_reason_fa")
+                    if refresh_meta.get("manual_review")
+                    else audit.get("action_fa", "")
+                ),
+                "failed_selective_refreshes": refresh_meta.get("failed_selective_refreshes", 0),
+                "max_failed_selective_refreshes": refresh_meta.get(
+                    "max_failed_selective_refreshes",
+                    EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES,
+                ),
             }
         )
 
     return rows
-
 
 def process_review_job(client: OpenAI, item: dict):
     game = str(item["game"]).strip()
@@ -2631,10 +2854,17 @@ def process_review_job(client: OpenAI, item: dict):
             )
 
         cached_audit = (cache_info.get("quality_audit") or {})
+        cached_refresh_meta = _refresh_meta(
+            cached_audit,
+            cache_info.get("refresh_meta"),
+        )
+        cache_info["refresh_meta"] = cached_refresh_meta
+        source_is_manual_review = bool(cached_refresh_meta.get("manual_review"))
         refresh_this_source = (
             cached_analysis is not None
             and refresh_incomplete_evidence
             and cached_audit.get("status") == "needs_review"
+            and not source_is_manual_review
         )
 
         if cached_analysis is not None and not refresh_this_source:
@@ -2644,12 +2874,19 @@ def process_review_job(client: OpenAI, item: dict):
             quality_status = (output.get("evidence_cache", {}) or {}).get(
                 "quality_audit", {}
             ).get("status", "unknown")
-            quality_note = f" | quality: {quality_status}"
-            print(
-                f"Evidence cache: HIT | "
-                f"{cached_analysis.get('site_name', 'Unknown Source')} "
-                f"| OpenAI skipped{quality_note}"
-            )
+            if source_is_manual_review:
+                print(
+                    f"Evidence cache: MANUAL REVIEW | "
+                    f"{cached_analysis.get('site_name', 'Unknown Source')} "
+                    f"| OpenAI skipped | retries exhausted"
+                )
+            else:
+                quality_note = f" | quality: {quality_status}"
+                print(
+                    f"Evidence cache: HIT | "
+                    f"{cached_analysis.get('site_name', 'Unknown Source')} "
+                    f"| OpenAI skipped{quality_note}"
+                )
             continue
 
         if refresh_all_evidence:
@@ -2696,21 +2933,64 @@ def process_review_job(client: OpenAI, item: dict):
             recovery_mode=refresh_this_source,
         )
 
-        # در refresh انتخابی، cache قبلی فقط با داده‌ی واقعاً قوی‌تر جایگزین می‌شود.
+        # Refresh انتخابی یک جایگزینی کور نیست: شواهد تازه با cache قبلی ادغام می‌شوند.
+        # فقط اگر پوشش بهتر شود، نسخه‌ی ادغام‌شده جایگزین می‌گردد.
+        refresh_meta_for_save = None
         if refresh_this_source and cached_analysis is not None:
-            if not should_replace_cached_analysis(cached_analysis, candidate_analysis):
-                cache_info["status"] = "retained_not_stronger"
-                cache_info["quality_audit"] = evidence_quality_audit(cached_analysis)
+            merged_analysis = merge_cached_and_candidate_analysis(
+                cached_analysis,
+                candidate_analysis,
+            )
+            old_audit = evidence_quality_audit(cached_analysis)
+            merged_audit = evidence_quality_audit(merged_analysis)
+            improved = merged_audit["quality_rank"] > old_audit["quality_rank"]
+            refresh_meta_for_save = _after_selective_refresh(
+                cached_refresh_meta,
+                merged_audit if improved else old_audit,
+                improved=improved,
+            )
+
+            if not improved:
+                # حتی وقتی استخراج تازه مفید نبود، شمارش تلاش‌ها و manual-review باید پایدار شود.
+                if REVIEW_EVIDENCE_CACHE_ENABLED:
+                    cache_info = save_evidence_cache(
+                        game,
+                        platform,
+                        requested_url,
+                        page,
+                        cached_analysis,
+                        refresh_meta=refresh_meta_for_save,
+                    )
+                    cache_info["status"] = (
+                        "manual_review"
+                        if refresh_meta_for_save.get("manual_review")
+                        else "retained_not_stronger"
+                    )
+                else:
+                    cache_info = {
+                        "status": "retained_not_stronger",
+                        "quality_audit": old_audit,
+                        "refresh_meta": refresh_meta_for_save,
+                    }
+
                 source_analyses.append(
                     attach_cache_metadata(cached_analysis, cache_info)
                 )
-                print(
-                    "Evidence cache: RETAINED | new extraction was not stronger "
-                    "than the existing cache"
-                )
+                if refresh_meta_for_save.get("manual_review"):
+                    print(
+                        "Evidence cache: MANUAL REVIEW | new extraction added no new "
+                        "coverage; automatic retries stopped"
+                    )
+                else:
+                    print(
+                        "Evidence cache: RETAINED | new extraction added no new "
+                        "coverage"
+                    )
                 continue
 
-        analysis = candidate_analysis
+            analysis = merged_analysis
+        else:
+            analysis = candidate_analysis
 
         if REVIEW_EVIDENCE_CACHE_ENABLED:
             cache_info = save_evidence_cache(
@@ -2719,16 +2999,21 @@ def process_review_job(client: OpenAI, item: dict):
                 requested_url,
                 page,
                 analysis,
+                refresh_meta=refresh_meta_for_save,
             )
-            if refresh_all_evidence or refresh_this_source:
+            if refresh_all_evidence:
                 cache_info["status"] = "refreshed"
                 print(f"Evidence cache: REFRESHED | {analysis['site_name']}")
+            elif refresh_this_source:
+                cache_info["status"] = "merged_refreshed"
+                print(f"Evidence cache: MERGED REFRESH | {analysis['site_name']}")
             else:
                 print(f"Evidence cache: SAVED | {analysis['site_name']}")
         else:
             cache_info = {
                 "status": "disabled",
                 "quality_audit": evidence_quality_audit(analysis),
+                "refresh_meta": _refresh_meta(evidence_quality_audit(analysis)),
             }
 
         source_analyses.append(attach_cache_metadata(analysis, cache_info))
@@ -2744,6 +3029,9 @@ def process_review_job(client: OpenAI, item: dict):
     needs_review_rows = [
         row for row in quality_rows if row.get("status") == "needs_review"
     ]
+    manual_review_rows = [
+        row for row in quality_rows if row.get("status") == "manual_review"
+    ]
 
     dossier = {
         "game": game,
@@ -2757,13 +3045,13 @@ def process_review_job(client: OpenAI, item: dict):
             "selective_quality_refresh_requested": refresh_incomplete_evidence,
             "version": EVIDENCE_CACHE_VERSION,
             "min_verified_points": EVIDENCE_CACHE_MIN_VERIFIED_POINTS,
+            "max_failed_selective_refreshes": EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES,
             "quality_audit": quality_rows,
             "policy_fa": (
-                "شواهد هر منبع پس از اولین تحلیل ذخیره می‌شوند. "
-                "بازخوانی انتخابی فقط منابعی را بررسی می‌کند که کمتر از حداقل "
-                f"{EVIDENCE_CACHE_MIN_VERIFIED_POINTS} شاهد تأییدشده دارند یا "
-                "هیچ شاهد قابل‌دسته‌بندی ندارند؛ cache قبلی فقط با خروجی قوی‌تر "
-                "جایگزین می‌شود."
+                "شواهد هر منبع پس از اولین تحلیل ذخیره می‌شوند. بازخوانی انتخابی "
+                "خروجی تازه را با cache قبلی ادغام می‌کند و فقط در صورت بهتر شدن "
+                "پوشش شواهد ذخیره می‌شود. منبعی که پس از چند کوشش ناموفق همچنان "
+                "ضعیف بماند، برای بازبینی دستی علامت می‌خورد و دیگر خودکار تحلیل نمی‌شود."
             ),
         },
         "status": "analysis_only",
@@ -2807,16 +3095,28 @@ def process_review_job(client: OpenAI, item: dict):
     for row in quality_rows:
         reasons = "; ".join(row.get("reasons_fa", []))
         suffix = f" | {reasons}" if reasons else ""
+        retry_text = (
+            f" | failed refreshes: {row.get('failed_selective_refreshes', 0)}/"
+            f"{row.get('max_failed_selective_refreshes', EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES)}"
+        )
         print(
             f"- {row['site_name']}: {row['status']} | "
             f"verified points: {row['verified_point_count']}"
-            f" | categorized: {row['categorized_point_count']}{suffix}"
+            f" | categorized: {row['categorized_point_count']}"
+            f" | coverage: {row.get('coverage_fa', 'نامشخص')}"
+            f"{retry_text}{suffix}"
         )
 
     if needs_review_rows:
         print(
             "Quality action: rerun with refresh_incomplete_evidence=true "
             "to re-extract only the sources above."
+        )
+    elif manual_review_rows:
+        names = ", ".join(row["site_name"] for row in manual_review_rows)
+        print(
+            "Quality action: manual review required for: " + names + ". "
+            "Automatic retries are disabled for these sources."
         )
     else:
         print("Quality action: all cached sources meet the current threshold.")
