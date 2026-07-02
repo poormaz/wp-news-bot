@@ -30,6 +30,16 @@ def env_flag(name: str, default: bool = False) -> bool:
 # Refresh فقط با تنظیم صریح انجام می‌شود، نه به‌خاطر نوسان مدل.
 REVIEW_EVIDENCE_CACHE_ENABLED = env_flag("REVIEW_EVIDENCE_CACHE", True)
 REVIEW_REFRESH_EVIDENCE = env_flag("REVIEW_REFRESH_EVIDENCE", False)
+REVIEW_REFRESH_INCOMPLETE_EVIDENCE = env_flag(
+    "REVIEW_REFRESH_INCOMPLETE_EVIDENCE", False
+)
+EVIDENCE_CACHE_MIN_VERIFIED_POINTS = int(
+    os.getenv("EVIDENCE_CACHE_MIN_VERIFIED_POINTS", "2") or "2"
+)
+EVIDENCE_CACHE_MIN_VERIFIED_POINTS = min(
+    max(EVIDENCE_CACHE_MIN_VERIFIED_POINTS, 1),
+    6,
+)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
@@ -161,11 +171,19 @@ def load_evidence_cache(game: str, platform: str, review_url: str) -> tuple[dict
             info["status"] = "invalid"
             return None, info
 
+    stored_quality = cached.get("quality_audit")
+    quality_audit = (
+        stored_quality
+        if isinstance(stored_quality, dict)
+        else evidence_quality_audit(analysis)
+    )
+
     info.update(
         {
             "status": "hit",
             "created_at_utc": clean_text(str(cached.get("created_at_utc") or "")),
             "source_text_sha256": clean_text(str(cached.get("source_text_sha256") or "")),
+            "quality_audit": quality_audit,
         }
     )
     return analysis, info
@@ -182,6 +200,8 @@ def save_evidence_cache(
     path = evidence_cache_path(game, platform, requested_url)
     os.makedirs(EVIDENCE_CACHE_DIR, exist_ok=True)
 
+    quality_audit = evidence_quality_audit(analysis)
+
     payload = {
         "cache_version": EVIDENCE_CACHE_VERSION,
         "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
@@ -193,6 +213,7 @@ def save_evidence_cache(
             clean_text(str(page.get("text") or "")).encode("utf-8")
         ).hexdigest(),
         "analysis": _json_copy(analysis),
+        "quality_audit": quality_audit,
     }
 
     temp_path = f"{path}.tmp"
@@ -205,6 +226,7 @@ def save_evidence_cache(
         "path": path,
         "created_at_utc": payload["created_at_utc"],
         "source_text_sha256": payload["source_text_sha256"],
+        "quality_audit": quality_audit,
     }
 
 
@@ -221,12 +243,102 @@ def item_refresh_requested(item: dict) -> bool:
     return str(value).strip().casefold() in {"1", "true", "yes", "on"}
 
 
+def item_incomplete_refresh_requested(item: dict) -> bool:
+    """فقط منابعی را بازخوانی می‌کند که cache آن‌ها از کنترل کیفیت عبور نکرده است."""
+    if REVIEW_REFRESH_INCOMPLETE_EVIDENCE:
+        return True
+
+    value = item.get(
+        "refresh_incomplete_evidence",
+        item.get("refresh_low_quality_evidence", False),
+    )
+
+    if isinstance(value, bool):
+        return value
+
+    return str(value).strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _quality_reason_fa(total_points: int, categorized_points: int) -> list[str]:
+    reasons = []
+
+    if total_points == 0:
+        reasons.append("هیچ شاهد تأییدشده‌ای ثبت نشده است")
+    elif total_points < EVIDENCE_CACHE_MIN_VERIFIED_POINTS:
+        reasons.append(
+            f"فقط {total_points} شاهد تأییدشده دارد؛ حداقل "
+            f"{EVIDENCE_CACHE_MIN_VERIFIED_POINTS} شاهد لازم است"
+        )
+
+    if total_points and categorized_points == 0:
+        reasons.append("هیچ شاهدی برای کارت‌های ارزیابی قابل‌دسته‌بندی نیست")
+
+    return reasons
+
+
+def evidence_quality_audit(analysis: dict) -> dict:
+    """کیفیت cache را فقط با شمارش شواهد تأییدشده و قابل‌دسته‌بندی می‌سنجد."""
+    section_counts = {}
+    categorized_points = 0
+    categories = set()
+
+    for section in ("positives", "negatives", "technical_notes"):
+        points = analysis.get(section, []) or []
+        valid_points = [point for point in points if isinstance(point, dict)]
+        section_counts[section] = len(valid_points)
+
+        for point in valid_points:
+            category, _ = classify_evidence_rule_based(
+                {
+                    "evidence_en": point.get("evidence_en", ""),
+                    "section": section,
+                }
+            )
+            if category:
+                categorized_points += 1
+                categories.add(category)
+
+    total_points = sum(section_counts.values())
+    reasons = _quality_reason_fa(total_points, categorized_points)
+    status = "acceptable" if not reasons else "needs_review"
+
+    # عدد داخلی فقط برای مقایسه‌ی نسخه‌های یک منبع است، نه نمایش به کاربر.
+    quality_rank = total_points * 100 + categorized_points * 10 + len(categories)
+
+    return {
+        "status": status,
+        "verified_point_count": total_points,
+        "categorized_point_count": categorized_points,
+        "category_count": len(categories),
+        "section_counts": section_counts,
+        "reasons_fa": reasons,
+        "quality_rank": quality_rank,
+        "action_fa": (
+            "بازخوانی انتخابی توصیه می‌شود"
+            if status == "needs_review"
+            else "برای استفاده‌ی پایدار قابل‌قبول است"
+        ),
+    }
+
+
+def should_replace_cached_analysis(cached_analysis: dict, candidate_analysis: dict) -> bool:
+    """Refresh انتخابی فقط وقتی cache را عوض می‌کند که خروجی جدید واقعاً قوی‌تر باشد."""
+    old_audit = evidence_quality_audit(cached_analysis)
+    new_audit = evidence_quality_audit(candidate_analysis)
+    return new_audit["quality_rank"] > old_audit["quality_rank"]
+
+
 def attach_cache_metadata(analysis: dict, info: dict) -> dict:
     output = _json_copy(analysis)
+    quality = info.get("quality_audit")
+    if not isinstance(quality, dict):
+        quality = evidence_quality_audit(output)
+
     output["evidence_cache"] = {
         "status": info.get("status", "miss"),
         "created_at_utc": info.get("created_at_utc", ""),
         "source_text_sha256": info.get("source_text_sha256", ""),
+        "quality_audit": quality,
     }
     return output
 
@@ -243,6 +355,29 @@ def run_evidence_cache_regression_checks():
         item_refresh_requested({"refresh_evidence": "false"})
         and not REVIEW_REFRESH_EVIDENCE
     )
+
+    empty = {
+        "positives": [], "negatives": [], "technical_notes": []
+    }
+    thin = {
+        "positives": [{"evidence_en": "Many puzzles are almost impossible to solve without help."}],
+        "negatives": [],
+        "technical_notes": [],
+    }
+    acceptable = {
+        "positives": [
+            {"evidence_en": "The game is stuffed with a huge variety of mechanics and systems."},
+            {"evidence_en": "The horse controls very well across the open world."},
+        ],
+        "negatives": [],
+        "technical_notes": [],
+    }
+
+    assert evidence_quality_audit(empty)["status"] == "needs_review"
+    assert evidence_quality_audit(thin)["status"] == "needs_review"
+    assert evidence_quality_audit(acceptable)["status"] == "acceptable"
+    assert should_replace_cached_analysis(thin, acceptable)
+    assert not should_replace_cached_analysis(acceptable, thin)
 
 def fail(message: str):
     print(f"ERROR: {message}")
@@ -1089,6 +1224,7 @@ def analyze_review_source(
     game: str,
     platform: str,
     page: dict,
+    recovery_mode: bool = False,
 ) -> dict:
     score = extract_review_score(page)
 
@@ -1122,12 +1258,14 @@ Rules:
 - technical_notes must be empty unless the review explicitly discusses
   performance, bugs, optimization, controls, UI, or technical problems.
 - Never use information from your own knowledge.
-
-Return JSON with exactly:
+- Aim to capture up to 4 distinct, high-value evidence points when the review contains them.
+- Do not repeat the same theme in different wording.
 - positives: array of objects with point_fa and evidence_en
 - negatives: array of objects with point_fa and evidence_en
 - technical_notes: array of objects with point_fa and evidence_en
 - platform_mentioned: string or null
+
+Extraction mode: {"coverage recovery: inspect the whole supplied review carefully because the prior cache was too thin" if recovery_mode else "normal"}
 
 Page text:
 {page["text"]}
@@ -2366,7 +2504,7 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
     ])
 
     return {
-        "status": "preview_only_template_grounded_v9",
+        "status": "preview_only_template_grounded_v10",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
@@ -2421,16 +2559,44 @@ def save_dossier(game: str, dossier: dict) -> str:
     return output_path
 
 
+def _source_quality_rows(review_sources: list[dict]) -> list[dict]:
+    rows = []
+
+    for source in review_sources:
+        cache_meta = source.get("evidence_cache", {}) or {}
+        audit = cache_meta.get("quality_audit")
+        if not isinstance(audit, dict):
+            audit = evidence_quality_audit(source)
+
+        rows.append(
+            {
+                "site_name": clean_text(str(source.get("site_name") or "Unknown Source")),
+                "status": audit.get("status", "needs_review"),
+                "verified_point_count": audit.get("verified_point_count", 0),
+                "categorized_point_count": audit.get("categorized_point_count", 0),
+                "reasons_fa": audit.get("reasons_fa", []),
+                "action_fa": audit.get("action_fa", ""),
+            }
+        )
+
+    return rows
+
+
 def process_review_job(client: OpenAI, item: dict):
     game = str(item["game"]).strip()
     platform = str(item["platform"]).strip()
-    refresh_evidence = item_refresh_requested(item)
+    refresh_all_evidence = item_refresh_requested(item)
+    refresh_incomplete_evidence = (
+        item_incomplete_refresh_requested(item) and not refresh_all_evidence
+    )
 
     print("\n" + "=" * 72)
     print(f"ANALYZING: {game} | {platform}")
 
-    if refresh_evidence:
-        print("Evidence cache: REFRESH forced for this job")
+    if refresh_all_evidence:
+        print("Evidence cache: FULL REFRESH forced for this job")
+    elif refresh_incomplete_evidence:
+        print("Evidence cache: SELECTIVE QUALITY REFRESH enabled")
     elif REVIEW_EVIDENCE_CACHE_ENABLED:
         print("Evidence cache: enabled")
     else:
@@ -2454,29 +2620,47 @@ def process_review_job(client: OpenAI, item: dict):
 
     for url in item["review_urls"]:
         requested_url = str(url).strip()
-
         cached_analysis = None
         cache_info = {"status": "miss"}
 
-        if not refresh_evidence:
+        if not refresh_all_evidence:
             cached_analysis, cache_info = load_evidence_cache(
                 game,
                 platform,
                 requested_url,
             )
 
-        if cached_analysis is not None:
-            source_analyses.append(
-                attach_cache_metadata(cached_analysis, cache_info)
-            )
+        cached_audit = (cache_info.get("quality_audit") or {})
+        refresh_this_source = (
+            cached_analysis is not None
+            and refresh_incomplete_evidence
+            and cached_audit.get("status") == "needs_review"
+        )
+
+        if cached_analysis is not None and not refresh_this_source:
+            output = attach_cache_metadata(cached_analysis, cache_info)
+            source_analyses.append(output)
+
+            quality_status = (output.get("evidence_cache", {}) or {}).get(
+                "quality_audit", {}
+            ).get("status", "unknown")
+            quality_note = f" | quality: {quality_status}"
             print(
-                f"Evidence cache: HIT | {cached_analysis.get('site_name', 'Unknown Source')} "
-                f"| OpenAI skipped"
+                f"Evidence cache: HIT | "
+                f"{cached_analysis.get('site_name', 'Unknown Source')} "
+                f"| OpenAI skipped{quality_note}"
             )
             continue
 
-        if refresh_evidence:
-            print(f"Evidence cache: REFRESH | {requested_url}")
+        if refresh_all_evidence:
+            print(f"Evidence cache: FULL REFRESH | {requested_url}")
+        elif refresh_this_source:
+            reason_text = "; ".join(cached_audit.get("reasons_fa", []))
+            print(
+                f"Evidence cache: QUALITY REFRESH | "
+                f"{cached_analysis.get('site_name', requested_url)}"
+                f" | {reason_text or 'cache needs review'}"
+            )
         elif cache_info.get("status") not in {"miss", "disabled"}:
             print(
                 f"Evidence cache: {cache_info.get('status', 'miss').upper()} "
@@ -2487,6 +2671,11 @@ def process_review_job(client: OpenAI, item: dict):
 
         if not page["ok"]:
             print(f"Skipped source: {requested_url} | HTTP {page['status']}")
+            if cached_analysis is not None:
+                cache_info["status"] = "retained_http_error"
+                source_analyses.append(
+                    attach_cache_metadata(cached_analysis, cache_info)
+                )
             continue
 
         print(f"Loaded: {page['site_name']} | {page['title'][:80]}")
@@ -2499,12 +2688,29 @@ def process_review_job(client: OpenAI, item: dict):
         )
         print(f"Analyzing with OpenAI: {page['site_name']}")
 
-        analysis = analyze_review_source(
+        candidate_analysis = analyze_review_source(
             client,
             game,
             platform,
             page,
+            recovery_mode=refresh_this_source,
         )
+
+        # در refresh انتخابی، cache قبلی فقط با داده‌ی واقعاً قوی‌تر جایگزین می‌شود.
+        if refresh_this_source and cached_analysis is not None:
+            if not should_replace_cached_analysis(cached_analysis, candidate_analysis):
+                cache_info["status"] = "retained_not_stronger"
+                cache_info["quality_audit"] = evidence_quality_audit(cached_analysis)
+                source_analyses.append(
+                    attach_cache_metadata(cached_analysis, cache_info)
+                )
+                print(
+                    "Evidence cache: RETAINED | new extraction was not stronger "
+                    "than the existing cache"
+                )
+                continue
+
+        analysis = candidate_analysis
 
         if REVIEW_EVIDENCE_CACHE_ENABLED:
             cache_info = save_evidence_cache(
@@ -2514,9 +2720,16 @@ def process_review_job(client: OpenAI, item: dict):
                 page,
                 analysis,
             )
-            print(f"Evidence cache: SAVED | {analysis['site_name']}")
+            if refresh_all_evidence or refresh_this_source:
+                cache_info["status"] = "refreshed"
+                print(f"Evidence cache: REFRESHED | {analysis['site_name']}")
+            else:
+                print(f"Evidence cache: SAVED | {analysis['site_name']}")
         else:
-            cache_info = {"status": "disabled"}
+            cache_info = {
+                "status": "disabled",
+                "quality_audit": evidence_quality_audit(analysis),
+            }
 
         source_analyses.append(attach_cache_metadata(analysis, cache_info))
 
@@ -2527,6 +2740,11 @@ def process_review_job(client: OpenAI, item: dict):
         )
         return
 
+    quality_rows = _source_quality_rows(source_analyses)
+    needs_review_rows = [
+        row for row in quality_rows if row.get("status") == "needs_review"
+    ]
+
     dossier = {
         "game": game,
         "platform": platform,
@@ -2535,11 +2753,17 @@ def process_review_job(client: OpenAI, item: dict):
         "review_sources": source_analyses,
         "evidence_cache": {
             "enabled": REVIEW_EVIDENCE_CACHE_ENABLED,
-            "refresh_requested": refresh_evidence,
+            "full_refresh_requested": refresh_all_evidence,
+            "selective_quality_refresh_requested": refresh_incomplete_evidence,
             "version": EVIDENCE_CACHE_VERSION,
+            "min_verified_points": EVIDENCE_CACHE_MIN_VERIFIED_POINTS,
+            "quality_audit": quality_rows,
             "policy_fa": (
-                "شواهد تأییدشده‌ی منابع پس از اولین تحلیل ذخیره می‌شوند و "
-                "فقط با refresh صریح دوباره از مدل استخراج خواهند شد."
+                "شواهد هر منبع پس از اولین تحلیل ذخیره می‌شوند. "
+                "بازخوانی انتخابی فقط منابعی را بررسی می‌کند که کمتر از حداقل "
+                f"{EVIDENCE_CACHE_MIN_VERIFIED_POINTS} شاهد تأییدشده دارند یا "
+                "هیچ شاهد قابل‌دسته‌بندی ندارند؛ cache قبلی فقط با خروجی قوی‌تر "
+                "جایگزین می‌شود."
             ),
         },
         "status": "analysis_only",
@@ -2570,13 +2794,32 @@ def process_review_job(client: OpenAI, item: dict):
     print(f"Review count: {metacritic_data['critic_review_count']}")
 
     for source in source_analyses:
-        cache_status = (source.get("evidence_cache", {}) or {}).get("status", "")
+        cache_meta = source.get("evidence_cache", {}) or {}
+        cache_status = cache_meta.get("status", "")
         cache_suffix = f" | cache: {cache_status}" if cache_status else ""
         print(
             f"- {source['site_name']}: "
             f"{source['original_score'] or 'No deterministic score found'} "
             f"[{source['score_method']}]{cache_suffix}"
         )
+
+    print("\n--- EVIDENCE CACHE QUALITY ---")
+    for row in quality_rows:
+        reasons = "; ".join(row.get("reasons_fa", []))
+        suffix = f" | {reasons}" if reasons else ""
+        print(
+            f"- {row['site_name']}: {row['status']} | "
+            f"verified points: {row['verified_point_count']}"
+            f" | categorized: {row['categorized_point_count']}{suffix}"
+        )
+
+    if needs_review_rows:
+        print(
+            "Quality action: rerun with refresh_incomplete_evidence=true "
+            "to re-extract only the sources above."
+        )
+    else:
+        print("Quality action: all cached sources meet the current threshold.")
 
     assessment = dossier.get("poormaz_assessment", {})
     print(
@@ -2602,7 +2845,6 @@ def process_review_job(client: OpenAI, item: dict):
     print("\n--- REVIEW DOSSIER JSON ---")
     print(json.dumps(dossier, ensure_ascii=False, indent=2))
     print("\nNo WordPress post was created.")
-
 
 def main():
     print("=== Poormaz Review Bot: Verified Dossier Builder ===")
