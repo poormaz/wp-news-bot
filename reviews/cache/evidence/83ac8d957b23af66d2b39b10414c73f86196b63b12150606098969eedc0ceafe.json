@@ -1,11 +1,11 @@
 {
   "cache_version": "source_evidence_cache_v1",
-  "created_at_utc": "2026-07-01T18:20:37+00:00",
+  "created_at_utc": "2026-07-02T00:12:10+00:00",
   "game": "Crimson Desert",
   "platform": "PC",
   "requested_url": "https://www.destructoid.com/reviews/crimson-desert-review",
   "final_url": "https://www.destructoid.com/reviews/crimson-desert-review",
-  "source_text_sha256": "c51e45f9e00a2f44c7f3bff22ccf958e0a638f2d34a685326baab21ab380d9fc",
+  "source_text_sha256": "882cfdebdf8bc03f26a19df12624905ba342b5d4a5a78bba9497ba33d135e725",
   "analysis": {
     "site_name": "Destructoid",
     "title": "Crimson Desert Review - Vast, violent, and impossible to put down",
@@ -15,14 +15,42 @@
     "score_method": "jsonld_reviewRating",
     "score_confidence": 100,
     "score_evidence": "{\"@type\": \"Review\", \"reviewRating\": {\"@type\": \"Rating\", \"ratingValue\": \"8.5\", \"bestRating\": 10, \"worstRating\": 0}}",
-    "positives": [],
+    "positives": [
+      {
+        "point_fa": "بازی تجربه‌ای جذاب و غیرقابل ترک را ارائه می‌دهد.",
+        "evidence_en": "the game is impossible to put down once you get going."
+      }
+    ],
     "negatives": [
       {
-        "point_fa": "پازل‌ها در بازی می‌توانند بسیار دشوار باشند.",
+        "point_fa": "ترجمه و نوشتار بازی در برخی موارد ضعیف است.",
+        "evidence_en": "the translation does not always carry over well."
+      },
+      {
+        "point_fa": "پازل‌ها در بازی می‌توانند بسیار دشوار و گیج‌کننده باشند.",
         "evidence_en": "many puzzles are almost impossible to solve without help."
       }
     ],
-    "technical_notes": [],
+    "technical_notes": [
+      {
+        "point_fa": "عملکرد بازی در برخی موارد دچار افت می‌شود.",
+        "evidence_en": "I did notice a significant dip in performance in the last few days of the review window."
+      }
+    ],
     "platform_mentioned": "PC"
+  },
+  "quality_audit": {
+    "status": "acceptable",
+    "verified_point_count": 4,
+    "categorized_point_count": 2,
+    "category_count": 2,
+    "section_counts": {
+      "positives": 1,
+      "negatives": 2,
+      "technical_notes": 1
+    },
+    "reasons_fa": [],
+    "quality_rank": 422,
+    "action_fa": "برای استفاده‌ی پایدار قابل‌قبول است"
   }
 }

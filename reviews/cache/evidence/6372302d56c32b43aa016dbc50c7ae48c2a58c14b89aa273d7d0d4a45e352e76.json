@@ -1,6 +1,6 @@
 {
   "cache_version": "source_evidence_cache_v1",
-  "created_at_utc": "2026-07-01T18:20:48+00:00",
+  "created_at_utc": "2026-07-02T00:12:26+00:00",
   "game": "Crimson Desert",
   "platform": "PC",
   "requested_url": "https://wccftech.com/review/crimson-desert-review-blissfully-lost-in-pywell",
@@ -15,9 +15,30 @@
     "score_method": "wccftech_header_score",
     "score_confidence": 98,
     "score_evidence": "Gaming 9.0 Crimson Desert Review – Blissfully Lost in Pywel Francesco De Meo • Mar 27, 2026 at 07:36am EDT Comments Game Info Crim",
-    "positives": [],
+    "positives": [
+      {
+        "point_fa": "گیم‌پلی بازی بسیار متنوع و جذاب است.",
+        "evidence_en": "Crimson Desert is in full swing, and its gameplay is more than enough to carry the entire experience."
+      }
+    ],
     "negatives": [],
     "technical_notes": [],
     "platform_mentioned": "PC"
+  },
+  "quality_audit": {
+    "status": "needs_review",
+    "verified_point_count": 1,
+    "categorized_point_count": 1,
+    "category_count": 1,
+    "section_counts": {
+      "positives": 1,
+      "negatives": 0,
+      "technical_notes": 0
+    },
+    "reasons_fa": [
+      "فقط 1 شاهد تأییدشده دارد؛ حداقل 2 شاهد لازم است"
+    ],
+    "quality_rank": 111,
+    "action_fa": "بازخوانی انتخابی توصیه می‌شود"
   }
 }
