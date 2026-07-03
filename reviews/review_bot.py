@@ -20,6 +20,10 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 EVIDENCE_CACHE_DIR = os.path.join(BASE_DIR, "cache", "evidence")
 EVIDENCE_CACHE_VERSION = "source_evidence_cache_v1"
 
+# شواهدی که یک انسان واقعاً در منبع بررسی کرده، بیرون از cache نگه داشته می‌شوند.
+# این لایه نه OpenAI را دوباره اجرا می‌کند و نه cache خودکار را تغییر می‌دهد.
+MANUAL_EVIDENCE_FILE = os.path.join(BASE_DIR, "manual_evidence.yaml")
+
 
 def env_flag(name: str, default: bool = False) -> bool:
     value = os.getenv(name, "1" if default else "0").strip().casefold()
@@ -58,6 +62,15 @@ EVIDENCE_CACHE_MAX_MERGED_POINTS_PER_SECTION = int(
 EVIDENCE_CACHE_MAX_MERGED_POINTS_PER_SECTION = min(
     max(EVIDENCE_CACHE_MAX_MERGED_POINTS_PER_SECTION, 2),
     10,
+)
+
+# سقفِ جدا برای ورود دستی تا یک فایل YAML نتواند مقاله را با فهرست بی‌پایان پر کند.
+MANUAL_EVIDENCE_MAX_POINTS_PER_SECTION = int(
+    os.getenv("MANUAL_EVIDENCE_MAX_POINTS_PER_SECTION", "4") or "4"
+)
+MANUAL_EVIDENCE_MAX_POINTS_PER_SECTION = min(
+    max(MANUAL_EVIDENCE_MAX_POINTS_PER_SECTION, 1),
+    6,
 )
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
@@ -156,7 +169,7 @@ def _evidence_key(point: dict) -> str:
     return clean_text(str((point or {}).get("point_fa") or "")).casefold()
 
 
-def _dedupe_points(points: list, limit: int) -> list[dict]:
+def _dedupe_evidence_points(points: list, limit: int) -> list[dict]:
     output = []
     seen = set()
 
@@ -180,6 +193,201 @@ def _dedupe_points(points: list, limit: int) -> list[dict]:
     return output
 
 
+
+def _manual_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _manual_point_is_valid(point: dict) -> bool:
+    """اعتبارسنجی ساختاری برای شاهدی که سردبیر شخصاً با منبع تطبیق داده است."""
+    if not isinstance(point, dict):
+        return False
+
+    point_fa = clean_text(str(point.get("point_fa") or ""))
+    evidence_en = clean_text(str(point.get("evidence_en") or ""))
+
+    if len(point_fa) < 3 or len(evidence_en) < 8:
+        return False
+
+    word_count = len(re.findall(r"\b[\w'-]+\b", evidence_en))
+    return 8 <= word_count <= 22
+
+
+def load_manual_evidence_entries() -> tuple[list[dict], dict]:
+    """
+    فایل دستی عمداً یک لایه‌ی جدا از cache است. خراب بودن آن نباید کل bot را
+    زمین بزند، اما در لاگ و dossier قابل‌تشخیص باقی می‌ماند.
+    """
+    info = {
+        "file": os.path.basename(MANUAL_EVIDENCE_FILE),
+        "status": "missing",
+        "error": "",
+    }
+
+    if not os.path.exists(MANUAL_EVIDENCE_FILE):
+        return [], info
+
+    try:
+        with open(MANUAL_EVIDENCE_FILE, "r", encoding="utf-8") as file:
+            payload = yaml.safe_load(file) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        info["status"] = "invalid"
+        info["error"] = clean_text(str(exc))
+        return [], info
+
+    if isinstance(payload, list):
+        raw_entries = payload
+    elif isinstance(payload, dict):
+        raw_entries = payload.get("entries", [])
+    else:
+        raw_entries = []
+
+    if not isinstance(raw_entries, list):
+        info["status"] = "invalid"
+        info["error"] = "کلید entries باید یک فهرست باشد"
+        return [], info
+
+    entries = [entry for entry in raw_entries if isinstance(entry, dict)]
+    info["status"] = "loaded"
+    info["entry_count"] = len(entries)
+    return entries, info
+
+
+def _manual_entry_matches_source(
+    entry: dict,
+    game: str,
+    platform: str,
+    requested_url: str,
+) -> bool:
+    if not _manual_bool(entry.get("reviewed", False)):
+        return False
+
+    if clean_text(str(entry.get("game") or "")).casefold() != clean_text(game).casefold():
+        return False
+
+    entry_platform = clean_text(str(entry.get("platform") or ""))
+    if entry_platform and entry_platform.casefold() != clean_text(platform).casefold():
+        return False
+
+    source_url = str(entry.get("source_url") or entry.get("url") or "").strip()
+    if not is_valid_url(source_url):
+        return False
+
+    return canonical_cache_url(source_url) == canonical_cache_url(requested_url)
+
+
+def _apply_manual_evidence_entries(
+    analysis: dict,
+    entries: list[dict],
+) -> tuple[dict, dict]:
+    """نقاط دستیِ معتبر را با شواهد موجود ادغام می‌کند، بدون دست‌زدن به cache."""
+    output = _json_copy(analysis or {})
+    added_by_section = {"positives": 0, "negatives": 0, "technical_notes": 0}
+    matched_notes = []
+    matched_count = 0
+
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+
+        matched_count += 1
+        note_fa = clean_text(str(entry.get("note_fa") or ""))
+        if note_fa:
+            matched_notes.append(note_fa)
+
+        for section in ("positives", "negatives", "technical_notes"):
+            current = output.get(section, []) or []
+            candidate = entry.get(section, []) or []
+            if not isinstance(candidate, list):
+                continue
+
+            valid_candidate = [
+                {
+                    "point_fa": clean_text(str(point.get("point_fa") or "")),
+                    "evidence_en": clean_text(str(point.get("evidence_en") or "")),
+                }
+                for point in candidate
+                if _manual_point_is_valid(point)
+            ]
+
+            before_keys = {
+                _evidence_key(point)
+                for point in current
+                if isinstance(point, dict)
+            }
+            merged = _dedupe_evidence_points(
+                list(current) + valid_candidate,
+                EVIDENCE_CACHE_MAX_MERGED_POINTS_PER_SECTION,
+            )
+            after_keys = {
+                _evidence_key(point)
+                for point in merged
+                if isinstance(point, dict)
+            }
+            added_by_section[section] += len(after_keys - before_keys)
+            output[section] = merged
+
+    added_total = sum(added_by_section.values())
+    status = "applied" if added_total else (
+        "matched_no_new_points" if matched_count else "not_applied"
+    )
+
+    metadata = {
+        "status": status,
+        "file": os.path.basename(MANUAL_EVIDENCE_FILE),
+        "matched_entries": matched_count,
+        "points_added": added_total,
+        "points_added_by_section": added_by_section,
+        "notes_fa": matched_notes[:3],
+        "policy_fa": (
+            "این شواهد به‌صورت دستی با منبع تطبیق داده شده‌اند و فقط در خروجی "
+            "فعلی اعمال می‌شوند؛ cache خودکار و درخواست OpenAI تغییر نمی‌کنند."
+        ),
+    }
+    return output, metadata
+
+
+def apply_manual_evidence_overlay(
+    analysis: dict,
+    game: str,
+    platform: str,
+    requested_url: str,
+) -> tuple[dict, dict]:
+    entries, file_info = load_manual_evidence_entries()
+
+    if file_info.get("status") != "loaded":
+        metadata = {
+            "status": file_info.get("status", "missing"),
+            "file": file_info.get("file", os.path.basename(MANUAL_EVIDENCE_FILE)),
+            "matched_entries": 0,
+            "points_added": 0,
+            "points_added_by_section": {
+                "positives": 0,
+                "negatives": 0,
+                "technical_notes": 0,
+            },
+            "notes_fa": [],
+            "error": file_info.get("error", ""),
+        }
+        return _json_copy(analysis or {}), metadata
+
+    matches = [
+        entry
+        for entry in entries
+        if _manual_entry_matches_source(entry, game, platform, requested_url)
+    ]
+
+    output, metadata = _apply_manual_evidence_entries(analysis, matches)
+    metadata["file_status"] = file_info.get("status")
+    metadata["entry_count"] = file_info.get("entry_count", 0)
+
+    if metadata.get("status") == "applied":
+        output["manual_evidence"] = metadata
+
+    return output, metadata
+
 def merge_cached_and_candidate_analysis(cached_analysis: dict, candidate_analysis: dict) -> dict:
     """شواهد معتبر قدیمی را نگه می‌دارد و فقط یافته‌های تازه را به آن اضافه می‌کند."""
     merged = _json_copy(candidate_analysis or {})
@@ -196,7 +404,7 @@ def merge_cached_and_candidate_analysis(cached_analysis: dict, candidate_analysi
         old_points = (cached_analysis or {}).get(section, []) or []
         new_points = (candidate_analysis or {}).get(section, []) or []
         # ترتیب عمدی است: cache تأییدشده اول می‌ماند، استخراج تازه فقط پوشش را کامل می‌کند.
-        merged[section] = _dedupe_points(
+        merged[section] = _dedupe_evidence_points(
             list(old_points) + list(new_points),
             EVIDENCE_CACHE_MAX_MERGED_POINTS_PER_SECTION,
         )
@@ -332,12 +540,9 @@ def load_evidence_cache(game: str, platform: str, review_url: str) -> tuple[dict
             info["status"] = "invalid"
             return None, info
 
-    stored_quality = cached.get("quality_audit")
-    quality_audit = (
-        stored_quality
-        if isinstance(stored_quality, dict)
-        else evidence_quality_audit(analysis)
-    )
+    # قواعد دسته‌بندی و پوشش ممکن است در نسخه‌های بعدی بهتر شوند.
+    # بنابراین audit را از خودِ شواهد بازسازی می‌کنیم، نه از برچسب قدیمی cache.
+    quality_audit = evidence_quality_audit(analysis)
     refresh_meta = _refresh_meta(
         quality_audit,
         cached.get("refresh_meta"),
@@ -531,6 +736,42 @@ def attach_cache_metadata(analysis: dict, info: dict) -> dict:
     }
     return output
 
+
+def attach_runtime_evidence(
+    analysis: dict,
+    cache_info: dict,
+    game: str,
+    platform: str,
+    requested_url: str,
+) -> dict:
+    """
+    cache را دست‌نخورده نگه می‌دارد و فقط برای dossier فعلی، شواهد دستی
+    تأییدشده را روی آن می‌نشاند.
+    """
+    output = attach_cache_metadata(analysis, cache_info)
+    output, manual_meta = apply_manual_evidence_overlay(
+        output,
+        game,
+        platform,
+        requested_url,
+    )
+
+    # audit خروجی می‌تواند با overlay دستی از audit خود cache متفاوت باشد.
+    output["runtime_quality_audit"] = evidence_quality_audit(output)
+
+    if manual_meta.get("status") == "applied":
+        print(
+            f"Manual evidence: APPLIED | {output.get('site_name', 'Unknown Source')} "
+            f"| +{manual_meta.get('points_added', 0)} verified editor point(s)"
+        )
+    elif manual_meta.get("status") == "invalid":
+        print(
+            "Manual evidence: INVALID YAML | "
+            f"{manual_meta.get('error') or 'file ignored'}"
+        )
+
+    return output
+
 def run_evidence_cache_regression_checks():
     assert canonical_cache_url(
         "HTTPS://WWW.Example.COM/review/game/?utm_source=test"
@@ -589,6 +830,41 @@ def run_evidence_cache_regression_checks():
         improved=False,
     )
     assert capped_meta["manual_review"], "منبع کم‌کیفیت نباید بی‌نهایت refresh شود"
+
+    multi_category = {
+        "positives": [
+            {
+                "point_fa": "کنترل‌ها روان‌اند.",
+                "evidence_en": "The horse controls very well across the open world and makes traversal a pleasure.",
+            }
+        ],
+        "negatives": [],
+        "technical_notes": [
+            {
+                "point_fa": "افت عملکرد دیده شده است.",
+                "evidence_en": "I did notice a significant dip in performance in the last few days of the review window.",
+            }
+        ],
+    }
+    assert evidence_quality_audit(multi_category)["coverage_fa"] == "پوشش چندبخشی"
+
+    manual_entry = {
+        "reviewed": True,
+        "positives": [
+            {
+                "point_fa": "گیم‌پلی توانایی حمل کل تجربه را دارد.",
+                "evidence_en": "The gameplay is more than enough to carry the entire experience from start to finish.",
+            }
+        ],
+        "negatives": [],
+        "technical_notes": [],
+    }
+    manually_merged, manual_meta = _apply_manual_evidence_entries(
+        {"positives": [], "negatives": [], "technical_notes": []},
+        [manual_entry],
+    )
+    assert manual_meta["status"] == "applied"
+    assert len(manually_merged["positives"]) == 1
 
 def fail(message: str):
     print(f"ERROR: {message}")
@@ -2715,7 +2991,7 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
     ])
 
     return {
-        "status": "preview_only_template_grounded_v11",
+        "status": "preview_only_template_grounded_v12",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
@@ -2774,13 +3050,29 @@ def _source_quality_rows(review_sources: list[dict]) -> list[dict]:
     rows = []
 
     for source in review_sources:
+        # همیشه از شواهد فعلی audit می‌گیریم تا cacheهای قدیمی با برچسب پوشش کهنه
+        # گزارش ندهند. این شامل overlay دستیِ همین اجرا هم می‌شود.
+        audit = evidence_quality_audit(source)
         cache_meta = source.get("evidence_cache", {}) or {}
-        audit = cache_meta.get("quality_audit")
-        if not isinstance(audit, dict):
-            audit = evidence_quality_audit(source)
-        refresh_meta = _refresh_meta(audit, cache_meta.get("refresh_meta"))
+        refresh_meta = _refresh_meta(
+            audit,
+            cache_meta.get("refresh_meta"),
+        )
+        manual_meta = source.get("manual_evidence", {}) or {}
+        manual_applied = manual_meta.get("status") == "applied"
 
-        status = "manual_review" if refresh_meta.get("manual_review") else audit.get("status", "needs_review")
+        if manual_applied and audit.get("status") == "acceptable":
+            status = "manual_supported"
+            action_fa = "پوشش منبع با شاهدهای بررسی‌شده‌ی دستی تکمیل شده است"
+        elif refresh_meta.get("manual_review"):
+            status = "manual_review"
+            action_fa = refresh_meta.get("manual_review_reason_fa") or audit.get(
+                "action_fa", ""
+            )
+        else:
+            status = audit.get("status", "needs_review")
+            action_fa = audit.get("action_fa", "")
+
         rows.append(
             {
                 "site_name": clean_text(str(source.get("site_name") or "Unknown Source")),
@@ -2790,16 +3082,14 @@ def _source_quality_rows(review_sources: list[dict]) -> list[dict]:
                 "category_count": audit.get("category_count", 0),
                 "coverage_fa": audit.get("coverage_fa", "بدون پوشش دسته‌ای"),
                 "reasons_fa": audit.get("reasons_fa", []),
-                "action_fa": (
-                    refresh_meta.get("manual_review_reason_fa")
-                    if refresh_meta.get("manual_review")
-                    else audit.get("action_fa", "")
-                ),
+                "action_fa": action_fa,
                 "failed_selective_refreshes": refresh_meta.get("failed_selective_refreshes", 0),
                 "max_failed_selective_refreshes": refresh_meta.get(
                     "max_failed_selective_refreshes",
                     EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES,
                 ),
+                "manual_points_added": manual_meta.get("points_added", 0),
+                "manual_evidence_applied": manual_applied,
             }
         )
 
@@ -2868,7 +3158,9 @@ def process_review_job(client: OpenAI, item: dict):
         )
 
         if cached_analysis is not None and not refresh_this_source:
-            output = attach_cache_metadata(cached_analysis, cache_info)
+            output = attach_runtime_evidence(
+                cached_analysis, cache_info, game, platform, requested_url
+            )
             source_analyses.append(output)
 
             quality_status = (output.get("evidence_cache", {}) or {}).get(
@@ -2911,7 +3203,9 @@ def process_review_job(client: OpenAI, item: dict):
             if cached_analysis is not None:
                 cache_info["status"] = "retained_http_error"
                 source_analyses.append(
-                    attach_cache_metadata(cached_analysis, cache_info)
+                    attach_runtime_evidence(
+                        cached_analysis, cache_info, game, platform, requested_url
+                    )
                 )
             continue
 
@@ -2974,7 +3268,9 @@ def process_review_job(client: OpenAI, item: dict):
                     }
 
                 source_analyses.append(
-                    attach_cache_metadata(cached_analysis, cache_info)
+                    attach_runtime_evidence(
+                        cached_analysis, cache_info, game, platform, requested_url
+                    )
                 )
                 if refresh_meta_for_save.get("manual_review"):
                     print(
@@ -3016,7 +3312,11 @@ def process_review_job(client: OpenAI, item: dict):
                 "refresh_meta": _refresh_meta(evidence_quality_audit(analysis)),
             }
 
-        source_analyses.append(attach_cache_metadata(analysis, cache_info))
+        source_analyses.append(
+            attach_runtime_evidence(
+                analysis, cache_info, game, platform, requested_url
+            )
+        )
 
     if len(source_analyses) < REVIEW_MIN_SOURCES:
         print(
@@ -3046,6 +3346,11 @@ def process_review_job(client: OpenAI, item: dict):
             "version": EVIDENCE_CACHE_VERSION,
             "min_verified_points": EVIDENCE_CACHE_MIN_VERIFIED_POINTS,
             "max_failed_selective_refreshes": EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES,
+            "manual_evidence_file": os.path.basename(MANUAL_EVIDENCE_FILE),
+            "manual_evidence_policy_fa": (
+                "شواهد دستی فقط برای منبع و بازیِ دقیقِ ثبت‌شده در manual_evidence.yaml "
+                "اعمال می‌شوند؛ cache خودکار و OpenAI را تغییر نمی‌دهند."
+            ),
             "quality_audit": quality_rows,
             "policy_fa": (
                 "شواهد هر منبع پس از اولین تحلیل ذخیره می‌شوند. بازخوانی انتخابی "
@@ -3099,12 +3404,17 @@ def process_review_job(client: OpenAI, item: dict):
             f" | failed refreshes: {row.get('failed_selective_refreshes', 0)}/"
             f"{row.get('max_failed_selective_refreshes', EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES)}"
         )
+        manual_text = (
+            f" | manual points: +{row.get('manual_points_added', 0)}"
+            if row.get("manual_evidence_applied")
+            else ""
+        )
         print(
             f"- {row['site_name']}: {row['status']} | "
             f"verified points: {row['verified_point_count']}"
             f" | categorized: {row['categorized_point_count']}"
             f" | coverage: {row.get('coverage_fa', 'نامشخص')}"
-            f"{retry_text}{suffix}"
+            f"{manual_text}{retry_text}{suffix}"
         )
 
     if needs_review_rows:
