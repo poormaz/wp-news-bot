@@ -1,0 +1,25 @@
+# شواهد دستی برای نقدها
+# این فایل فقط یک overlay تحریریه‌ای است:
+# - OpenAI را اجرا نمی‌کند.
+# - فایل‌های reviews/cache/evidence را تغییر نمی‌دهد.
+# - هر نقل‌قول انگلیسی را قبل از ثبت، خودت با همان صفحه‌ی نقد تطبیق بده.
+# - evidence_en باید دقیقاً از منبع باشد و بین 8 تا 22 کلمه‌ی انگلیسی داشته باشد.
+#
+# وقتی یک مورد را کامل کردی:
+# 1) reviewed را true کن.
+# 2) حداقل یک نقطه‌ی معتبر به positives / negatives / technical_notes اضافه کن.
+# 3) فایل را Commit کن.
+# 4) Workflow را بدون تیک Refresh اجرا کن.
+#
+# این نمونه برای منبعی است که اکنون manual_review شده.
+version: 1
+
+entries:
+  - game: "Crimson Desert"
+    platform: "PC"
+    source_url: "https://wccftech.com/review/crimson-desert-review-blissfully-lost-in-pywell/"
+    reviewed: false
+    note_fa: ""
+    positives: []
+    negatives: []
+    technical_notes: []
