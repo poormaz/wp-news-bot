@@ -18,7 +18,7 @@ entries:
   - game: "Crimson Desert"
     platform: "PC"
     source_url: "https://wccftech.com/review/crimson-desert-review-blissfully-lost-in-pywell/"
-    reviewed: false
+    reviewed: true
     note_fa: ""
     positives: []
     negatives: []
