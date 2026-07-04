@@ -1,31 +1,7 @@
 # صف نقدهای Poormaz
-# ------------------
-# هر آیتم داخل «reviews» یک پرونده‌ی نقد است. فیلدها:
-#
-#   game            (الزامی) نام بازی.
-#   platform        (الزامی) پلتفرمی که این پرونده مخصوص آن است، مثلاً
-#                   "PC" یا "PS5". نمره‌ی متاکریتیک و امتیاز نهایی فقط
-#                   برای همین پلتفرم محاسبه می‌شود؛ نسخه‌های دیگر با هم
-#                   قاطی نمی‌شوند. برای هر پلتفرم یک آیتم جدا بسازید.
-#   release_date    (اختیاری) تاریخ عرضه، مثلاً "2026-03-19".
-#   game_status     (اختیاری، پیش‌فرض: Released) وضعیت عرضه‌ی بازی. یکی از:
-#                   Released, Early Access, Remaster, Remake,
-#                   Definitive Edition, GOTY Edition, DLC, Expansion, Port
-#                   یا هر متن دیگری (در آن صورت همان متن به‌عنوان برچسب
-#                   استفاده می‌شود، بدون رد شدن پرونده).
-#   metacritic_url  (الزامی) لینک صفحه‌ی متاکریتیکِ همین پلتفرم.
-#   review_urls     (الزامی) لینک نقدهای منتخب. هدف تحریریه ۵ تا ۱۰ نقد
-#                   برای هر پرونده است (حداقل واقعی ۵ مورد)، تا هم «اجماع
-#                   منتقدان» و هم «تفاوت دیدگاه سایت‌ها» معنای واقعی داشته
-#                   باشند. سایت‌های پیشنهادی: IGN, GameSpot, PC Gamer,
-#                   Wccftech, Eurogamer, Game Informer, VG247, GamesRadar+,
-#                   Destructoid، و در صورت نیاز منابع معتبر دیگر. بات به‌صورت
-#                   خودکار پوشش این فهرست را در کنسول گزارش می‌کند و اگر
-#                   منبعی از این فهرست جا افتاده باشد، پیشنهاد می‌دهد.
-#
-# گزینه‌های اختیاری بیشتر (برای بازخوانی شواهد):
-#   refresh_evidence: true             -> اجبار به استخراج تازه‌ی همه‌ی منابع
-#   refresh_incomplete_evidence: true  -> فقط منابعی که کیفیت‌شان ضعیف بود
+# هر پرونده باید ۵ تا ۱۰ نقد حرفه‌ای داشته باشد. بات فقط وقتی مقاله‌ی نهایی
+# و Draft وردپرس می‌سازد که دست‌کم ۵ منبع واقعاً «شاهد تأییدشده» برای متن
+# مقاله داده باشند. لینک 403 یا منبعی با صفر شاهد، در این شمارش حساب نمی‌شود.
 
 reviews:
   - game: "Crimson Desert"
@@ -37,21 +13,6 @@ reviews:
       - "https://www.destructoid.com/reviews/crimson-desert-review/"
       - "https://www.pcgamer.com/games/action/crimson-desert-review/"
       - "https://wccftech.com/review/crimson-desert-review-blissfully-lost-in-pywell/"
-      - "https://www.gamespot.com/reviews/crimson-desert-review-highest-fantasy/1900-6418474/"
-      - "https://www.gamesradar.com/games/rpg/crimson-desert-review/"
-      # این ۵ لینک واقعی و بررسی‌شده‌اند. برای رسیدن به بازه‌ی ایده‌آل ۷ تا ۱۰
-      # نقد، لینک IGN، Eurogamer، Game Informer یا VG247 را هم اضافه کنید؛
-      # گزارش «پوشش منابع معتبر» در کنسول بات دقیقاً همین موارد را یادآوری می‌کند.
-
-  # نمونه‌ی دوم: همان بازی، پلتفرم جدا (نمره‌ی PS5 هیچ‌وقت با PC قاطی نمی‌شود).
-  # - game: "Crimson Desert"
-  #   platform: "PS5"
-  #   release_date: "2026-03-19"
-  #   game_status: "Released"
-  #   metacritic_url: "https://www.metacritic.com/game/crimson-desert/ps5/"
-  #   review_urls:
-  #     - "https://www.ign.com/reviews/crimson-desert-review"
-  #     - "https://www.gamespot.com/reviews/crimson-desert-review-highest-fantasy/1900-6418474/"
-  #     - "https://www.eurogamer.net/crimson-desert-review"
-  #     - "https://www.gamesradar.com/games/rpg/crimson-desert-review/"
-  #     - "https://www.pushsquare.com/features/round-up-crimson-desert-reviews-are-a-major-disappointment"
+      - "https://gameinformer.com/review/crimson-desert/open-world-overload"
+      - "https://www.techradar.com/gaming/crimson-desert-review"
+      - "https://www.tomsguide.com/gaming/crimson-desert-review"
