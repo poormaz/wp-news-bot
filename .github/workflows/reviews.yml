@@ -3,6 +3,11 @@ name: Run Review Bot
 on:
   workflow_dispatch:
     inputs:
+      create_wordpress_draft:
+        description: 'Create one WordPress DRAFT from the current cached review article (never publishes)'
+        required: false
+        default: false
+        type: boolean
       refresh_incomplete_evidence:
         description: 'Re-extract only sources whose cached evidence fails the quality check'
         required: false
@@ -41,7 +46,9 @@ jobs:
           WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          # Hard safety guard. V13 rejects every non-draft value in code too.
           REVIEW_POST_STATUS: draft
+          REVIEW_CREATE_WORDPRESS_DRAFT: ${{ inputs.create_wordpress_draft }}
           REVIEW_MIN_SOURCES: 3
           REVIEW_SCORE_MAX_DELTA: 0.4
           REVIEW_EVIDENCE_CACHE: '1'
