@@ -424,6 +424,14 @@ def merge_cached_and_candidate_analysis(cached_analysis: dict, candidate_analysi
             EVIDENCE_CACHE_MAX_MERGED_POINTS_PER_SECTION,
         )
 
+    # verdict یک نتیجه‌گیریِ کلی و تک‌آیتمی است، نه فهرستی که باید انباشته شود؛
+    # استخراج تازه در اولویت است و فقط اگر خالی بود، verdict قدیمی نگه داشته می‌شود.
+    merged["verdict"] = (
+        (candidate_analysis or {}).get("verdict")
+        or (cached_analysis or {}).get("verdict")
+        or []
+    )
+
     return merged
 
 
@@ -908,6 +916,110 @@ def fallback_site_name(url: str) -> str:
     return host or "Unknown Source"
 
 
+# دامنه‌های معتبری که Poormaz برای نقد بازی ترجیح می‌دهد. این نگاشت فقط برای
+# یکدست‌سازی نام سایت (به‌جای og:site_name نامنظم) و برای گزارش پوشش منابع
+# معتبر استفاده می‌شود؛ هرگز برای فیلتر یا رد کردن یک URL به کار نمی‌رود،
+# چون صف نقدها همچنان دستی و توسط سردبیر پر می‌شود.
+REPUTABLE_SITE_DOMAINS = {
+    "ign.com": "IGN",
+    "gamespot.com": "GameSpot",
+    "pcgamer.com": "PC Gamer",
+    "wccftech.com": "Wccftech",
+    "eurogamer.net": "Eurogamer",
+    "gameinformer.com": "Game Informer",
+    "vg247.com": "VG247",
+    "gamesradar.com": "GamesRadar+",
+    "destructoid.com": "Destructoid",
+    "rockpapershotgun.com": "Rock Paper Shotgun",
+    "polygon.com": "Polygon",
+    "kotaku.com": "Kotaku",
+    "pcgamesn.com": "PCGamesN",
+    "thegamer.com": "TheGamer",
+    "videogamer.com": "VideoGamer",
+    "gamingbolt.com": "GamingBolt",
+    "pushsquare.com": "Push Square",
+    "nintendolife.com": "Nintendo Life",
+    "purexbox.com": "Pure Xbox",
+    "gamerant.com": "Game Rant",
+    "dualshockers.com": "DualShockers",
+    "gamesindustry.biz": "GamesIndustry.biz",
+    "gameskinny.com": "GameSkinny",
+    "digitaltrends.com": "Digital Trends",
+    "pcinvasion.com": "PC Invasion",
+    "godisageek.com": "GodisaGeek",
+    "screenrant.com": "ScreenRant",
+    "shacknews.com": "Shacknews",
+    "gamewatcher.com": "GameWatcher",
+    "rpgsite.net": "RPG Site",
+    "hardcoregamer.com": "Hardcore Gamer",
+    "gamespew.com": "GameSpew",
+    "gamerevolution.com": "GameRevolution",
+    "trueachievements.com": "TrueAchievements",
+    "purenintendo.com": "Pure Nintendo",
+    "metro.co.uk": "Metro GameCentral",
+}
+
+# فهرست هسته‌ای که کاربر صراحتاً برای پوشش نقد خواسته است؛ فقط برای گزارش
+# «چه منابعی هنوز کم است» استفاده می‌شود، نه یک شرط سخت‌گیرانه برای رد کردن پرونده.
+RECOMMENDED_CORE_SITES = [
+    "IGN",
+    "GameSpot",
+    "PC Gamer",
+    "Wccftech",
+    "Eurogamer",
+    "Game Informer",
+    "VG247",
+    "GamesRadar+",
+    "Destructoid",
+]
+
+
+def canonical_reputable_site_name(url: str) -> str | None:
+    """اگر دامنه‌ی URL یکی از منابع شناخته‌شده باشد، نام یکدست انتشاراتی را برمی‌گرداند."""
+    host = (urlparse(url).hostname or "").lower()
+    host = re.sub(r"^www\.", "", host)
+
+    for domain, name in REPUTABLE_SITE_DOMAINS.items():
+        if host == domain or host.endswith("." + domain):
+            return name
+
+    return None
+
+
+def reputable_coverage_report(review_sources: list[dict]) -> dict:
+    """
+    گزارشی صرفاً راهنما درباره‌ی پوشش سایت‌های معتبر هسته‌ای. این گزارش هرگز
+    پرونده را رد نمی‌کند و وارد متن عمومی مقاله نمی‌شود؛ فقط برای تصمیم
+    تحریریه‌ی سردبیر در کنسول و JSON پرونده چاپ می‌شود.
+    """
+    present_names = {
+        clean_text(str(source.get("site_name") or ""))
+        for source in review_sources
+    }
+
+    covered = [name for name in RECOMMENDED_CORE_SITES if name in present_names]
+    missing = [name for name in RECOMMENDED_CORE_SITES if name not in present_names]
+    other_sources = sorted(
+        name for name in present_names
+        if name and name not in RECOMMENDED_CORE_SITES
+    )
+
+    if missing:
+        note_fa = (
+            "برای پوشش قوی‌تر، افزودن نقد از " + "، ".join(missing) +
+            " پیشنهاد می‌شود (در صورت وجود نقد منتشرشده از آن‌ها)."
+        )
+    else:
+        note_fa = "پوشش منابع معتبر هسته‌ای در این پرونده کامل است."
+
+    return {
+        "covered_core_sites": covered,
+        "missing_core_sites": missing,
+        "other_sources": other_sources,
+        "note_fa": note_fa,
+    }
+
+
 class MetaParser(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -1047,7 +1159,8 @@ def extract_page_info(url: str) -> dict:
     )
 
     site_name = clean_text(
-        meta_parser.meta.get("og:site_name")
+        canonical_reputable_site_name(response.url)
+        or meta_parser.meta.get("og:site_name")
         or meta_parser.meta.get("application-name")
         or fallback_site_name(response.url)
     )
@@ -1070,6 +1183,81 @@ def extract_page_info(url: str) -> dict:
         "text_chars": len(page_text),
         "html": html,
         "meta_items": meta_parser.meta_items,
+    }
+
+
+# وضعیت عرضه‌ی بازی (منتشرشده، دسترسی زودهنگام، بازسازی، DLC و غیره) یک فیلد
+# اختیاری در صف است. اگر کاربر آن را ننویسد، پیش‌فرض «منتشرشده» در نظر گرفته
+# می‌شود؛ اگر مقدار ناشناخته‌ای بنویسد، همان متن به‌عنوان برچسب نگه داشته
+# می‌شود تا هیچ پرونده‌ای فقط به‌خاطر یک مقدار غیرمنتظره رد نشود.
+GAME_STATUS_LABELS = {
+    "released": "منتشرشده",
+    "early_access": "دسترسی زودهنگام (Early Access)",
+    "remaster": "بازسازی (Remaster)",
+    "remake": "ریمیک (Remake)",
+    "definitive_edition": "نسخه‌ی نهایی (Definitive Edition)",
+    "goty_edition": "نسخه‌ی ویژه‌ی بازی سال (GOTY Edition)",
+    "dlc": "بسته الحاقی (DLC)",
+    "expansion": "بسته گسترش‌دهنده (Expansion)",
+    "port": "پورت روی پلتفرم جدید",
+}
+
+GAME_STATUS_ALIASES = {
+    "released": "released",
+    "release": "released",
+    "full release": "released",
+    "1.0": "released",
+    "early access": "early_access",
+    "early-access": "early_access",
+    "earlyaccess": "early_access",
+    "ea": "early_access",
+    "remaster": "remaster",
+    "remastered": "remaster",
+    "remake": "remake",
+    "definitive edition": "definitive_edition",
+    "definitive": "definitive_edition",
+    "goty": "goty_edition",
+    "goty edition": "goty_edition",
+    "game of the year edition": "goty_edition",
+    "dlc": "dlc",
+    "downloadable content": "dlc",
+    "expansion": "expansion",
+    "expansion pack": "expansion",
+    "port": "port",
+    "console port": "port",
+}
+
+
+def normalize_game_status(raw) -> dict:
+    """
+    مقدار خام game_status را به یک کلید و برچسب فارسی استاندارد تبدیل می‌کند.
+    خالی بودن یا ناشناخته بودن مقدار هرگز باعث رد شدن آیتم نمی‌شود.
+    """
+    text = clean_text(str(raw or "")).strip()
+
+    if not text:
+        return {
+            "key": "released",
+            "label_fa": GAME_STATUS_LABELS["released"],
+            "raw": "",
+            "recognized": True,
+        }
+
+    key = GAME_STATUS_ALIASES.get(text.casefold())
+
+    if key:
+        return {
+            "key": key,
+            "label_fa": GAME_STATUS_LABELS[key],
+            "raw": text,
+            "recognized": True,
+        }
+
+    return {
+        "key": "custom",
+        "label_fa": text,
+        "raw": text,
+        "recognized": False,
     }
 
 
@@ -1765,6 +1953,10 @@ Rules:
 - positives: array of objects with point_fa and evidence_en
 - negatives: array of objects with point_fa and evidence_en
 - technical_notes: array of objects with point_fa and evidence_en
+- verdict: a single object with point_fa and evidence_en representing the
+  reviewer's own bottom-line conclusion/verdict sentence about the game as a
+  whole (not a specific pro or con), or null if the review has no clear
+  concluding verdict sentence. Same evidence_en length rule (8-22 words) applies.
 - platform_mentioned: string or null
 
 Extraction mode: {"coverage recovery: inspect the whole supplied review carefully because the prior cache was too thin" if recovery_mode else "normal"}
@@ -1774,6 +1966,9 @@ Page text:
 """.strip()
 
     raw = ask_openai_json(client, prompt)
+
+    raw_verdict = raw.get("verdict")
+    verdict_candidates = [raw_verdict] if isinstance(raw_verdict, dict) else []
 
     return {
         "site_name": page["site_name"],
@@ -1787,6 +1982,7 @@ Page text:
             page["text"],
             3,
         ),
+        "verdict": verified_points(verdict_candidates, page["text"], 1),
         "platform_mentioned": clean_text(
             str(raw.get("platform_mentioned") or "")
         ) or None,
@@ -1949,6 +2145,22 @@ CATEGORY_PATTERNS = {
         r"\bdraw distance\b",
         r"\bvisual presentation\b",
     ),
+    "audio": (
+        r"\bvoice acting\b",
+        r"\bvoice[- ]over(?:s)?\b",
+        r"\bvoiceover(?:s)?\b",
+        r"\bvocal performance(?:s)?\b",
+        r"\bvoice cast\b",
+        r"\bvoice direction\b",
+        r"\bdubbing\b",
+        r"\bdubbed\b",
+        r"\bsound design\b",
+        r"\bsound effects\b",
+        r"\bsoundtrack\b",
+        r"\bmusical score\b",
+        r"\bcomposer\b",
+        r"\baudio (?:design|mix|quality|presentation)\b",
+    ),
     "value": (
         # «worth» به‌تنهایی الگوی ارزش خرید نیست. در عبارت‌هایی مثل
         # "for what it's worth" فقط یک اصطلاح محاوره‌ای است.
@@ -2048,10 +2260,11 @@ TECHNICAL_POSITIVE_PATTERNS = (
 CATEGORY_LABELS = {
     "gameplay": "گیم‌پلی",
     "world_design": "طراحی جهان",
-    "story": "داستان و روایت",
+    "story": "داستان و شخصیت‌پردازی",
+    "visuals": "تصویرسازی و طراحی هنری",
+    "audio": "صداگذاری و موسیقی",
     "technical": "فنی و عملکرد",
-    "visuals": "تصویرسازی و گرافیک",
-    "value": "ارزش خرید",
+    "value": "ارزش خرید و محتوا",
 }
 
 
@@ -2069,6 +2282,8 @@ def classify_evidence_rule_based(item: dict) -> tuple[str | None, str | None]:
     # ترتیب مهم است: مقوله‌های دقیق‌تر پیش از مقوله‌های گسترده‌تر.
     if _matches_any(evidence, CATEGORY_PATTERNS["technical"]):
         category = "technical"
+    elif _matches_any(evidence, CATEGORY_PATTERNS["audio"]):
+        category = "audio"
     elif _matches_any(evidence, CATEGORY_PATTERNS["visuals"]):
         category = "visuals"
     elif _matches_any(evidence, CATEGORY_PATTERNS["value"]):
@@ -2128,6 +2343,18 @@ def run_rule_based_regression_checks() -> None:
             "technical",
             "positive",
         ),
+        (
+            "The voice acting is superb and the orchestral soundtrack elevates every scene.",
+            "positives",
+            "audio",
+            "positive",
+        ),
+        (
+            "The English dubbing feels flat and the sound design lacks any punch.",
+            "negatives",
+            "audio",
+            "negative",
+        ),
     ]
 
     for evidence_en, section, expected_category, expected_sentiment in cases:
@@ -2144,6 +2371,41 @@ def run_rule_based_regression_checks() -> None:
                 f"got {(actual_category, actual_sentiment)} for: {evidence_en}"
             )
 
+
+
+def run_metadata_regression_checks() -> None:
+    """جلوگیری از بازگشت خطا در نگاشت وضعیت عرضه و شناسایی سایت‌های معتبر."""
+    status_cases = [
+        ("", "released", True),
+        ("Early Access", "early_access", True),
+        ("early-access", "early_access", True),
+        ("Remastered", "remaster", True),
+        ("DLC", "dlc", True),
+        ("A Totally Unknown Status", "custom", False),
+    ]
+
+    for raw, expected_key, expected_recognized in status_cases:
+        result = normalize_game_status(raw)
+        if result["key"] != expected_key or result["recognized"] != expected_recognized:
+            fail(
+                "Game status regression check failed: "
+                f"input={raw!r} expected key={expected_key!r} "
+                f"got {result}"
+            )
+
+    site_cases = [
+        ("https://www.ign.com/reviews/crimson-desert-review", "IGN"),
+        ("https://www.gamesradar.com/crimson-desert-review/", "GamesRadar+"),
+        ("https://example-not-a-real-outlet.com/review", None),
+    ]
+
+    for url, expected_name in site_cases:
+        actual_name = canonical_reputable_site_name(url)
+        if actual_name != expected_name:
+            fail(
+                "Reputable site regression check failed: "
+                f"url={url!r} expected={expected_name!r} got={actual_name!r}"
+            )
 
 
 def category_score_from_evidence(
@@ -2204,6 +2466,72 @@ def category_score_from_evidence(
         confidence_fa = "برداشت اولیه"
 
     return score_10, trend_fa, confidence_fa
+
+
+def build_game_intro(
+    client: OpenAI,
+    game: str,
+    platform: str,
+    release_date: str,
+    game_status_label: str,
+    description_en: str,
+) -> dict:
+    """
+    معرفی کوتاه بازی را می‌سازد. اگر توضیح رسمی از صفحه‌ی Metacritic در دسترس
+    باشد، فقط همان بازنویسی می‌شود (نه ترجمه‌ی کلمه‌به‌کلمه)؛ در غیر این صورت
+    فقط از واقعیت‌های ساختاریافته (نام، پلتفرم، تاریخ، وضعیت عرضه) یک جمله‌ی
+    خیلی کوتاه ساخته می‌شود. هیچ‌جا جزئیات گیم‌پلی از خود مدل ساخته نمی‌شود.
+    """
+    description_en = clean_text(description_en)[:900]
+
+    def template_fallback() -> str:
+        bits = [f"{game} برای {platform}"]
+        if release_date:
+            bits.append(f"در تاریخ {release_date}")
+        if game_status_label:
+            bits.append(f"با وضعیت {game_status_label}")
+        return " ".join(bits) + " منتشر شده و در ادامه بر پایه‌ی نقدهای منتخب بررسی می‌شود."
+
+    if not description_en:
+        return {"intro_fa": template_fallback(), "method": "template_no_description"}
+
+    facts_lines = [f"Game: {game}", f"Platform: {platform}"]
+    if release_date:
+        facts_lines.append(f"Release date: {release_date}")
+    if game_status_label:
+        facts_lines.append(f"Release status: {game_status_label}")
+
+    prompt = f"""
+Write a short, neutral, factual Persian introduction (2 to 3 sentences maximum)
+for the opening of a game review article.
+
+Facts you may use:
+{chr(10).join(facts_lines)}
+
+Official page description (English, may be from the publisher or Metacritic):
+{description_en}
+
+Rules:
+- Paraphrase the description in your own words; do not translate it word for word
+  and do not copy full phrases from it verbatim.
+- Do not invent gameplay features, story details, or claims that are not present
+  in the description or the facts above.
+- Do not mention scores, review verdicts, or critic opinions; this is only a
+  neutral introduction to the game itself.
+- Return strict JSON: {{"intro_fa": "..."}}
+""".strip()
+
+    try:
+        raw = ask_openai_json(client, prompt, max_tokens=300)
+        intro_fa = _clean_article_text(raw.get("intro_fa"), min_words=6, max_words=110)
+    except Exception as exc:
+        intro_fa = ""
+        print(f"Game intro generation failed, falling back to template: {repr(exc)}")
+
+    if not intro_fa:
+        return {"intro_fa": template_fallback(), "method": "template_fallback_after_api_error"}
+
+    return {"intro_fa": intro_fa, "method": "openai_paraphrase_from_official_description"}
 
 
 def build_poormaz_assessment(client: OpenAI, dossier: dict) -> dict:
@@ -2433,6 +2761,119 @@ def _scorecard_summary_sentences(scorecard: list[dict]) -> list[str]:
     return sentences
 
 
+def _audience_fit_sentence(scorecard: list[dict], game: str) -> str:
+    """
+    جمله‌ی «این بازی برای چه کسانی مناسب است» را فقط از جهت‌گیریِ از قبل
+    محاسبه‌شده‌ی کارت امتیاز می‌سازد؛ هیچ ادعای تازه‌ای درباره‌ی مخاطب اضافه نمی‌شود.
+    """
+    if not scorecard:
+        return (
+            "برای قضاوت درباره‌ی مناسب بودن این بازی برای سلیقه‌های مختلف، "
+            "شواهد کافی در این پرونده ثبت نشده است."
+        )
+
+    positive_labels = [
+        clean_text(str(c.get("label_fa") or ""))
+        for c in scorecard
+        if clean_text(str(c.get("trend_fa") or "")) == "مثبت"
+    ]
+    negative_labels = [
+        clean_text(str(c.get("label_fa") or ""))
+        for c in scorecard
+        if clean_text(str(c.get("trend_fa") or "")) == "منفی"
+    ]
+    positive_labels = [label for label in positive_labels if label]
+    negative_labels = [label for label in negative_labels if label]
+
+    sentences = []
+
+    if positive_labels:
+        sentences.append(
+            f"{game} بیشتر به بازیکنانی پیشنهاد می‌شود که برای "
+            + "، ".join(positive_labels)
+            + " در یک بازی اهمیت زیادی قائل‌اند، چون ارزیابی منابع بررسی‌شده در "
+            "این زمینه‌ها مثبت‌تر بوده است."
+        )
+
+    if negative_labels:
+        sentences.append(
+            "در مقابل، اگر "
+            + "، ".join(negative_labels)
+            + " اولویت اصلی شما برای خرید است، بهتر است پیش از خرید نقدهای "
+            "کامل منابع را هم بررسی کنید، چون شواهد این پرونده در این زمینه‌ها "
+            "نکات احتیاطی ثبت کرده‌اند."
+        )
+
+    if not sentences:
+        sentences.append(
+            f"شواهد ثبت‌شده درباره‌ی {game} در این پرونده ترکیبی است و در حال "
+            "حاضر برای هیچ‌کدام از بخش‌ها جهت‌گیری قاطع مثبت یا منفی گزارش نشده است."
+        )
+
+    return " ".join(sentences)
+
+
+def _render_site_differences(review_sources: list[dict]) -> list[str]:
+    """
+    تفاوت دیدگاه سایت‌ها را فقط با نمره‌ی هر منبع و یک نکته‌ی متمایزکننده‌ی
+    برگرفته از همان شاهد تأییدشده نشان می‌دهد؛ هیچ تضاد یا اختلاف‌نظری
+    ساخته یا فرض نمی‌شود، فقط داده‌ی موجود کنار هم گذاشته می‌شود.
+    """
+    if not review_sources:
+        return ["در حال حاضر منبعی برای مقایسه‌ی دیدگاه‌ها ثبت نشده است."]
+
+    lines: list[str] = []
+    numeric_scores = [
+        score for score in (
+            as_score_10(source.get("review_score_10")) for source in review_sources
+        )
+        if score is not None
+    ]
+
+    if len(numeric_scores) >= 2:
+        spread = round(max(numeric_scores) - min(numeric_scores), 1)
+        if spread >= 1.5:
+            lines.append(
+                f"فاصله‌ی نمره‌ی منابع بررسی‌شده در این پرونده حدود {spread} از ۱۰ "
+                "است؛ یعنی دیدگاه منتقدان درباره‌ی این بازی یکدست نیست."
+            )
+        else:
+            lines.append(
+                "نمره‌ی منابع بررسی‌شده در این پرونده به هم نزدیک است و اختلاف "
+                "چشمگیری در امتیازدهی دیده نمی‌شود."
+            )
+        lines.append("")
+
+    lines.append("| منبع | نمره | نکته‌ی متمایزکننده |")
+    lines.append("|---|---:|---|")
+
+    for source in review_sources:
+        site_name = clean_text(str(source.get("site_name") or "منبع نامشخص"))
+        url = str(source.get("url") or "").strip()
+        score_label = _source_score_label(source)
+
+        verdict_points = source.get("verdict") or []
+        if verdict_points and isinstance(verdict_points[0], dict):
+            highlight = clean_text(str(verdict_points[0].get("point_fa") or ""))
+        else:
+            highlight = ""
+
+        if not highlight:
+            fallback_points = (source.get("negatives") or []) + (source.get("positives") or [])
+            if fallback_points and isinstance(fallback_points[0], dict):
+                highlight = clean_text(str(fallback_points[0].get("point_fa") or ""))
+
+        if not highlight:
+            highlight = "نکته‌ی متمایزکننده‌ی قابل‌استناد در این منبع ثبت نشده است."
+
+        site_label = f"[{site_name}]({url})" if url else site_name
+        # Markdown Table کاراکتر | داخل سلول را می‌شکند.
+        highlight = highlight.replace("|", "/")
+        lines.append(f"| {site_label} | {score_label} | {highlight} |")
+
+    return lines
+
+
 def _source_url_map(review_sources: list[dict]) -> dict[str, str]:
     urls = {}
 
@@ -2454,6 +2895,8 @@ def _article_fact_pack(dossier: dict) -> dict:
     game = clean_text(str(dossier.get("game") or "")) or "بازی"
     platform = clean_text(str(dossier.get("platform") or ""))
     release_date = clean_text(str(dossier.get("release_date") or ""))
+    game_status = dossier.get("game_status", {}) or {}
+    game_intro = dossier.get("game_intro", {}) or {}
     metacritic = dossier.get("metacritic", {}) or {}
     assessment = dossier.get("poormaz_assessment", {}) or {}
     review_sources = dossier.get("review_sources", []) or []
@@ -2523,6 +2966,9 @@ def _article_fact_pack(dossier: dict) -> dict:
             "game": game,
             "platform": platform,
             "release_date": release_date,
+            "game_status_key": clean_text(str(game_status.get("key") or "")),
+            "game_status_label": clean_text(str(game_status.get("label_fa") or "")),
+            "game_intro_fa": clean_text(str(game_intro.get("intro_fa") or "")),
             "poormaz_score_10": assessment.get("overall_score_10"),
             "metacritic_score_100": metacritic.get("metascore_100"),
             "critic_review_count": metacritic.get("critic_review_count"),
@@ -2842,6 +3288,9 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
     metascore = meta.get("metacritic_score_100")
     critic_count = meta.get("critic_review_count")
     platform = clean_text(str(meta.get("platform") or ""))
+    release_date = clean_text(str(meta.get("release_date") or ""))
+    game_status_label = clean_text(str(meta.get("game_status_label") or ""))
+    game_intro_fa = clean_text(str(meta.get("game_intro_fa") or ""))
 
     evidence_by_id = {
         item.get("id"): item
@@ -2849,7 +3298,7 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
         if item.get("id")
     }
 
-    title_fa = f"نقد و بررسی {game} | جمع‌بندی امتیازها و نقدها"
+    title_fa = f"نقد و بررسی {game} | آیا ارزش خرید دارد؟"
     excerpt_bits = [f"جمع‌بندی Poormaz از نقدهای منتخب {game}"]
     if metascore is not None:
         excerpt_bits.append(f"متاکریتیک {metascore} از ۱۰۰")
@@ -2861,9 +3310,12 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
         f"# {title_fa}",
         "",
         f"> {excerpt_fa}",
-        "",
-        "## نتیجه در یک نگاه",
     ]
+
+    if game_intro_fa:
+        markdown.extend(["", "## معرفی بازی", game_intro_fa])
+
+    markdown.extend(["", "## نتیجه در یک نگاه"])
 
     if overall_score is not None:
         markdown.append(f"- **امتیاز Poormaz:** {_format_score_10(overall_score)}")
@@ -2872,6 +3324,10 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
         markdown.append(f"- **متاکریتیک:** {metascore}/100{count_part}")
     if platform:
         markdown.append(f"- **پلتفرم پرونده:** {platform}")
+    if release_date:
+        markdown.append(f"- **تاریخ عرضه:** {release_date}")
+    if game_status_label:
+        markdown.append(f"- **وضعیت عرضه:** {game_status_label}")
 
     overview = (
         f"این پرونده از {len(review_sources)} نقد انتخاب‌شده و داده‌ی متاکریتیک ساخته شده است. "
@@ -2882,8 +3338,12 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
 
     markdown.extend([
         "",
-        "## نگاه کلی به نقدها",
+        "## اجماع منتقدان",
         overview + _render_inline_citations(["META"], fact_pack),
+    ])
+    markdown.extend(_scorecard_summary_sentences(scorecards))
+
+    markdown.extend([
         "",
         "## کارت امتیاز Poormaz",
         "",
@@ -2899,14 +3359,25 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
             f"{card.get('confidence_fa', 'برداشت اولیه')} |"
         )
 
-    markdown.extend(["", "## جزئیات ارزیابی"])
+    positives = _collect_article_points(
+        review_sources, "positives", ARTICLE_MAX_POINTS_PER_SECTION
+    )
+    negatives = _collect_article_points(
+        review_sources, "negatives", ARTICLE_MAX_POINTS_PER_SECTION
+    )
+    markdown.extend(["", "## نقاط قوت"])
+    markdown.extend(_render_article_points(positives))
+    markdown.extend(["", "## نقاط ضعف"])
+    markdown.extend(_render_article_points(negatives))
+
+    markdown.extend(["", "## جزئیات ارزیابی بر اساس بخش‌ها"])
     categorized_refs = set()
 
     for card in scorecards:
         label = clean_text(str(card.get("label_fa") or "این بخش"))
         trend = clean_text(str(card.get("trend_fa") or "ترکیبی"))
         confidence = clean_text(str(card.get("confidence_fa") or "برداشت اولیه"))
-        positives, negatives, neutral = _editorial_points_for_card(card, evidence_by_id)
+        card_positives, card_negatives, neutral = _editorial_points_for_card(card, evidence_by_id)
         supports = list(card.get("supported_refs", []) or [])
         categorized_refs.update(supports)
 
@@ -2919,18 +3390,18 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
             ),
         ])
 
-        if positives:
+        if card_positives:
             markdown.append("**نکات مثبت ثبت‌شده:**")
-            for item in positives:
+            for item in card_positives:
                 markdown.append(
                     "- "
                     + clean_text(str(item.get("point_fa") or ""))
                     + _render_inline_citations([item["id"]], fact_pack)
                 )
 
-        if negatives:
+        if card_negatives:
             markdown.append("**نکات احتیاطی ثبت‌شده:**")
-            for item in negatives:
+            for item in card_negatives:
                 markdown.append(
                     "- "
                     + clean_text(str(item.get("point_fa") or ""))
@@ -2963,6 +3434,15 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
                 markdown.append(
                     "- " + point + _render_inline_citations([item["id"]], fact_pack)
                 )
+
+    markdown.extend(["", "## تفاوت دیدگاه سایت‌ها"])
+    markdown.extend(_render_site_differences(review_sources))
+
+    markdown.extend([
+        "",
+        "## این بازی برای چه کسانی مناسب است؟",
+        _audience_fit_sentence(scorecards, game),
+    ])
 
     conclusion = (
         f"امتیاز تجمیعی Poormaz برای {game} {_format_score_10(overall_score)} است. "
@@ -3006,7 +3486,7 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
     ])
 
     return {
-        "status": "preview_only_template_grounded_v13",
+        "status": "preview_only_template_grounded_v14",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
@@ -3429,8 +3909,16 @@ def process_review_job(client: OpenAI, item: dict):
         item_incomplete_refresh_requested(item) and not refresh_all_evidence
     )
 
+    game_status_info = normalize_game_status(item.get("game_status"))
+
     print("\n" + "=" * 72)
     print(f"ANALYZING: {game} | {platform}")
+    print(f"Game status: {game_status_info['label_fa']}")
+    if not game_status_info["recognized"]:
+        print(
+            "Note: game_status value was not recognized from the known list; "
+            "using it verbatim as the label."
+        )
 
     if refresh_all_evidence:
         print("Evidence cache: FULL REFRESH forced for this job")
@@ -3663,6 +4151,7 @@ def process_review_job(client: OpenAI, item: dict):
         "game": game,
         "platform": platform,
         "release_date": str(item.get("release_date") or ""),
+        "game_status": game_status_info,
         "metacritic": metacritic_data,
         "review_sources": source_analyses,
         "evidence_cache": {
@@ -3688,6 +4177,19 @@ def process_review_job(client: OpenAI, item: dict):
         "status": "analysis_only",
         "wordpress_post_created": False,
     }
+
+    dossier["reputable_coverage"] = reputable_coverage_report(source_analyses)
+    print(f"Reputable site coverage: {dossier['reputable_coverage']['note_fa']}")
+
+    print("Writing short factual game introduction...")
+    dossier["game_intro"] = build_game_intro(
+        client,
+        game,
+        platform,
+        dossier["release_date"],
+        game_status_info["label_fa"],
+        metacritic_page.get("description", ""),
+    )
 
     print("Building Poormaz scorecard from verified evidence...")
     dossier["poormaz_assessment"] = build_poormaz_assessment(
@@ -3717,6 +4219,7 @@ def process_review_job(client: OpenAI, item: dict):
 
     print("\n--- REVIEW DOSSIER SUMMARY ---")
     print(f"Game: {game}")
+    print(f"Game status: {game_status_info['label_fa']}")
     print(f"Metascore: {metacritic_data['metascore_100']}")
     print(f"Review count: {metacritic_data['critic_review_count']}")
 
@@ -3729,6 +4232,17 @@ def process_review_job(client: OpenAI, item: dict):
             f"{source['original_score'] or 'No deterministic score found'} "
             f"[{source['score_method']}]{cache_suffix}"
         )
+
+    coverage = dossier.get("reputable_coverage", {}) or {}
+    print("\n--- REPUTABLE SITE COVERAGE ---")
+    print(
+        "Covered core sites: "
+        + (", ".join(coverage.get("covered_core_sites", [])) or "none")
+    )
+    if coverage.get("missing_core_sites"):
+        print("Missing core sites: " + ", ".join(coverage["missing_core_sites"]))
+    if coverage.get("other_sources"):
+        print("Other sources used: " + ", ".join(coverage["other_sources"]))
 
     print("\n--- EVIDENCE CACHE QUALITY ---")
     for row in quality_rows:
@@ -3810,6 +4324,8 @@ def main():
     print("Evidence cache regression checks: passed")
     run_wordpress_draft_regression_checks()
     print("WordPress draft regression checks: passed")
+    run_metadata_regression_checks()
+    print("Metadata regression checks (game status, reputable sites): passed")
 
     if not OPENAI_API_KEY:
         fail("OPENAI_API_KEY is missing.")

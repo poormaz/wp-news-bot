@@ -1,9 +1,49 @@
+# صف نقدهای Poormaz
+# ------------------
+# هر آیتم داخل «reviews» یک پرونده‌ی نقد است. فیلدها:
+#
+#   game            (الزامی) نام بازی.
+#   platform        (الزامی) پلتفرمی که این پرونده مخصوص آن است، مثلاً
+#                   "PC" یا "PS5". نمره‌ی متاکریتیک و امتیاز نهایی فقط
+#                   برای همین پلتفرم محاسبه می‌شود؛ نسخه‌های دیگر با هم
+#                   قاطی نمی‌شوند. برای هر پلتفرم یک آیتم جدا بسازید.
+#   release_date    (اختیاری) تاریخ عرضه، مثلاً "2026-03-19".
+#   game_status     (اختیاری، پیش‌فرض: Released) وضعیت عرضه‌ی بازی. یکی از:
+#                   Released, Early Access, Remaster, Remake,
+#                   Definitive Edition, GOTY Edition, DLC, Expansion, Port
+#                   یا هر متن دیگری (در آن صورت همان متن به‌عنوان برچسب
+#                   استفاده می‌شود، بدون رد شدن پرونده).
+#   metacritic_url  (الزامی) لینک صفحه‌ی متاکریتیکِ همین پلتفرم.
+#   review_urls     (الزامی، حداقل ۳ مورد) لینک نقدهای منتخب. سایت‌های
+#                   پیشنهادی: IGN, GameSpot, PC Gamer, Wccftech, Eurogamer,
+#                   Game Informer, VG247, GamesRadar+, Destructoid، و در
+#                   صورت نیاز منابع معتبر دیگر. بات به‌صورت خودکار پوشش
+#                   این فهرست را در کنسول گزارش می‌کند و اگر منبعی از این
+#                   فهرست جا افتاده باشد، پیشنهاد می‌دهد.
+#
+# گزینه‌های اختیاری بیشتر (برای بازخوانی شواهد):
+#   refresh_evidence: true             -> اجبار به استخراج تازه‌ی همه‌ی منابع
+#   refresh_incomplete_evidence: true  -> فقط منابعی که کیفیت‌شان ضعیف بود
+
 reviews:
   - game: "Crimson Desert"
     platform: "PC"
     release_date: "2026-03-19"
+    game_status: "Released"
     metacritic_url: "https://www.metacritic.com/game/crimson-desert/"
     review_urls:
       - "https://www.destructoid.com/reviews/crimson-desert-review/"
       - "https://www.pcgamer.com/games/action/crimson-desert-review/"
       - "https://wccftech.com/review/crimson-desert-review-blissfully-lost-in-pywell/"
+
+  # نمونه‌ی دوم: همان بازی، پلتفرم جدا (نمره‌ی PS5 هیچ‌وقت با PC قاطی نمی‌شود).
+  # - game: "Crimson Desert"
+  #   platform: "PS5"
+  #   release_date: "2026-03-19"
+  #   game_status: "Released"
+  #   metacritic_url: "https://www.metacritic.com/game/crimson-desert/ps5/"
+  #   review_urls:
+  #     - "https://www.ign.com/reviews/crimson-desert-review"
+  #     - "https://www.gamespot.com/reviews/crimson-desert-review/1900-xxxxxxx/"
+  #     - "https://www.eurogamer.net/crimson-desert-review"
+  #     - "https://www.gamesradar.com/crimson-desert-review/"
