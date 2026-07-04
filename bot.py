@@ -136,7 +136,11 @@ def get_http_session():
             read=4,
             connect=4,
             backoff_factor=0.7,
-            status_forcelist=(429, 500, 502, 503, 504),
+            # 415 included alongside the usual 5xx/429: some hosting/CDN/WAF layers
+            # occasionally return a bogus 415 for a plain bodyless GET before the
+            # request ever reaches WordPress. Safe to retry since only idempotent
+            # methods are allowed below.
+            status_forcelist=(415, 429, 500, 502, 503, 504),
             # Only auto-retry safe/idempotent methods. Retrying POST automatically is
             # dangerous here: create_wp_post / wp_upload_media / tag-creation are POSTs,
             # and a retried POST after a dropped response can create a duplicate post,
@@ -1278,14 +1282,32 @@ def wp_request_headers(json_mode: bool = False) -> dict:
     return h
 
 
-def wp_check_me():
+def wp_check_me(max_attempts: int = 3, backoff_seconds: float = 5.0):
+    """
+    One-time WP connectivity/credentials sanity check at the top of each run. Hosting/CDN
+    layers occasionally return a bogus error (e.g. a stray 415 straight from the reverse
+    proxy, never reaching WordPress) for a single request with no real outage behind it.
+    Retry a few times with a real gap before giving up.
+    """
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/users/me"
-    r = http_request("GET", endpoint, headers=wp_request_headers(), timeout=HTTP_TIMEOUT)
-    print("WP ME:", r.status_code)
-    if r.status_code >= 400:
-        print("WP ME error body (first 300):", r.text[:300])
-        r.raise_for_status()
-    return r.json()
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            r = http_request("GET", endpoint, headers=wp_request_headers(), timeout=HTTP_TIMEOUT)
+            print("WP ME:", r.status_code)
+            if r.status_code < 400:
+                return r.json()
+            print("WP ME error body (first 300):", r.text[:300])
+            last_error = requests.HTTPError(f"{r.status_code} error from {endpoint}", response=r)
+        except requests.RequestException as exc:
+            last_error = exc
+            print(f"WP ME: attempt {attempt}/{max_attempts} raised {exc!r}")
+
+        if attempt < max_attempts:
+            print(f"WP ME: retrying in {backoff_seconds:.0f}s (attempt {attempt + 1}/{max_attempts})...")
+            time.sleep(backoff_seconds)
+
+    raise last_error
 
 
 def wp_upload_media(image_bytes: bytes, filename: str, mime_type: str, alt_text: str = "") -> dict:
@@ -2029,8 +2051,17 @@ def run():
     if not (WP_BASE_URL and WP_USERNAME and WP_APP_PASSWORD):
         die("WP_BASE_URL / WP_USERNAME / WP_APP_PASSWORD خالی است")
 
-    wp_check_me()
     init_db()
+
+    try:
+        wp_check_me()
+    except requests.RequestException as exc:
+        # This check failing doesn't necessarily mean bad credentials — it's often just
+        # a transient hiccup at the hosting/CDN layer (see wp_check_me). A genuine
+        # credentials/URL problem will surface the moment we make a real WP call below,
+        # and is already handled per-item without crashing the whole job. No need to
+        # throw away an entire run over a health check.
+        logger.warning("WP connectivity check failed after retries, continuing anyway: %r", exc)
 
     if process_manual_links_if_any():
         return
