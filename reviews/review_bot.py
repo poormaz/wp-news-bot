@@ -77,7 +77,13 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0") or "0")
 
-REVIEW_MIN_SOURCES = int(os.getenv("REVIEW_MIN_SOURCES", "3") or "3")
+# هدف تحریریه ۵ تا ۱۰ نقد برای هر پرونده است، نه فقط حداقل مطلق. حداقل واقعی
+# را روی ۵ می‌گذاریم تا «اجماع منتقدان» و «تفاوت دیدگاه سایت‌ها» معنای واقعی
+# داشته باشند؛ سقف ۱۰ فقط یک یادآوریِ نرم است، نه محدودیت سخت‌گیرانه.
+REVIEW_MIN_SOURCES = int(os.getenv("REVIEW_MIN_SOURCES", "5") or "5")
+REVIEW_RECOMMENDED_MAX_SOURCES = int(
+    os.getenv("REVIEW_RECOMMENDED_MAX_SOURCES", "10") or "10"
+)
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "30") or "30")
 SOURCE_TEXT_LIMIT = int(os.getenv("REVIEW_SOURCE_TEXT_LIMIT", "18000") or "18000")
 REVIEW_SCORE_MAX_DELTA = float(
@@ -1301,8 +1307,15 @@ def validate_review_item(item: dict, index: int) -> list[str]:
         errors.append("review_urls باید لیست باشد.")
     elif len(review_urls) < REVIEW_MIN_SOURCES:
         errors.append(
-            f"حداقل {REVIEW_MIN_SOURCES} لینک نقد لازم است، "
-            f"ولی فقط {len(review_urls)} لینک وارد شده."
+            f"حداقل {REVIEW_MIN_SOURCES} لینک نقد لازم است (هدف تحریریه ۵ تا "
+            f"{REVIEW_RECOMMENDED_MAX_SOURCES} نقد است)، ولی فقط "
+            f"{len(review_urls)} لینک وارد شده."
+        )
+    elif len(review_urls) > REVIEW_RECOMMENDED_MAX_SOURCES:
+        print(
+            f"Note: item #{index} has {len(review_urls)} review_urls, above the "
+            f"recommended {REVIEW_RECOMMENDED_MAX_SOURCES}. This is not an error, "
+            "just a heads-up in case some links were added by mistake."
         )
 
     return errors
@@ -2714,6 +2727,12 @@ def _render_article_points(points: list[dict]) -> list[str]:
 
 
 def _scorecard_summary_sentences(scorecard: list[dict]) -> list[str]:
+    """
+    جمله‌های اجماع منتقدان را فقط از رویِ برچسبِ بخش و جهت‌گیری می‌سازد.
+    عمداً «سطح پوشش شواهد»/«برداشت اولیه» را اینجا نمی‌آورد؛ آن‌ها برچسبِ
+    کیفیتِ داخلیِ خودِ پرونده‌اند، نه واقعیتی درباره‌ی بازی که باید به خواننده
+    نشان داده شود (در dossier و کارت امتیاز همچنان در دسترس‌اند).
+    """
     positive = []
     negative = []
     mixed = []
@@ -2721,19 +2740,16 @@ def _scorecard_summary_sentences(scorecard: list[dict]) -> list[str]:
     for category in scorecard:
         label = clean_text(str(category.get("label_fa") or ""))
         trend = clean_text(str(category.get("trend_fa") or ""))
-        confidence = clean_text(str(category.get("confidence_fa") or ""))
 
         if not label:
             continue
 
-        item = f"{label} ({confidence} از نظر پوشش شواهد)"
-
         if trend == "مثبت":
-            positive.append(item)
+            positive.append(label)
         elif trend == "منفی":
-            negative.append(item)
+            negative.append(label)
         else:
-            mixed.append(item)
+            mixed.append(label)
 
     sentences = []
 
@@ -2872,6 +2888,126 @@ def _render_site_differences(review_sources: list[dict]) -> list[str]:
         lines.append(f"| {site_label} | {score_label} | {highlight} |")
 
     return lines
+
+
+def _extract_numbers(text: str) -> set[str]:
+    """همه‌ی اعداد (فارسی یا انگلیسی) داخل متن را برای بررسی رانش عددی برمی‌گرداند."""
+    persian_digits = "۰۱۲۳۴۵۶۷۸۹"
+    translation = str.maketrans(persian_digits, "0123456789")
+    normalized = clean_text(text).translate(translation)
+    return set(re.findall(r"\d+(?:\.\d+)?", normalized))
+
+
+# عبارت‌هایی که فقط برای گزارش داخلیِ کیفیت شواهد ساخته شده‌اند، نه برای خواننده.
+# اگر بازنویسیِ مدل هرکدام از این‌ها را (که اصلاً نباید در ورودی هم باشند) تولید
+# کند، نشانه‌ی درز کردن زبان داخلی به متن عمومی است.
+_FORBIDDEN_META_PHRASES = (
+    "پوشش شواهد",
+    "برداشت اولیه",
+    "شواهد تأییدشده",
+    "شواهد بیشتری نیاز دارد",
+    "این ارزیابی فعلاً",
+    "evidence coverage",
+    "confidence level",
+)
+
+
+def _rewritten_text_is_safe(
+    original_fa: str,
+    rewritten_fa: str,
+    allowed_site_names: set[str],
+) -> bool:
+    """
+    بازنویسیِ مدل را فقط اگر هیچ عدد، نام‌سایت یا اصطلاح داخلیِ تازه‌ای نسبت به
+    متنِ اصلیِ تأییدشده اضافه نکرده باشد، امن می‌داند. این فقط یک محافظ
+    سخت‌گیرانه است، نه تضمین کامل صحت؛ در صورت شک، رد می‌کند تا نسخه‌ی
+    قالب‌محورِ از قبل تأییدشده جایگزین شود.
+    """
+    if not clean_text(rewritten_fa):
+        return False
+
+    if not _extract_numbers(rewritten_fa).issubset(_extract_numbers(original_fa)):
+        return False
+
+    for phrase in _FORBIDDEN_META_PHRASES:
+        if phrase in rewritten_fa:
+            return False
+
+    for site_name in REPUTABLE_SITE_DOMAINS.values():
+        if site_name in allowed_site_names:
+            continue
+        if site_name and site_name in rewritten_fa:
+            return False
+
+    original_word_count = len(original_fa.split()) or 1
+    rewritten_word_count = len(rewritten_fa.split())
+    # بازنویسی نباید آنقدر کوتاه شود که محتوا حذف شده باشد، یا آنقدر بلند شود
+    # که احتمال افزوده شدن ادعای تازه بالا برود.
+    if rewritten_word_count < original_word_count * 0.45:
+        return False
+    if rewritten_word_count > original_word_count * 2.5 + 15:
+        return False
+
+    return True
+
+
+def rewrite_section_as_narrative(
+    client: OpenAI,
+    section_title_fa: str,
+    original_fa: str,
+    allowed_site_names: set[str],
+    game: str,
+) -> dict:
+    """
+    یک بخشِ از قبل تأییدشده و قالب‌محور را فقط بازنویسی می‌کند تا مثل بخشی از
+    یک نقد واقعی خوانده شود، نه یک گزارش کنترل کیفیت. مدل هیچ حق افزودن
+    واقعیت، عدد، نام یا ادعای تازه‌ای ندارد؛ فقط اجازه‌ی روان‌نویسی دارد.
+    اگر ورودی خالی باشد یا OpenAI در دسترس نباشد یا خروجی از آزمون رانش رد
+    شود، همان متنِ قالب‌محورِ اصلی بدون تغییر برگردانده می‌شود.
+    """
+    original_fa = clean_text(original_fa)
+
+    if not original_fa or client is None:
+        return {"text_fa": original_fa, "method": "template_unchanged"}
+
+    prompt = f"""
+You will rewrite an already fact-checked Persian paragraph for a game review
+website called Poormaz, about the game "{game}". Section: {section_title_fa}
+
+Original verified text (Persian) — every fact, name, and number in it has
+already been checked against the source reviews:
+{original_fa}
+
+Rules:
+- Rewrite ONLY the phrasing so it reads as natural, flowing Persian editorial
+  prose, like part of a real published game review — not a bullet list and
+  not an internal QA report.
+- Do NOT add any new fact, name, number, score, or claim that is not already
+  present in the original text above.
+- Do NOT remove any specific fact, score, or named source from the original text.
+- Do NOT mention internal review-process concepts such as "evidence coverage",
+  "confidence level", "برداشت اولیه" or "پوشش شواهد"; a normal reader should
+  never see these — write as a normal published review would.
+- Do not use bullet points, dashes, or markdown; write connected sentences.
+- Keep roughly the same length as the original (not much shorter, not much longer).
+- Return strict JSON: {{"text_fa": "..."}}
+""".strip()
+
+    try:
+        raw = ask_openai_json(client, prompt, max_tokens=500)
+        rewritten_fa = _clean_article_text(raw.get("text_fa"), min_words=0, max_words=320)
+    except Exception as exc:
+        print(f"Narrative rewrite failed for '{section_title_fa}', keeping template text: {repr(exc)}")
+        return {"text_fa": original_fa, "method": "template_fallback_after_api_error"}
+
+    if not _rewritten_text_is_safe(original_fa, rewritten_fa, allowed_site_names):
+        print(
+            f"Narrative rewrite for '{section_title_fa}' failed the drift check; "
+            "keeping template text."
+        )
+        return {"text_fa": original_fa, "method": "template_fallback_after_validation"}
+
+    return {"text_fa": rewritten_fa, "method": "openai_narrative_rewrite"}
 
 
 def _source_url_map(review_sources: list[dict]) -> dict[str, str]:
@@ -3273,10 +3409,12 @@ def _editorial_points_text(points: list[dict]) -> str:
     )
 
 
-def _build_template_editorial_article_preview(dossier: dict) -> dict:
+def _build_grounded_article_blocks(dossier: dict) -> dict:
     """
-    پیش‌نمایش تحریریه‌ایِ امن: متن با الگوهای ثابت ساخته می‌شود و هر نکته
-    مستقیماً به یک شاهد یا کارت قابل‌ردیابی وصل است.
+    بلوک‌های واقعیت‌محورِ کاملاً تأییدشده را می‌سازد؛ این تابع هرگز از OpenAI
+    استفاده نمی‌کند. خروجی آن هم پایه‌ی امنِ ورودی برای بازنویسیِ روایی است و
+    هم، اگر بازنویسیِ یک بخش رد شود، دقیقاً همان متنی است که در مقاله چاپ
+    می‌شود. به همین دلیل، بدترین حالتِ ممکن همیشه همین نسخه‌ی قالب‌محور است.
     """
     fact_pack = _article_fact_pack(dossier)
     meta = fact_pack.get("meta", {}) or {}
@@ -3306,57 +3444,41 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
         excerpt_bits.append(f"امتیاز Poormaz {_format_score_10(overall_score)}")
     excerpt_fa = " | ".join(excerpt_bits) + "."
 
-    markdown = [
-        f"# {title_fa}",
-        "",
-        f"> {excerpt_fa}",
-    ]
-
-    if game_intro_fa:
-        markdown.extend(["", "## معرفی بازی", game_intro_fa])
-
-    markdown.extend(["", "## نتیجه در یک نگاه"])
-
+    glance_lines = []
     if overall_score is not None:
-        markdown.append(f"- **امتیاز Poormaz:** {_format_score_10(overall_score)}")
+        glance_lines.append(f"- **امتیاز Poormaz:** {_format_score_10(overall_score)}")
     if metascore is not None:
         count_part = f" بر پایه‌ی {critic_count} نقد منتقدان" if critic_count is not None else ""
-        markdown.append(f"- **متاکریتیک:** {metascore}/100{count_part}")
+        glance_lines.append(f"- **متاکریتیک:** {metascore}/100{count_part}")
     if platform:
-        markdown.append(f"- **پلتفرم پرونده:** {platform}")
+        glance_lines.append(f"- **پلتفرم پرونده:** {platform}")
     if release_date:
-        markdown.append(f"- **تاریخ عرضه:** {release_date}")
+        glance_lines.append(f"- **تاریخ عرضه:** {release_date}")
     if game_status_label:
-        markdown.append(f"- **وضعیت عرضه:** {game_status_label}")
+        glance_lines.append(f"- **وضعیت عرضه:** {game_status_label}")
 
-    overview = (
+    # توجه: برخلاف نسخه‌ی قبلی، اینجا هیچ اشاره‌ای به «پوشش شواهد» یا «برداشت
+    # اولیه» نمی‌رود — این‌ها برچسب‌های داخلیِ کنترل کیفیت‌اند، نه واقعیتی
+    # درباره‌ی خودِ بازی، و نباید در متنِ عمومی به خواننده نشان داده شوند.
+    consensus_fa = (
         f"این پرونده از {len(review_sources)} نقد انتخاب‌شده و داده‌ی متاکریتیک ساخته شده است. "
         f"امتیاز تجمیعی Poormaz برای {game} {_format_score_10(overall_score)} است."
     )
     if metascore is not None:
-        overview += f" متاکریتیک ثبت‌شده نیز {metascore}/100 است."
+        consensus_fa += f" متاکریتیک ثبت‌شده نیز {metascore}/100 است."
+    consensus_sentences = _scorecard_summary_sentences(scorecards)
+    if consensus_sentences:
+        consensus_fa += " " + " ".join(consensus_sentences)
 
-    markdown.extend([
-        "",
-        "## اجماع منتقدان",
-        overview + _render_inline_citations(["META"], fact_pack),
-    ])
-    markdown.extend(_scorecard_summary_sentences(scorecards))
-
-    markdown.extend([
-        "",
-        "## کارت امتیاز Poormaz",
-        "",
-        "| بخش | امتیاز | جهت‌گیری | پوشش شواهد |",
-        "|---|---:|---|---|",
-    ])
-
+    scorecard_lines = [
+        "| بخش | امتیاز | جهت‌گیری |",
+        "|---|---:|---|",
+    ]
     for card in scorecards:
-        markdown.append(
+        scorecard_lines.append(
             f"| {card.get('label_fa', 'نامشخص')} | "
             f"{_format_score_10(card.get('score_10'))} | "
-            f"{card.get('trend_fa', 'نامشخص')} | "
-            f"{card.get('confidence_fa', 'برداشت اولیه')} |"
+            f"{card.get('trend_fa', 'نامشخص')} |"
         )
 
     positives = _collect_article_points(
@@ -3365,146 +3487,197 @@ def _build_template_editorial_article_preview(dossier: dict) -> dict:
     negatives = _collect_article_points(
         review_sources, "negatives", ARTICLE_MAX_POINTS_PER_SECTION
     )
-    markdown.extend(["", "## نقاط قوت"])
-    markdown.extend(_render_article_points(positives))
-    markdown.extend(["", "## نقاط ضعف"])
-    markdown.extend(_render_article_points(negatives))
+    strengths_fa = _editorial_points_text(positives) or (
+        "نکته‌ی مثبتِ به‌اندازه‌ی کافی تأییدشده‌ای برای این بخش در پرونده ثبت نشده است."
+    )
+    weaknesses_fa = _editorial_points_text(negatives) or (
+        "نکته‌ی منفیِ به‌اندازه‌ی کافی تأییدشده‌ای برای این بخش در پرونده ثبت نشده است."
+    )
 
-    markdown.extend(["", "## جزئیات ارزیابی بر اساس بخش‌ها"])
+    category_blocks = []
     categorized_refs = set()
 
     for card in scorecards:
         label = clean_text(str(card.get("label_fa") or "این بخش"))
-        trend = clean_text(str(card.get("trend_fa") or "ترکیبی"))
-        confidence = clean_text(str(card.get("confidence_fa") or "برداشت اولیه"))
         card_positives, card_negatives, neutral = _editorial_points_for_card(card, evidence_by_id)
         supports = list(card.get("supported_refs", []) or [])
         categorized_refs.update(supports)
 
-        markdown.extend([
-            "",
-            f"### {label}",
-            (
-                f"در این پرونده، جهت‌گیری {label} «{trend}» و پوشش شواهد «{confidence}» است."
-                + _render_inline_citations(supports, fact_pack)
-            ),
-        ])
-
+        parts = []
         if card_positives:
-            markdown.append("**نکات مثبت ثبت‌شده:**")
-            for item in card_positives:
-                markdown.append(
-                    "- "
-                    + clean_text(str(item.get("point_fa") or ""))
-                    + _render_inline_citations([item["id"]], fact_pack)
-                )
-
+            parts.append("نکات مثبت ذکرشده: " + _editorial_points_text(card_positives))
         if card_negatives:
-            markdown.append("**نکات احتیاطی ثبت‌شده:**")
-            for item in card_negatives:
-                markdown.append(
-                    "- "
-                    + clean_text(str(item.get("point_fa") or ""))
-                    + _render_inline_citations([item["id"]], fact_pack)
-                )
-
+            parts.append("نکات منفی ذکرشده: " + _editorial_points_text(card_negatives))
         if neutral:
-            markdown.append("**نکات فنی ثبت‌شده:**")
-            for item in neutral:
-                markdown.append(
-                    "- "
-                    + clean_text(str(item.get("point_fa") or ""))
-                    + _render_inline_citations([item["id"]], fact_pack)
-                )
+            parts.append("نکات فنی ذکرشده: " + _editorial_points_text(neutral))
 
-        if confidence in {"برداشت اولیه", "محدود"}:
-            markdown.append(
-                f"> این ارزیابی فعلاً «{confidence}» است و برای نتیجه‌گیری محکم‌تر به شواهد بیشتری نیاز دارد."
-            )
+        text_fa = " ".join(parts).strip()
+        if not text_fa:
+            continue
 
+        category_blocks.append({
+            "key": card.get("key"),
+            "label_fa": label,
+            "text_fa": text_fa,
+        })
+
+    uncategorized_lines = []
     uncategorized = [
         item for ref_id, item in evidence_by_id.items()
         if ref_id not in categorized_refs
     ]
     if uncategorized:
-        markdown.extend(["", "## نکات تکمیلی ثبت‌شده"])
         for item in uncategorized[:ARTICLE_MAX_POINTS_PER_SECTION]:
             point = clean_text(str(item.get("point_fa") or ""))
             if point:
-                markdown.append(
-                    "- " + point + _render_inline_citations([item["id"]], fact_pack)
-                )
+                uncategorized_lines.append("- " + point)
 
-    markdown.extend(["", "## تفاوت دیدگاه سایت‌ها"])
-    markdown.extend(_render_site_differences(review_sources))
+    site_diff_lines = _render_site_differences(review_sources)
+    audience_fit_fa = _audience_fit_sentence(scorecards, game)
 
-    markdown.extend([
-        "",
-        "## این بازی برای چه کسانی مناسب است؟",
-        _audience_fit_sentence(scorecards, game),
-    ])
-
-    conclusion = (
+    # فرمول وزن‌دهی امتیاز شفافیتِ روش‌شناسی است (چیزی که خیلی از سایت‌های نقد
+    # هم توضیح می‌دهند)، نه متادیتای داخلیِ کیفیتِ شواهد؛ به همین دلیل در
+    # جمع‌بندیِ عمومی می‌ماند، برخلاف برچسب‌های «پوشش شواهد».
+    conclusion_fa = (
         f"امتیاز تجمیعی Poormaz برای {game} {_format_score_10(overall_score)} است. "
         + clean_text(str(meta.get("formula_fa") or ""))
-    )
-    limited_labels = [
-        clean_text(str(card.get("label_fa") or ""))
-        for card in scorecards
-        if clean_text(str(card.get("confidence_fa") or "")) in {"برداشت اولیه", "محدود"}
-    ]
-    if limited_labels:
-        conclusion += (
-            " در این مرحله، بخش‌های "
-            + "، ".join(label for label in limited_labels if label)
-            + " هنوز بر پایه‌ی شواهد محدودتر ارزیابی شده‌اند."
-        )
+    ).strip()
 
-    markdown.extend([
-        "",
-        "## جمع‌بندی Poormaz",
-        conclusion + _render_inline_citations(["META"], fact_pack),
-        "",
-        "## منابع بررسی‌شده",
-    ])
-
+    sources_lines = []
     for source in review_sources:
         site_name = clean_text(str(source.get("site_name") or "منبع نامشخص"))
         title = clean_text(str(source.get("title") or "نقد بازی"))
         url = str(source.get("url") or "").strip()
         score_label = _source_score_label(source)
-
         if url:
-            markdown.append(f"- [{site_name}: {title}]({url}) | نمره: {score_label}")
+            sources_lines.append(f"- [{site_name}: {title}]({url}) | نمره: {score_label}")
         else:
-            markdown.append(f"- {site_name}: {title} | نمره: {score_label}")
+            sources_lines.append(f"- {site_name}: {title} | نمره: {score_label}")
 
-    markdown.extend([
-        "",
-        "---",
-        "یادداشت تحریریه: این پیش‌نمایش به‌صورت خودکار و فقط از شواهد ثبت‌شده در پرونده ساخته شده است. هنوز پستی در وردپرس ایجاد یا منتشر نشده است.",
-    ])
+    allowed_site_names = {
+        clean_text(str(source.get("site_name") or ""))
+        for source in review_sources
+        if clean_text(str(source.get("site_name") or ""))
+    }
 
     return {
-        "status": "preview_only_template_grounded_v14",
-        "wordpress_post_created": False,
+        "game": game,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
-        "markdown": "\n".join(markdown).strip() + "\n",
+        "game_intro_fa": game_intro_fa,
+        "glance_lines": glance_lines,
+        "consensus_fa": consensus_fa,
+        "scorecard_lines": scorecard_lines,
+        "strengths_fa": strengths_fa,
+        "weaknesses_fa": weaknesses_fa,
+        "category_blocks": category_blocks,
+        "uncategorized_lines": uncategorized_lines,
+        "site_diff_lines": site_diff_lines,
+        "audience_fit_fa": audience_fit_fa,
+        "conclusion_fa": conclusion_fa,
+        "sources_lines": sources_lines,
+        "allowed_site_names": allowed_site_names,
         "source_links": fact_pack.get("sources", []),
-        "review_note_fa": "این متن صرفاً پیش‌نمایش است و هیچ پستی در وردپرس ایجاد یا منتشر نشده است.",
-        "writing_mode": "template_grounded_with_per_evidence_sentiment",
     }
 
 
 def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     """
-    نوشتار مقاله در این مرحله عمداً قالب‌محور است. خروجی V5 نشان داد که
-    وجود شناسه‌ی منبع به‌تنهایی جلوی پیش‌بینی و ادعای زمانیِ مدل را نمی‌گیرد.
-    نسخه‌ی فعلی برای نمایش نکات فنی نیز جهت‌گیری هر شاهد را جدا نگه می‌دارد.
+    مقاله در دو لایه ساخته می‌شود:
+
+    لایه‌ی اول (`_build_grounded_article_blocks`) کاملاً قالب‌محور و تأییدشده
+    است و هرگز از OpenAI استفاده نمی‌کند.
+
+    لایه‌ی دوم همان متنِ تأییدشده را به نثر روان و شبیه یک نقدِ واقعی
+    بازمی‌نویسد (`rewrite_section_as_narrative`). به مدل هیچ اجازه‌ای برای
+    افزودن واقعیت، عدد یا نامِ تازه داده نمی‌شود -- فقط اجازه‌ی روان‌نویسی.
+    خروجی V5 (نسخه‌ای قدیمی‌تر از این بات) نشان داد که وجود شناسه‌ی منبع
+    به‌تنهایی جلوی پیش‌بینی/ادعای تازه‌ی مدل را نمی‌گیرد؛ به همین دلیل اینجا
+    به‌جای «تولید آزاد + استناد»، از «بازنویسیِ محدودِ متنِ از قبل درست» استفاده
+    می‌شود و هر بازنویسی جداگانه با بررسیِ رانشِ عددی/نام سایت اعتبارسنجی
+    می‌شود. اگر رد شود، همان متنِ قالب‌محور بدون تغییر چاپ می‌شود؛ بنابراین
+    بدترین حالتِ ممکن دقیقاً همان کیفیتِ نسخه‌ی قبلی است، نه بدتر.
     """
-    del client
-    return _build_template_editorial_article_preview(dossier)
+    blocks = _build_grounded_article_blocks(dossier)
+    allowed_site_names = blocks["allowed_site_names"]
+    game = blocks["game"]
+    narrative_methods = {}
+
+    def narrate(section_key: str, section_title_fa: str, text_fa: str) -> str:
+        result = rewrite_section_as_narrative(
+            client, section_title_fa, text_fa, allowed_site_names, game
+        )
+        narrative_methods[section_key] = result["method"]
+        return result["text_fa"]
+
+    consensus_final = narrate("critic_consensus", "اجماع منتقدان", blocks["consensus_fa"])
+    strengths_final = narrate("strengths", "نقاط قوت", blocks["strengths_fa"])
+    weaknesses_final = narrate("weaknesses", "نقاط ضعف", blocks["weaknesses_fa"])
+    audience_fit_final = narrate(
+        "audience_fit", "این بازی برای چه کسانی مناسب است؟", blocks["audience_fit_fa"]
+    )
+
+    category_texts = []
+    for card in blocks["category_blocks"]:
+        section_key = f"category:{card.get('key') or card['label_fa']}"
+        final_text = narrate(section_key, card["label_fa"], card["text_fa"])
+        category_texts.append({**card, "final_text_fa": final_text})
+
+    markdown = [
+        f"# {blocks['title_fa']}",
+        "",
+        f"> {blocks['excerpt_fa']}",
+    ]
+
+    if blocks["game_intro_fa"]:
+        markdown.extend(["", "## معرفی بازی", blocks["game_intro_fa"]])
+
+    markdown.extend(["", "## نتیجه در یک نگاه", *blocks["glance_lines"]])
+    markdown.extend(["", "## اجماع منتقدان", consensus_final])
+    markdown.extend(["", "## کارت امتیاز Poormaz", "", *blocks["scorecard_lines"]])
+    markdown.extend(["", "## نقاط قوت", strengths_final])
+    markdown.extend(["", "## نقاط ضعف", weaknesses_final])
+
+    markdown.extend(["", "## جزئیات ارزیابی بر اساس بخش‌ها"])
+    for card in category_texts:
+        markdown.extend(["", f"### {card['label_fa']}", card["final_text_fa"]])
+
+    if blocks["uncategorized_lines"]:
+        markdown.extend(["", "## نکات تکمیلی ثبت‌شده", *blocks["uncategorized_lines"]])
+
+    markdown.extend(["", "## تفاوت دیدگاه سایت‌ها", *blocks["site_diff_lines"]])
+    markdown.extend(["", "## این بازی برای چه کسانی مناسب است؟", audience_fit_final])
+    markdown.extend(["", "## جمع‌بندی Poormaz", blocks["conclusion_fa"]])
+    markdown.extend(["", "## منابع بررسی‌شده", *blocks["sources_lines"]])
+
+    markdown.extend([
+        "",
+        "---",
+        "یادداشت تحریریه: این پیش‌نمایش به‌صورت خودکار ساخته شده است. بخش‌های "
+        "روایی آن با بازنویسیِ محدود و اعتبارسنجی‌شده‌ی متنِ قالب‌محور نوشته "
+        "شده‌اند و هنوز پستی در وردپرس ایجاد یا منتشر نشده است.",
+    ])
+
+    rewritten_count = sum(
+        1 for method in narrative_methods.values()
+        if method == "openai_narrative_rewrite"
+    )
+    print(
+        f"Narrative rewrite: {rewritten_count}/{len(narrative_methods)} sections "
+        "written as natural prose; the rest kept the verified template phrasing."
+    )
+
+    return {
+        "status": "preview_narrative_grounded_v15",
+        "wordpress_post_created": False,
+        "title_fa": blocks["title_fa"],
+        "excerpt_fa": blocks["excerpt_fa"],
+        "markdown": "\n".join(markdown).strip() + "\n",
+        "source_links": blocks["source_links"],
+        "review_note_fa": "این متن صرفاً پیش‌نمایش است و هیچ پستی در وردپرس ایجاد یا منتشر نشده است.",
+        "writing_mode": "narrative_rewrite_of_grounded_template",
+        "narrative_methods": narrative_methods,
+    }
 
 
 def save_article_preview(game: str, article_preview: dict) -> str:
