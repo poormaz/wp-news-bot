@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       create_wordpress_draft:
-        description: 'Create one WordPress DRAFT from the current cached review article (never publishes)'
+        description: 'Create one WordPress DRAFT only after the five-usable-source editorial gate passes (never publishes)'
         required: false
         default: false
         type: boolean
@@ -46,11 +46,14 @@ jobs:
           WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
-          # Hard safety guard. V13 rejects every non-draft value in code too.
           REVIEW_POST_STATUS: draft
           REVIEW_CREATE_WORDPRESS_DRAFT: ${{ inputs.create_wordpress_draft }}
-          REVIEW_MIN_SOURCES: 3
-          REVIEW_SCORE_MAX_DELTA: 0.4
+          # Both values are deliberate hard gates. The Python code clamps either
+          # value to at least five too, so an accidental workflow edit cannot
+          # revive three-source articles.
+          REVIEW_MIN_SOURCES: '5'
+          REVIEW_MIN_USABLE_SOURCES: '5'
+          REVIEW_SCORE_MAX_DELTA: '0.4'
           REVIEW_EVIDENCE_CACHE: '1'
           EVIDENCE_CACHE_MIN_VERIFIED_POINTS: '2'
           EVIDENCE_CACHE_MAX_FAILED_SELECTIVE_REFRESHES: '2'
