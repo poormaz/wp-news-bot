@@ -104,6 +104,11 @@ REVIEW_MIN_USABLE_SOURCES = min(
 )
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "30") or "30")
 SOURCE_TEXT_LIMIT = int(os.getenv("REVIEW_SOURCE_TEXT_LIMIT", "18000") or "18000")
+
+# نسخه‌ی زمینه‌ی استخراج: از V17 عنوان و توضیح رسمی صفحه هم کنار متن مقاله
+# وارد corpus می‌شوند. Cacheهای قدیمیِ کم‌محتوا فقط یک‌بار با این زمینه‌ی بهتر
+# بازخوانی می‌شوند، بدون اینکه همه‌ی منابع سالم دوباره به OpenAI فرستاده شوند.
+EVIDENCE_CONTEXT_VERSION = 2
 REVIEW_SCORE_MAX_DELTA = float(
     os.getenv("REVIEW_SCORE_MAX_DELTA", "0.4") or "0.4"
 )
@@ -601,6 +606,7 @@ def load_evidence_cache(game: str, platform: str, review_url: str) -> tuple[dict
             "status": "hit",
             "created_at_utc": clean_text(str(cached.get("created_at_utc") or "")),
             "source_text_sha256": clean_text(str(cached.get("source_text_sha256") or "")),
+            "source_context_version": int(cached.get("source_context_version", 1) or 1),
             "quality_audit": quality_audit,
             "refresh_meta": refresh_meta,
         }
@@ -632,6 +638,7 @@ def save_evidence_cache(
         "source_text_sha256": hashlib.sha256(
             clean_text(str(page.get("text") or "")).encode("utf-8")
         ).hexdigest(),
+        "source_context_version": EVIDENCE_CONTEXT_VERSION,
         "analysis": _json_copy(analysis),
         "quality_audit": quality_audit,
         "refresh_meta": refresh_meta,
@@ -647,6 +654,7 @@ def save_evidence_cache(
         "path": path,
         "created_at_utc": payload["created_at_utc"],
         "source_text_sha256": payload["source_text_sha256"],
+        "source_context_version": payload["source_context_version"],
         "quality_audit": quality_audit,
         "refresh_meta": refresh_meta,
     }
@@ -1202,6 +1210,12 @@ def extract_page_info(url: str) -> dict:
         or meta_parser.meta.get("og:description")
     )
 
+    # عنوان و توضیح صفحه نیز بخشی از محتوای رسمی همان نقد هستند. بعضی سایت‌ها
+    # مثل TechRadar و Tom's Guide در HTML بدنه‌ی مقاله را ناقص می‌فرستند، اما
+    # جمع‌بندی معتبرشان در عنوان یا meta description باقی می‌ماند. این‌ها فقط
+    # به corpus استخراج اضافه می‌شوند؛ نمره همچنان از score_text / JSON-LD جداست.
+    editorial_text = clean_text(" ".join(part for part in (title, description, page_text) if part))
+
     return {
         "ok": True,
         "url": response.url,
@@ -1209,9 +1223,9 @@ def extract_page_info(url: str) -> dict:
         "site_name": site_name,
         "title": title,
         "description": description,
-        "text": page_text[:SOURCE_TEXT_LIMIT],
+        "text": editorial_text[:SOURCE_TEXT_LIMIT],
         "score_text": page_text,
-        "text_chars": len(page_text),
+        "text_chars": len(editorial_text),
         "html": html,
         "meta_items": meta_parser.meta_items,
     }
@@ -1905,6 +1919,16 @@ def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
     }
 
 
+def _normalize_evidence_match_text(value: str) -> str:
+    """فقط تفاوت‌های تایپوگرافی رایج را یکدست می‌کند، نه معنی یا واژه‌ها را."""
+    translation = str.maketrans({
+        "’": "'", "‘": "'", "‚": "'", "‛": "'",
+        "–": "-", "—": "-", "‑": "-", "−": "-",
+        "…": "...",
+    })
+    return clean_text(value).translate(translation).casefold()
+
+
 def verified_points(items, source_text: str, max_items: int = 4) -> list[dict]:
     """
     فقط نکاتی را نگه می‌دارد که شاهد انگلیسی‌شان واقعاً در متن نقد باشد
@@ -1913,7 +1937,7 @@ def verified_points(items, source_text: str, max_items: int = 4) -> list[dict]:
     if not isinstance(items, list):
         return []
 
-    normalized_source = clean_text(source_text).casefold()
+    normalized_source = _normalize_evidence_match_text(source_text)
     output = []
 
     for item in items:
@@ -1931,7 +1955,7 @@ def verified_points(items, source_text: str, max_items: int = 4) -> list[dict]:
         if word_count < 8 or word_count > 22:
             continue
 
-        if evidence_en.casefold() not in normalized_source:
+        if _normalize_evidence_match_text(evidence_en) not in normalized_source:
             continue
 
         output.append(
@@ -2458,6 +2482,14 @@ def run_metadata_regression_checks() -> None:
     ])
     if blocked_gate["ready"]:
         fail("Editorial source gate must reject sources with zero verified evidence")
+
+    verdict_gate = editorial_source_gate([
+        {"site_name": "A", "positives": [], "negatives": [], "technical_notes": [],
+         "verdict": [{"point_fa": "جمع‌بندی روشن است.", "evidence_en": "This review has a verified overall conclusion with enough words."}]}
+        for _ in range(5)
+    ])
+    if not verdict_gate["ready"]:
+        fail("Editorial source gate must accept a verified review verdict")
 
 
 def category_score_from_evidence(
@@ -4129,7 +4161,10 @@ def _source_quality_rows(review_sources: list[dict]) -> list[dict]:
 def _source_verified_editorial_points(source: dict) -> list[dict]:
     """فقط نکات تأییدشده‌ای را می‌شمارد که واقعاً وارد بدنه‌ی نقد می‌شوند."""
     points = []
-    for section in ("positives", "negatives", "technical_notes"):
+    # verdict هم یک شاهد تحریریه‌ی معتبر است: ممکن است یک سایت فقط جمع‌بندی
+    # نهایی روشن داشته باشد، اما همان برای شمردن آن نقد در اجماع کافی است.
+    # verdict وارد کارت‌های مثبت/منفی نمی‌شود تا معنای آن به زور تغییر نکند.
+    for section in ("positives", "negatives", "technical_notes", "verdict"):
         for point in source.get(section, []) or []:
             if not isinstance(point, dict):
                 continue
@@ -4146,9 +4181,9 @@ def _source_verified_editorial_points(source: dict) -> list[dict]:
 
 def editorial_source_gate(review_sources: list[dict]) -> dict:
     """
-    گیت تحریریه با کنترل کیفیت cache فرق دارد: یک منبع با یک شاهد هنوز می‌تواند
-    در «پنج نقد واقعی» حساب شود، اما منبع 403 یا صفحه‌ای با صفر شاهد اصلاً حق
-    ورود به مقاله و Draft را ندارد.
+    گیت تحریریه با کنترل کیفیت cache فرق دارد: یک منبع با یک شاهد یا یک
+    جمع‌بندی نهاییِ تأییدشده هنوز می‌تواند در «پنج نقد واقعی» حساب شود، اما
+    منبع 403 یا صفحه‌ای با صفر شاهد اصلاً حق ورود به مقاله و Draft را ندارد.
     """
     usable_sources = []
     unusable_sources = []
@@ -4320,11 +4355,18 @@ def process_review_job(client: OpenAI, item: dict):
         )
         cache_info["refresh_meta"] = cached_refresh_meta
         source_is_manual_review = bool(cached_refresh_meta.get("manual_review"))
+        cached_context_version = int(cache_info.get("source_context_version", 1) or 1)
+        context_upgrade_required = (
+            cached_analysis is not None
+            and cached_audit.get("status") == "needs_review"
+            and cached_context_version < EVIDENCE_CONTEXT_VERSION
+            and not source_is_manual_review
+        )
         refresh_this_source = (
             cached_analysis is not None
-            and refresh_incomplete_evidence
-            and cached_audit.get("status") == "needs_review"
             and not source_is_manual_review
+            and cached_audit.get("status") == "needs_review"
+            and (refresh_incomplete_evidence or context_upgrade_required)
         )
 
         if cached_analysis is not None and not refresh_this_source:
@@ -4355,8 +4397,9 @@ def process_review_job(client: OpenAI, item: dict):
             print(f"Evidence cache: FULL REFRESH | {requested_url}")
         elif refresh_this_source:
             reason_text = "; ".join(cached_audit.get("reasons_fa", []))
+            refresh_label = "CONTEXT UPGRADE" if context_upgrade_required and not refresh_incomplete_evidence else "QUALITY REFRESH"
             print(
-                f"Evidence cache: QUALITY REFRESH | "
+                f"Evidence cache: {refresh_label} | "
                 f"{cached_analysis.get('site_name', requested_url)}"
                 f" | {reason_text or 'cache needs review'}"
             )
