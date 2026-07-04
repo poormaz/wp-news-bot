@@ -1,0 +1,50 @@
+{
+  "cache_version": "source_evidence_cache_v1",
+  "created_at_utc": "2026-07-04T23:03:05+00:00",
+  "game": "Crimson Desert",
+  "platform": "PC",
+  "requested_url": "https://www.gamesradar.com/games/rpg/crimson-desert-review",
+  "final_url": "https://www.gamesradar.com/games/rpg/crimson-desert-review",
+  "source_text_sha256": "c1c39c820096bee26fc45174331f6f2362468941478ef137bf11e94e08840b21",
+  "analysis": {
+    "site_name": "GamesRadar+",
+    "title": "Crimson Desert review: \"Take time to leave the beaten path and you'll find a game that's far better as a sandbox than as a story\"",
+    "url": "https://www.gamesradar.com/games/rpg/crimson-desert-review/",
+    "original_score": null,
+    "review_score_10": null,
+    "score_method": "not_found",
+    "score_confidence": 0,
+    "score_evidence": "",
+    "positives": [],
+    "negatives": [],
+    "technical_notes": [],
+    "verdict": [],
+    "platform_mentioned": "PC"
+  },
+  "quality_audit": {
+    "status": "needs_review",
+    "verified_point_count": 0,
+    "categorized_point_count": 0,
+    "category_count": 0,
+    "category_keys": [],
+    "coverage_fa": "بدون پوشش دسته‌ای",
+    "section_counts": {
+      "positives": 0,
+      "negatives": 0,
+      "technical_notes": 0
+    },
+    "reasons_fa": [
+      "هیچ شاهد تأییدشده‌ای ثبت نشده است"
+    ],
+    "quality_rank": 0,
+    "action_fa": "بازخوانی انتخابی توصیه می‌شود"
+  },
+  "refresh_meta": {
+    "failed_selective_refreshes": 0,
+    "max_failed_selective_refreshes": 2,
+    "manual_review": false,
+    "manual_review_reason_fa": "",
+    "last_selective_refresh_at_utc": "",
+    "last_selective_refresh_outcome": ""
+  }
+}
