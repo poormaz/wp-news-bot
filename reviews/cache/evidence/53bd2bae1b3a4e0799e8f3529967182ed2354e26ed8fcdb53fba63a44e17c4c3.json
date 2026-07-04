@@ -1,0 +1,60 @@
+{
+  "cache_version": "source_evidence_cache_v1",
+  "created_at_utc": "2026-07-04T23:39:27+00:00",
+  "game": "Crimson Desert",
+  "platform": "PC",
+  "requested_url": "https://gameinformer.com/review/crimson-desert/open-world-overload",
+  "final_url": "https://gameinformer.com/review/crimson-desert/open-world-overload",
+  "source_text_sha256": "94f74eff5fa87d3ced5bc5956069a97f7e9a21f09ce33bb776b9e044a5bca8bb",
+  "analysis": {
+    "site_name": "Game Informer",
+    "title": "Crimson Desert Review - Open-World Overload - Game Informer",
+    "url": "https://gameinformer.com/review/crimson-desert/open-world-overload",
+    "original_score": null,
+    "review_score_10": null,
+    "score_method": "not_found",
+    "score_confidence": 0,
+    "score_evidence": "",
+    "positives": [
+      {
+        "point_fa": "لحظات کشف و شگفتی در بازی بسیار جذاب هستند.",
+        "evidence_en": "It’s these moments of surprise and wonder that make Crimson Desert shine."
+      }
+    ],
+    "negatives": [
+      {
+        "point_fa": "داستان بازی عمیق نیست و به راحتی قابل دنبال کردن نیست.",
+        "evidence_en": "The game doesn’t have much of a story to tell or any major themes to impart."
+      }
+    ],
+    "technical_notes": [],
+    "verdict": [],
+    "platform_mentioned": "PC"
+  },
+  "quality_audit": {
+    "status": "acceptable",
+    "verified_point_count": 2,
+    "categorized_point_count": 1,
+    "category_count": 1,
+    "category_keys": [
+      "story"
+    ],
+    "coverage_fa": "پوشش محدود",
+    "section_counts": {
+      "positives": 1,
+      "negatives": 1,
+      "technical_notes": 0
+    },
+    "reasons_fa": [],
+    "quality_rank": 245,
+    "action_fa": "برای استفاده‌ی پایدار قابل‌قبول است"
+  },
+  "refresh_meta": {
+    "failed_selective_refreshes": 0,
+    "max_failed_selective_refreshes": 2,
+    "manual_review": false,
+    "manual_review_reason_fa": "",
+    "last_selective_refresh_at_utc": "",
+    "last_selective_refresh_outcome": ""
+  }
+}

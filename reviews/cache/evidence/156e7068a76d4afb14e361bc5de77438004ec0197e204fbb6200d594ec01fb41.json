@@ -1,0 +1,50 @@
+{
+  "cache_version": "source_evidence_cache_v1",
+  "created_at_utc": "2026-07-04T23:39:32+00:00",
+  "game": "Crimson Desert",
+  "platform": "PC",
+  "requested_url": "https://www.techradar.com/gaming/crimson-desert-review",
+  "final_url": "https://www.techradar.com/gaming/crimson-desert-review",
+  "source_text_sha256": "11c5a0f8141dabe2e3a6880de745d556bdf56dffdfd959b3b320b6b28a3c1413",
+  "analysis": {
+    "site_name": "TechRadar",
+    "title": "I've played 80 hours of Crimson Desert, and I can't get enough of its addictive open-world, stylish combat, and puzzle solving — but it needs some tweaks",
+    "url": "https://www.techradar.com/gaming/crimson-desert-review",
+    "original_score": "4/5",
+    "review_score_10": 8.0,
+    "score_method": "jsonld_reviewRating",
+    "score_confidence": 100,
+    "score_evidence": "{\"@type\": \"Review\", \"reviewRating\": {\"@context\": \"https://schema.org\", \"@type\": \"Rating\", \"ratingValue\": \"4\", \"worstRating\": \"0\", \"bestRating\": \"5\"}}",
+    "positives": [],
+    "negatives": [],
+    "technical_notes": [],
+    "verdict": [],
+    "platform_mentioned": "PC"
+  },
+  "quality_audit": {
+    "status": "needs_review",
+    "verified_point_count": 0,
+    "categorized_point_count": 0,
+    "category_count": 0,
+    "category_keys": [],
+    "coverage_fa": "بدون پوشش دسته‌ای",
+    "section_counts": {
+      "positives": 0,
+      "negatives": 0,
+      "technical_notes": 0
+    },
+    "reasons_fa": [
+      "هیچ شاهد تأییدشده‌ای ثبت نشده است"
+    ],
+    "quality_rank": 0,
+    "action_fa": "بازخوانی انتخابی توصیه می‌شود"
+  },
+  "refresh_meta": {
+    "failed_selective_refreshes": 0,
+    "max_failed_selective_refreshes": 2,
+    "manual_review": false,
+    "manual_review_reason_fa": "",
+    "last_selective_refresh_at_utc": "",
+    "last_selective_refresh_outcome": ""
+  }
+}

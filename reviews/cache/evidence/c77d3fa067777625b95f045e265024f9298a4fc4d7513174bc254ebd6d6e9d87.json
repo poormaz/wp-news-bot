@@ -1,0 +1,55 @@
+{
+  "cache_version": "source_evidence_cache_v1",
+  "created_at_utc": "2026-07-04T23:39:37+00:00",
+  "game": "Crimson Desert",
+  "platform": "PC",
+  "requested_url": "https://www.tomsguide.com/gaming/crimson-desert-review",
+  "final_url": "https://www.tomsguide.com/gaming/crimson-desert-review",
+  "source_text_sha256": "6299f89bd90c680879d8b145fd62f6683e6776b4e701186df443586843adbc76",
+  "analysis": {
+    "site_name": "Tom's Guide",
+    "title": "Crimson Desert is an overwhelming RPG experience — but it’s undeniably ambitious",
+    "url": "https://www.tomsguide.com/gaming/crimson-desert-review",
+    "original_score": "4/5",
+    "review_score_10": 8.0,
+    "score_method": "jsonld_reviewRating",
+    "score_confidence": 100,
+    "score_evidence": "{\"@type\": \"Review\", \"reviewRating\": {\"@context\": \"https://schema.org\", \"@type\": \"Rating\", \"ratingValue\": \"4\", \"worstRating\": \"0\", \"bestRating\": \"5\"}}",
+    "positives": [],
+    "negatives": [],
+    "technical_notes": [],
+    "verdict": [
+      {
+        "point_fa": "این بازی تجربه‌ای پاداش‌دهنده است.",
+        "evidence_en": "If you’re willing to surrender yourself to Crimson Desert, you’ll find a rewarding experience."
+      }
+    ],
+    "platform_mentioned": "PC"
+  },
+  "quality_audit": {
+    "status": "needs_review",
+    "verified_point_count": 0,
+    "categorized_point_count": 0,
+    "category_count": 0,
+    "category_keys": [],
+    "coverage_fa": "بدون پوشش دسته‌ای",
+    "section_counts": {
+      "positives": 0,
+      "negatives": 0,
+      "technical_notes": 0
+    },
+    "reasons_fa": [
+      "هیچ شاهد تأییدشده‌ای ثبت نشده است"
+    ],
+    "quality_rank": 0,
+    "action_fa": "بازخوانی انتخابی توصیه می‌شود"
+  },
+  "refresh_meta": {
+    "failed_selective_refreshes": 0,
+    "max_failed_selective_refreshes": 2,
+    "manual_review": false,
+    "manual_review_reason_fa": "",
+    "last_selective_refresh_at_utc": "",
+    "last_selective_refresh_outcome": ""
+  }
+}
