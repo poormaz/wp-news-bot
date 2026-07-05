@@ -80,35 +80,12 @@ OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0") or "0")
 # هدف تحریریه ۵ تا ۱۰ نقد برای هر پرونده است، نه فقط حداقل مطلق. حداقل واقعی
 # را روی ۵ می‌گذاریم تا «اجماع منتقدان» و «تفاوت دیدگاه سایت‌ها» معنای واقعی
 # داشته باشند؛ سقف ۱۰ فقط یک یادآوریِ نرم است، نه محدودیت سخت‌گیرانه.
-# «پنج منبع» حداقل تحریریه است و Workflow اجازه ندارد با مقدار ۳ آن را دور بزند.
-_requested_REVIEW_MIN_SOURCES = max(5, int(os.getenv("REVIEW_MIN_SOURCES", "5") or "5"))
-REVIEW_MIN_SOURCES = min(max(_requested_review_min_sources, 5), 10)
+REVIEW_MIN_SOURCES = int(os.getenv("REVIEW_MIN_SOURCES", "5") or "5")
 REVIEW_RECOMMENDED_MAX_SOURCES = int(
     os.getenv("REVIEW_RECOMMENDED_MAX_SOURCES", "10") or "10"
 )
-REVIEW_RECOMMENDED_MAX_SOURCES = max(
-    REVIEW_RECOMMENDED_MAX_SOURCES,
-    REVIEW_MIN_SOURCES,
-)
-
-# فقط لینک در YAML کافی نیست. برای نوشتن مقاله یا ساخت Draft باید دست‌کم پنج
-# منبع واقعاً شاهد تأییدشده داشته باشند. منبعی که 403 شده یا صفر شاهد داده،
-# در این شمارش وارد نمی‌شود.
-_requested_min_usable_sources = int(
-    os.getenv("REVIEW_MIN_USABLE_SOURCES", str(REVIEW_MIN_SOURCES))
-    or str(REVIEW_MIN_SOURCES)
-)
-REVIEW_MIN_USABLE_SOURCES = min(
-    max(_requested_min_usable_sources, 5),
-    REVIEW_MIN_SOURCES,
-)
 HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "30") or "30")
 SOURCE_TEXT_LIMIT = int(os.getenv("REVIEW_SOURCE_TEXT_LIMIT", "18000") or "18000")
-
-# نسخه‌ی زمینه‌ی استخراج: از V17 عنوان و توضیح رسمی صفحه هم کنار متن مقاله
-# وارد corpus می‌شوند. Cacheهای قدیمیِ کم‌محتوا فقط یک‌بار با این زمینه‌ی بهتر
-# بازخوانی می‌شوند، بدون اینکه همه‌ی منابع سالم دوباره به OpenAI فرستاده شوند.
-EVIDENCE_CONTEXT_VERSION = 2
 REVIEW_SCORE_MAX_DELTA = float(
     os.getenv("REVIEW_SCORE_MAX_DELTA", "0.4") or "0.4"
 )
@@ -606,7 +583,6 @@ def load_evidence_cache(game: str, platform: str, review_url: str) -> tuple[dict
             "status": "hit",
             "created_at_utc": clean_text(str(cached.get("created_at_utc") or "")),
             "source_text_sha256": clean_text(str(cached.get("source_text_sha256") or "")),
-            "source_context_version": int(cached.get("source_context_version", 1) or 1),
             "quality_audit": quality_audit,
             "refresh_meta": refresh_meta,
         }
@@ -638,7 +614,6 @@ def save_evidence_cache(
         "source_text_sha256": hashlib.sha256(
             clean_text(str(page.get("text") or "")).encode("utf-8")
         ).hexdigest(),
-        "source_context_version": EVIDENCE_CONTEXT_VERSION,
         "analysis": _json_copy(analysis),
         "quality_audit": quality_audit,
         "refresh_meta": refresh_meta,
@@ -654,7 +629,6 @@ def save_evidence_cache(
         "path": path,
         "created_at_utc": payload["created_at_utc"],
         "source_text_sha256": payload["source_text_sha256"],
-        "source_context_version": payload["source_context_version"],
         "quality_audit": quality_audit,
         "refresh_meta": refresh_meta,
     }
@@ -956,8 +930,6 @@ REPUTABLE_SITE_DOMAINS = {
     "ign.com": "IGN",
     "gamespot.com": "GameSpot",
     "pcgamer.com": "PC Gamer",
-    "techradar.com": "TechRadar",
-    "tomsguide.com": "Tom's Guide",
     "wccftech.com": "Wccftech",
     "eurogamer.net": "Eurogamer",
     "gameinformer.com": "Game Informer",
@@ -1038,14 +1010,9 @@ def reputable_coverage_report(review_sources: list[dict]) -> dict:
         if name and name not in RECOMMENDED_CORE_SITES
     )
 
-    if len(present_names) >= REVIEW_MIN_USABLE_SOURCES:
+    if missing:
         note_fa = (
-            f"پرونده از {len(present_names)} منبع معتبرِ دارای شواهد قابل‌استفاده "
-            "پوشش گرفته است."
-        )
-    elif missing:
-        note_fa = (
-            "برای پوشش قوی‌تر، افزودن نقد از " + ", ".join(missing) +
+            "برای پوشش قوی‌تر، افزودن نقد از " + "، ".join(missing) +
             " پیشنهاد می‌شود (در صورت وجود نقد منتشرشده از آن‌ها)."
         )
     else:
@@ -1210,12 +1177,6 @@ def extract_page_info(url: str) -> dict:
         or meta_parser.meta.get("og:description")
     )
 
-    # عنوان و توضیح صفحه نیز بخشی از محتوای رسمی همان نقد هستند. بعضی سایت‌ها
-    # مثل TechRadar و Tom's Guide در HTML بدنه‌ی مقاله را ناقص می‌فرستند، اما
-    # جمع‌بندی معتبرشان در عنوان یا meta description باقی می‌ماند. این‌ها فقط
-    # به corpus استخراج اضافه می‌شوند؛ نمره همچنان از score_text / JSON-LD جداست.
-    editorial_text = clean_text(" ".join(part for part in (title, description, page_text) if part))
-
     return {
         "ok": True,
         "url": response.url,
@@ -1223,9 +1184,9 @@ def extract_page_info(url: str) -> dict:
         "site_name": site_name,
         "title": title,
         "description": description,
-        "text": editorial_text[:SOURCE_TEXT_LIMIT],
+        "text": page_text[:SOURCE_TEXT_LIMIT],
         "score_text": page_text,
-        "text_chars": len(editorial_text),
+        "text_chars": len(page_text),
         "html": html,
         "meta_items": meta_parser.meta_items,
     }
@@ -1919,16 +1880,6 @@ def extract_metacritic_data(page: dict, requested_platform: str) -> dict:
     }
 
 
-def _normalize_evidence_match_text(value: str) -> str:
-    """فقط تفاوت‌های تایپوگرافی رایج را یکدست می‌کند، نه معنی یا واژه‌ها را."""
-    translation = str.maketrans({
-        "’": "'", "‘": "'", "‚": "'", "‛": "'",
-        "–": "-", "—": "-", "‑": "-", "−": "-",
-        "…": "...",
-    })
-    return clean_text(value).translate(translation).casefold()
-
-
 def verified_points(items, source_text: str, max_items: int = 4) -> list[dict]:
     """
     فقط نکاتی را نگه می‌دارد که شاهد انگلیسی‌شان واقعاً در متن نقد باشد
@@ -1937,7 +1888,7 @@ def verified_points(items, source_text: str, max_items: int = 4) -> list[dict]:
     if not isinstance(items, list):
         return []
 
-    normalized_source = _normalize_evidence_match_text(source_text)
+    normalized_source = clean_text(source_text).casefold()
     output = []
 
     for item in items:
@@ -1955,7 +1906,7 @@ def verified_points(items, source_text: str, max_items: int = 4) -> list[dict]:
         if word_count < 8 or word_count > 22:
             continue
 
-        if _normalize_evidence_match_text(evidence_en) not in normalized_source:
+        if evidence_en.casefold() not in normalized_source:
             continue
 
         output.append(
@@ -2468,28 +2419,6 @@ def run_metadata_regression_checks() -> None:
                 "Reputable site regression check failed: "
                 f"url={url!r} expected={expected_name!r} got={actual_name!r}"
             )
-
-    gate = editorial_source_gate([
-        {"site_name": "A", "positives": [{"point_fa": "نکته", "evidence_en": "A verified quote with enough words to count here."}], "negatives": [], "technical_notes": []}
-        for _ in range(5)
-    ])
-    if not gate["ready"] or gate["usable_source_count"] != 5:
-        fail("Editorial source gate regression check failed for five usable sources")
-
-    blocked_gate = editorial_source_gate([
-        {"site_name": "A", "positives": [], "negatives": [], "technical_notes": []}
-        for _ in range(5)
-    ])
-    if blocked_gate["ready"]:
-        fail("Editorial source gate must reject sources with zero verified evidence")
-
-    verdict_gate = editorial_source_gate([
-        {"site_name": "A", "positives": [], "negatives": [], "technical_notes": [],
-         "verdict": [{"point_fa": "جمع‌بندی روشن است.", "evidence_en": "This review has a verified overall conclusion with enough words."}]}
-        for _ in range(5)
-    ])
-    if not verdict_gate["ready"]:
-        fail("Editorial source gate must accept a verified review verdict")
 
 
 def category_score_from_evidence(
@@ -3106,7 +3035,7 @@ def _article_fact_pack(dossier: dict) -> dict:
     game_intro = dossier.get("game_intro", {}) or {}
     metacritic = dossier.get("metacritic", {}) or {}
     assessment = dossier.get("poormaz_assessment", {}) or {}
-    review_sources = dossier.get("article_sources") or dossier.get("review_sources", []) or []
+    review_sources = dossier.get("review_sources", []) or []
     evidence_index = assessment.get("evidence_index", {}) or {}
     source_urls = _source_url_map(review_sources)
 
@@ -3319,7 +3248,7 @@ def build_rule_based_article_preview(dossier: dict) -> dict:
     release_date = clean_text(str(dossier.get("release_date") or ""))
     metacritic = dossier.get("metacritic", {}) or {}
     assessment = dossier.get("poormaz_assessment", {}) or {}
-    review_sources = dossier.get("article_sources") or dossier.get("review_sources", []) or []
+    review_sources = dossier.get("review_sources", []) or []
     scorecard = assessment.get("scorecard", []) or []
 
     overall_score = assessment.get("overall_score_10")
@@ -3490,7 +3419,7 @@ def _build_grounded_article_blocks(dossier: dict) -> dict:
     fact_pack = _article_fact_pack(dossier)
     meta = fact_pack.get("meta", {}) or {}
     scorecards = fact_pack.get("scorecards", []) or []
-    review_sources = dossier.get("article_sources") or dossier.get("review_sources", []) or []
+    review_sources = dossier.get("review_sources", []) or []
 
     game = clean_text(str(meta.get("game") or "")) or "بازی"
     overall_score = meta.get("poormaz_score_10")
@@ -3507,7 +3436,7 @@ def _build_grounded_article_blocks(dossier: dict) -> dict:
         if item.get("id")
     }
 
-    title_fa = f"نقد و بررسی {game} | نظر منتقدان و امتیاز Poormaz"
+    title_fa = f"نقد و بررسی {game} | آیا ارزش خرید دارد؟"
     excerpt_bits = [f"جمع‌بندی Poormaz از نقدهای منتخب {game}"]
     if metascore is not None:
         excerpt_bits.append(f"متاکریتیک {metascore} از ۱۰۰")
@@ -3990,18 +3919,6 @@ def create_wordpress_review_draft(dossier: dict) -> dict:
             "reason": reason,
         }
 
-    editorial_gate = dossier.get("editorial_source_gate") or {}
-    if editorial_gate and not editorial_gate.get("ready", False):
-        return {
-            "requested": True,
-            "created": False,
-            "status": "not_created",
-            "reason": (
-                "editorial source gate blocked draft creation: "
-                + clean_text(str(editorial_gate.get("reason_fa") or "sources are incomplete"))
-            ),
-        }
-
     article = dossier.get("article_preview") or {}
     title = clean_text(str(article.get("title_fa") or ""))
     markdown = str(article.get("markdown") or "")
@@ -4108,6 +4025,67 @@ def save_dossier(game: str, dossier: dict) -> str:
     return output_path
 
 
+def save_incomplete_evidence_report(
+    game: str,
+    platform: str,
+    usable_sources: list[dict],
+    thin_sources: list[dict],
+    dropped_urls: list[dict],
+) -> str:
+    """
+    وقتی تعداد منابعِ دارای شواهدِ واقعاً قابل‌استفاده کمتر از حد لازم است، هیچ
+    مقاله‌ای ساخته نمی‌شود. این گزارش دقیقاً می‌گوید کدام منبع قابل‌استفاده بود،
+    کدام‌ها شواهدشان کم بود و چرا، و کدام‌ها اصلاً بارگیری نشدند -- تا سردبیر
+    دقیقاً بداند برای تکمیل پرونده باید دنبال چه چیزی بگردد. این گزارش عمداً در
+    فایلی جدا از dossier معمولی ذخیره می‌شود تا یک اجرای ناقص، dossierِ سالمِ
+    یک اجرای قبلی را پاک نکند.
+    """
+    def _row(source: dict) -> dict:
+        audit = source.get("runtime_quality_audit") or {}
+        cache_status = (source.get("evidence_cache") or {}).get("status", "")
+        return {
+            "site_name": source.get("site_name"),
+            "url": source.get("url"),
+            "total_evidence_points": audit.get("total_points", 0),
+            "categorized_points": audit.get("categorized_points", 0),
+            "status": audit.get("status", "unknown"),
+            "cache_status": cache_status,
+            "reasons_fa": audit.get("reasons_fa", []),
+        }
+
+    report = {
+        "game": game,
+        "platform": platform,
+        "status": "incomplete_insufficient_evidence",
+        "generated_at_utc": _utc_now_iso(),
+        "min_required_usable_sources": REVIEW_MIN_SOURCES,
+        "min_verified_points_per_source": EVIDENCE_CACHE_MIN_VERIFIED_POINTS,
+        "usable_source_count": len(usable_sources),
+        "usable_sources": [_row(source) for source in usable_sources],
+        "thin_sources": [_row(source) for source in thin_sources],
+        "dropped_urls": dropped_urls,
+        "message_fa": (
+            f"این پرونده ناقص است: فقط {len(usable_sources)} منبع دارای شواهد "
+            f"قابل‌استفاده (حداقل {EVIDENCE_CACHE_MIN_VERIFIED_POINTS} شاهد "
+            "دسته‌بندی‌شده) پیدا شد، در حالی که حداقل "
+            f"{REVIEW_MIN_SOURCES} منبع لازم است. مقاله‌ای ساخته نشد. لینک‌های "
+            "بیشتری از منابع معتبر اضافه کنید یا منابعی که در «thin_sources» یا "
+            "«dropped_urls» فهرست شده‌اند را با نسخه‌ی سالم جایگزین کنید."
+        ),
+    }
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    output_path = os.path.join(
+        OUTPUT_DIR,
+        f"{safe_filename(game)}-INCOMPLETE.json",
+    )
+
+    with open(output_path, "w", encoding="utf-8") as file:
+        json.dump(report, file, ensure_ascii=False, indent=2)
+
+    return output_path
+
+
 def _source_quality_rows(review_sources: list[dict]) -> list[dict]:
     rows = []
 
@@ -4157,141 +4135,6 @@ def _source_quality_rows(review_sources: list[dict]) -> list[dict]:
 
     return rows
 
-
-def _source_verified_editorial_points(source: dict) -> list[dict]:
-    """فقط نکات تأییدشده‌ای را می‌شمارد که واقعاً وارد بدنه‌ی نقد می‌شوند."""
-    points = []
-    # verdict هم یک شاهد تحریریه‌ی معتبر است: ممکن است یک سایت فقط جمع‌بندی
-    # نهایی روشن داشته باشد، اما همان برای شمردن آن نقد در اجماع کافی است.
-    # verdict وارد کارت‌های مثبت/منفی نمی‌شود تا معنای آن به زور تغییر نکند.
-    for section in ("positives", "negatives", "technical_notes", "verdict"):
-        for point in source.get(section, []) or []:
-            if not isinstance(point, dict):
-                continue
-            point_fa = clean_text(str(point.get("point_fa") or ""))
-            evidence_en = clean_text(str(point.get("evidence_en") or ""))
-            if point_fa and evidence_en:
-                points.append({
-                    "section": section,
-                    "point_fa": point_fa,
-                    "evidence_en": evidence_en,
-                })
-    return points
-
-
-def editorial_source_gate(review_sources: list[dict]) -> dict:
-    """
-    گیت تحریریه با کنترل کیفیت cache فرق دارد: یک منبع با یک شاهد یا یک
-    جمع‌بندی نهاییِ تأییدشده هنوز می‌تواند در «پنج نقد واقعی» حساب شود، اما
-    منبع 403 یا صفحه‌ای با صفر شاهد اصلاً حق ورود به مقاله و Draft را ندارد.
-    """
-    usable_sources = []
-    unusable_sources = []
-    total_verified_points = 0
-
-    for source in review_sources or []:
-        site_name = clean_text(str(source.get("site_name") or "منبع نامشخص"))
-        url = str(source.get("url") or "").strip()
-        points = _source_verified_editorial_points(source)
-        point_count = len(points)
-        total_verified_points += point_count
-
-        if point_count:
-            usable_sources.append({
-                "site_name": site_name,
-                "url": url,
-                "verified_point_count": point_count,
-            })
-        else:
-            unusable_sources.append({
-                "site_name": site_name,
-                "url": url,
-                "reason_fa": "هیچ شاهد تأییدشده‌ای از این نقد برای متن مقاله ثبت نشد",
-            })
-
-    usable_count = len(usable_sources)
-    required = REVIEW_MIN_USABLE_SOURCES
-    missing_count = max(0, required - usable_count)
-    ready = usable_count >= required
-
-    return {
-        "ready": ready,
-        "minimum_usable_sources": required,
-        "loaded_source_count": len(review_sources or []),
-        "usable_source_count": usable_count,
-        "missing_usable_source_count": missing_count,
-        "total_verified_points": total_verified_points,
-        "usable_sources": usable_sources,
-        "unusable_sources": unusable_sources,
-        "reason_fa": (
-            "پرونده برای مقاله‌ی نهایی آماده است."
-            if ready
-            else (
-                f"فقط {usable_count} منبعِ دارای شاهد تأییدشده آماده است؛ "
-                f"حداقل {required} منبع لازم است."
-            )
-        ),
-    }
-
-
-def build_blocked_article_preview(dossier: dict, gate: dict) -> dict:
-    """به‌جای مقاله‌ی نیم‌بند، یک پیش‌نمایش شفاف و غیرقابل‌انتشار تولید می‌کند."""
-    game = clean_text(str(dossier.get("game") or "بازی"))
-    platform = clean_text(str(dossier.get("platform") or ""))
-    usable = int(gate.get("usable_source_count", 0) or 0)
-    required = int(gate.get("minimum_usable_sources", REVIEW_MIN_USABLE_SOURCES) or REVIEW_MIN_USABLE_SOURCES)
-
-    lines = [
-        f"# پرونده‌ی نقد {game} هنوز آماده‌ی انتشار نیست",
-        "",
-        "> این خروجی عمداً به مقاله‌ی نهایی تبدیل نشده است. بات تا زمانی که دست‌کم پنج نقدِ دارای شواهد تأییدشده نداشته باشد، نقد اختصاصی یا Draft وردپرس نمی‌سازد.",
-        "",
-        "## وضعیت پرونده",
-        f"- پلتفرم: {platform or 'نامشخص'}",
-        f"- منابع قابل‌استفاده برای نوشتن: {usable} از حداقل {required}",
-        f"- دلیل توقف: {clean_text(str(gate.get('reason_fa') or 'منابع کافی نیستند.'))}",
-        "",
-        "## منابعی که باید جایگزین یا تکمیل شوند",
-    ]
-
-    unusable = gate.get("unusable_sources", []) or []
-    if unusable:
-        for source in unusable:
-            name = clean_text(str(source.get("site_name") or "منبع نامشخص"))
-            url = str(source.get("url") or "").strip()
-            reason = clean_text(str(source.get("reason_fa") or "شاهد کافی ندارد"))
-            if url:
-                lines.append(f"- [{name}]({url}): {reason}")
-            else:
-                lines.append(f"- {name}: {reason}")
-    else:
-        lines.append("- منبعی با خطای استخراج ثبت نشده، اما تعداد منابع کافی نیست.")
-
-    lines.extend([
-        "",
-        "---",
-        "یادداشت تحریریه: این پرونده فقط پس از رسیدن به حداقل منابع قابل‌استفاده، به نقد اختصاصی Poormaz و Draft وردپرس تبدیل می‌شود.",
-    ])
-
-    return {
-        "status": "blocked_insufficient_usable_sources",
-        "wordpress_post_created": False,
-        "title_fa": f"پرونده‌ی نقد {game} هنوز کامل نیست",
-        "excerpt_fa": f"برای نقد نهایی {game} هنوز منابع قابل‌استفاده‌ی کافی جمع نشده است.",
-        "markdown": "\n".join(lines).strip() + "\n",
-        "source_links": [
-            {
-                "site_name": clean_text(str(source.get("site_name") or "")),
-                "title": clean_text(str(source.get("title") or "")),
-                "url": str(source.get("url") or "").strip(),
-                "score": _source_score_label(source),
-            }
-            for source in dossier.get("review_sources", []) or []
-        ],
-        "review_note_fa": "به‌دلیل کمبود منابع قابل‌استفاده، مقاله و Draft وردپرس عمداً ساخته نشدند.",
-    }
-
-
 def process_review_job(client: OpenAI, item: dict):
     game = str(item["game"]).strip()
     platform = str(item["platform"]).strip()
@@ -4335,6 +4178,7 @@ def process_review_job(client: OpenAI, item: dict):
     )
 
     source_analyses = []
+    dropped_urls = []
 
     for url in item["review_urls"]:
         requested_url = str(url).strip()
@@ -4355,18 +4199,11 @@ def process_review_job(client: OpenAI, item: dict):
         )
         cache_info["refresh_meta"] = cached_refresh_meta
         source_is_manual_review = bool(cached_refresh_meta.get("manual_review"))
-        cached_context_version = int(cache_info.get("source_context_version", 1) or 1)
-        context_upgrade_required = (
-            cached_analysis is not None
-            and cached_audit.get("status") == "needs_review"
-            and cached_context_version < EVIDENCE_CONTEXT_VERSION
-            and not source_is_manual_review
-        )
         refresh_this_source = (
             cached_analysis is not None
-            and not source_is_manual_review
+            and refresh_incomplete_evidence
             and cached_audit.get("status") == "needs_review"
-            and (refresh_incomplete_evidence or context_upgrade_required)
+            and not source_is_manual_review
         )
 
         if cached_analysis is not None and not refresh_this_source:
@@ -4397,9 +4234,8 @@ def process_review_job(client: OpenAI, item: dict):
             print(f"Evidence cache: FULL REFRESH | {requested_url}")
         elif refresh_this_source:
             reason_text = "; ".join(cached_audit.get("reasons_fa", []))
-            refresh_label = "CONTEXT UPGRADE" if context_upgrade_required and not refresh_incomplete_evidence else "QUALITY REFRESH"
             print(
-                f"Evidence cache: {refresh_label} | "
+                f"Evidence cache: QUALITY REFRESH | "
                 f"{cached_analysis.get('site_name', requested_url)}"
                 f" | {reason_text or 'cache needs review'}"
             )
@@ -4420,6 +4256,11 @@ def process_review_job(client: OpenAI, item: dict):
                         cached_analysis, cache_info, game, platform, requested_url
                     )
                 )
+            else:
+                dropped_urls.append({
+                    "url": requested_url,
+                    "reason_fa": f"دریافت صفحه ناموفق بود (HTTP {page['status']}) و نسخه‌ی cache‌شده‌ای هم در دسترس نبود.",
+                })
             continue
 
         print(f"Loaded: {page['site_name']} | {page['title'][:80]}")
@@ -4531,12 +4372,45 @@ def process_review_job(client: OpenAI, item: dict):
             )
         )
 
-    editorial_gate = editorial_source_gate(source_analyses)
-    if len(source_analyses) < REVIEW_MIN_SOURCES:
+    usable_sources = [
+        source for source in source_analyses
+        if (source.get("runtime_quality_audit") or {}).get("status") == "acceptable"
+    ]
+    thin_sources = [
+        source for source in source_analyses
+        if (source.get("runtime_quality_audit") or {}).get("status") != "acceptable"
+    ]
+
+    # نکته‌ی کلیدی: شمارش صرفِ len(source_analyses) کافی نیست، چون یک منبع
+    # می‌تواند بارگیری شود ولی صفر یا فقط یک شاهد واقعی بدهد (مثلاً صفحه‌ای که
+    # هیچ نقدی در متنش نبود، یا cacheِ manual_review که هرگز بهتر نشد). فقط
+    # منابعی که واقعاً شاهدِ دسته‌بندی‌شده‌ی کافی دارند («acceptable») به حداقل
+    # {REVIEW_MIN_SOURCES} شمرده می‌شوند.
+    if len(usable_sources) < REVIEW_MIN_SOURCES:
         print(
-            f"Loaded-source warning: only {len(source_analyses)} pages were available; "
-            f"the editorial gate requires {REVIEW_MIN_SOURCES} usable reviews."
+            f"INCOMPLETE: only {len(usable_sources)} of {len(source_analyses)} "
+            f"loaded source(s) have acceptable, categorizable evidence "
+            f"(need at least {REVIEW_MIN_SOURCES}). No article will be generated "
+            "for this run."
         )
+        for source in usable_sources:
+            print(f"  OK      | {source.get('site_name')} | {source.get('url')}")
+        for source in thin_sources:
+            audit = source.get("runtime_quality_audit") or {}
+            reasons = "؛ ".join(audit.get("reasons_fa", [])) or "شواهد کافی ثبت نشد"
+            cache_status = (source.get("evidence_cache") or {}).get("status", "")
+            print(
+                f"  THIN    | {source.get('site_name')} | {source.get('url')} "
+                f"| {reasons} | cache: {cache_status}"
+            )
+        for dropped in dropped_urls:
+            print(f"  DROPPED | {dropped['url']} | {dropped['reason_fa']}")
+
+        report_path = save_incomplete_evidence_report(
+            game, platform, usable_sources, thin_sources, dropped_urls
+        )
+        print(f"Incomplete-evidence report saved to: {report_path}")
+        return
 
     quality_rows = _source_quality_rows(source_analyses)
     needs_review_rows = [
@@ -4553,11 +4427,6 @@ def process_review_job(client: OpenAI, item: dict):
         "game_status": game_status_info,
         "metacritic": metacritic_data,
         "review_sources": source_analyses,
-        "article_sources": [
-            source for source in source_analyses
-            if _source_verified_editorial_points(source)
-        ],
-        "editorial_source_gate": editorial_gate,
         "evidence_cache": {
             "enabled": REVIEW_EVIDENCE_CACHE_ENABLED,
             "full_refresh_requested": refresh_all_evidence,
@@ -4582,56 +4451,27 @@ def process_review_job(client: OpenAI, item: dict):
         "wordpress_post_created": False,
     }
 
-    dossier["reputable_coverage"] = reputable_coverage_report(
-        dossier.get("article_sources", [])
-    )
+    dossier["reputable_coverage"] = reputable_coverage_report(source_analyses)
     print(f"Reputable site coverage: {dossier['reputable_coverage']['note_fa']}")
 
-    print("\n--- EDITORIAL SOURCE GATE ---")
-    print(
-        f"Usable sources: {editorial_gate['usable_source_count']}/"
-        f"{editorial_gate['minimum_usable_sources']} | "
-        + editorial_gate["reason_fa"]
+    print("Writing short factual game introduction...")
+    dossier["game_intro"] = build_game_intro(
+        client,
+        game,
+        platform,
+        dossier["release_date"],
+        game_status_info["label_fa"],
+        metacritic_page.get("description", ""),
     )
-    if editorial_gate.get("unusable_sources"):
-        print(
-            "Sources without usable evidence: "
-            + ", ".join(
-                item.get("site_name", "Unknown Source")
-                for item in editorial_gate["unusable_sources"]
-            )
-        )
 
-    if editorial_gate.get("ready"):
-        print("Writing short factual game introduction...")
-        dossier["game_intro"] = build_game_intro(
-            client,
-            game,
-            platform,
-            dossier["release_date"],
-            game_status_info["label_fa"],
-            metacritic_page.get("description", ""),
-        )
+    print("Building Poormaz scorecard from verified evidence...")
+    dossier["poormaz_assessment"] = build_poormaz_assessment(
+        client,
+        dossier,
+    )
 
-        print("Building Poormaz scorecard from verified evidence...")
-        dossier["poormaz_assessment"] = build_poormaz_assessment(
-            client,
-            dossier,
-        )
-
-        print("Building Persian article preview from verified evidence...")
-        dossier["article_preview"] = build_article_preview(client, dossier)
-    else:
-        dossier["status"] = "needs_more_usable_sources"
-        print(
-            "Editorial article blocked: not enough usable review sources. "
-            "No scorecard, narrative article, or WordPress draft will be created."
-        )
-        dossier["article_preview"] = build_blocked_article_preview(
-            dossier,
-            editorial_gate,
-        )
-
+    print("Building Persian article preview from verified evidence...")
+    dossier["article_preview"] = build_article_preview(client, dossier)
     article_preview_path = save_article_preview(
         game,
         dossier["article_preview"],
@@ -4712,24 +4552,18 @@ def process_review_job(client: OpenAI, item: dict):
     else:
         print("Quality action: all cached sources meet the current threshold.")
 
-    assessment = dossier.get("poormaz_assessment", {}) or {}
-    if assessment.get("overall_score_10") is not None:
-        print(
-            "Poormaz aggregate score: "
-            f"{assessment.get('overall_score_10')}"
-        )
+    assessment = dossier.get("poormaz_assessment", {})
+    print(
+        "Poormaz aggregate score: "
+        f"{assessment.get('overall_score_10')}"
+    )
 
-        for category in assessment.get("scorecard", []):
-            print(
-                f"  * {category['label_fa']}: "
-                f"{category['score_10']}/10 | "
-                f"{category.get('trend_fa', 'نامشخص')} | "
-                f"{category.get('confidence_fa', 'محدود')}"
-            )
-    else:
+    for category in assessment.get("scorecard", []):
         print(
-            "Poormaz final score: blocked until the editorial source gate has "
-            "enough usable review sources."
+            f"  * {category['label_fa']}: "
+            f"{category['score_10']}/10 | "
+            f"{category.get('trend_fa', 'نامشخص')} | "
+            f"{category.get('confidence_fa', 'محدود')}"
         )
 
     article_preview = dossier.get("article_preview", {}) or {}
