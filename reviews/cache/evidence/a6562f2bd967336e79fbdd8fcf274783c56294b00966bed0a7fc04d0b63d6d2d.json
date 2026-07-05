@@ -1,0 +1,50 @@
+{
+  "cache_version": "source_evidence_cache_v1",
+  "created_at_utc": "2026-07-05T23:23:20+00:00",
+  "game": "Crimson Desert",
+  "platform": "PC",
+  "requested_url": "https://www.thegamer.com/crimson-desert-review",
+  "final_url": "https://www.thegamer.com/crimson-desert-review",
+  "source_text_sha256": "b7d729b6b9ee477d2c9392ec34a75abc3c2b932ea98c28dd89eb06a4dd97835a",
+  "analysis": {
+    "site_name": "TheGamer",
+    "title": "Spoiler-Free 150 Hour Crimson Desert Review - A Deeply Flawed Diamond",
+    "url": "https://www.thegamer.com/crimson-desert-review/",
+    "original_score": null,
+    "review_score_10": null,
+    "score_method": "not_found",
+    "score_confidence": 0,
+    "score_evidence": "",
+    "positives": [],
+    "negatives": [],
+    "technical_notes": [],
+    "verdict": [],
+    "platform_mentioned": "PC"
+  },
+  "quality_audit": {
+    "status": "needs_review",
+    "verified_point_count": 0,
+    "categorized_point_count": 0,
+    "category_count": 0,
+    "category_keys": [],
+    "coverage_fa": "بدون پوشش دسته‌ای",
+    "section_counts": {
+      "positives": 0,
+      "negatives": 0,
+      "technical_notes": 0
+    },
+    "reasons_fa": [
+      "هیچ شاهد تأییدشده‌ای ثبت نشده است"
+    ],
+    "quality_rank": 0,
+    "action_fa": "بازخوانی انتخابی توصیه می‌شود"
+  },
+  "refresh_meta": {
+    "failed_selective_refreshes": 0,
+    "max_failed_selective_refreshes": 2,
+    "manual_review": false,
+    "manual_review_reason_fa": "",
+    "last_selective_refresh_at_utc": "",
+    "last_selective_refresh_outcome": ""
+  }
+}
