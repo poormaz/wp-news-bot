@@ -1,11 +1,12 @@
 {
   "cache_version": "source_evidence_cache_v1",
-  "created_at_utc": "2026-07-05T23:23:20+00:00",
+  "created_at_utc": "2026-07-05T23:33:19+00:00",
   "game": "Crimson Desert",
   "platform": "PC",
   "requested_url": "https://www.thegamer.com/crimson-desert-review",
   "final_url": "https://www.thegamer.com/crimson-desert-review",
-  "source_text_sha256": "b7d729b6b9ee477d2c9392ec34a75abc3c2b932ea98c28dd89eb06a4dd97835a",
+  "source_text_sha256": "a7a70609a0ada8350e55f3b7d9c91104ff8f973805a2666a2d8c42c0a2ed7df4",
+  "analysis_protocol": "source_excerpt_id_v2",
   "analysis": {
     "site_name": "TheGamer",
     "title": "Spoiler-Free 150 Hour Crimson Desert Review - A Deeply Flawed Diamond",
@@ -15,36 +16,75 @@
     "score_method": "not_found",
     "score_confidence": 0,
     "score_evidence": "",
-    "positives": [],
-    "negatives": [],
+    "positives": [
+      {
+        "point_fa": "جهان بازی Crimson Desert بسیار زیبا و غوطه‌ورکننده است و تجربه اکتشاف در آن لذت‌بخش است.",
+        "evidence_en": "The world is so beautiful and so immersive that the simple act of exploring it is pure joy."
+      },
+      {
+        "point_fa": "نبرد در Crimson Desert بسیار سرگرم‌کننده و لذت‌بخش است.",
+        "evidence_en": "The Combat Combat in Crimson Desert is outstanding."
+      },
+      {
+        "point_fa": "سیستم پیشرفت بازی به خوبی حس پیشرفت را منتقل می‌کند و به اکتشاف پاداش می‌دهد.",
+        "evidence_en": "Crimson Desert scratches the itch that comes from gradually progressing in MMORPGs perfectly, which makes sense considering Pearl Abyss’ storied genre heritage with Black Desert."
+      }
+    ],
+    "negatives": [
+      {
+        "point_fa": "بازی با مشکلاتی مانند عدم وجود سیستم ذخیره‌سازی و تعادل نامناسب در نبردها مواجه است.",
+        "evidence_en": "The Inventory System There are no storage chests."
+      },
+      {
+        "point_fa": "ماموریت‌ها تکراری و یکنواخت هستند و داستان به خوبی روایت نمی‌شود.",
+        "evidence_en": "Repetitive Quests There is a narrative in Crimson Desert here, but it’s functional rather than memorable."
+      },
+      {
+        "point_fa": "پازل‌ها در بازی به طور کلی غیرقابل فهم و آزاردهنده هستند.",
+        "evidence_en": "When done correctly, they make you feel like a genius beyond compare, but in Crimson Desert they are largely unintuitive and needlessly frustrating."
+      },
+      {
+        "point_fa": "بازی به نظر می‌رسد که زمان بازیکن را به خوبی احترام نمی‌گذارد و با مشکلات فنی زیادی مواجه است.",
+        "evidence_en": "Crimson Desert is also riddled with bugs in its current state."
+      }
+    ],
     "technical_notes": [],
-    "verdict": [],
+    "verdict": [
+      {
+        "point_fa": "Crimson Desert یک بازی با پتانسیل بالا است اما با مشکلاتی جدی مواجه است که نیاز به اصلاح دارند.",
+        "evidence_en": "It’s highly ambitious and one of the most intriguing triple-A games I’ve played in years, but I just wish so many parts of the whole weren’t inherently flawed.",
+        "evidence_id": "E149"
+      }
+    ],
     "platform_mentioned": "PC"
   },
   "quality_audit": {
-    "status": "needs_review",
-    "verified_point_count": 0,
-    "categorized_point_count": 0,
-    "category_count": 0,
-    "category_keys": [],
-    "coverage_fa": "بدون پوشش دسته‌ای",
+    "status": "acceptable",
+    "verified_point_count": 7,
+    "categorized_point_count": 5,
+    "category_count": 4,
+    "category_keys": [
+      "gameplay",
+      "story",
+      "technical",
+      "world_design"
+    ],
+    "coverage_fa": "پوشش گسترده",
     "section_counts": {
-      "positives": 0,
-      "negatives": 0,
+      "positives": 3,
+      "negatives": 4,
       "technical_notes": 0
     },
-    "reasons_fa": [
-      "هیچ شاهد تأییدشده‌ای ثبت نشده است"
-    ],
-    "quality_rank": 0,
-    "action_fa": "بازخوانی انتخابی توصیه می‌شود"
+    "reasons_fa": [],
+    "quality_rank": 900,
+    "action_fa": "برای استفاده‌ی پایدار قابل‌قبول است"
   },
   "refresh_meta": {
     "failed_selective_refreshes": 0,
     "max_failed_selective_refreshes": 2,
     "manual_review": false,
     "manual_review_reason_fa": "",
-    "last_selective_refresh_at_utc": "",
-    "last_selective_refresh_outcome": ""
+    "last_selective_refresh_at_utc": "2026-07-05T23:33:19+00:00",
+    "last_selective_refresh_outcome": "merged_improved"
   }
 }

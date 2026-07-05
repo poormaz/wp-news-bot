@@ -1,11 +1,12 @@
 {
   "cache_version": "source_evidence_cache_v1",
-  "created_at_utc": "2026-07-05T23:23:12+00:00",
+  "created_at_utc": "2026-07-05T23:33:12+00:00",
   "game": "Crimson Desert",
   "platform": "PC",
   "requested_url": "https://gamerant.com/crimson-desert-review",
   "final_url": "https://gamerant.com/crimson-desert-review",
-  "source_text_sha256": "22322e4649b891a484c522c1063576fda83b19de7afa610b8e11f92acb1d294a",
+  "source_text_sha256": "58c47e8dd2c56db53ca51824e3f306a4eb6986af9ee58650b1fdf587e5c2a866",
+  "analysis_protocol": "source_excerpt_id_v2",
   "analysis": {
     "site_name": "Game Rant",
     "title": "Crimson Desert Review: A Remarkable Open World That Often Asks Too Much",
@@ -15,36 +16,73 @@
     "score_method": "not_found",
     "score_confidence": 0,
     "score_evidence": "",
-    "positives": [],
-    "negatives": [],
+    "positives": [
+      {
+        "point_fa": "دنیای بازی Crimson Desert یکی از بهترین طراحی‌های دنیای باز را در تاریخ بازی‌ها دارد.",
+        "evidence_en": "Crimson Desert has, without a doubt, what I would consider to be the absolute best open world design I have ever seen in a game—and that's coming from a die-hard Zelda: Breath of the Wild fan."
+      },
+      {
+        "point_fa": "بازی به بازیکنان این امکان را می‌دهد که به روش‌های مختلفی در دنیای آن تعامل داشته باشند.",
+        "evidence_en": "Basically, a recurring theme in Crimson Desert is \"If you think you can do it, you probably can,\" and that's ultimately due to the game's highly interactive world."
+      },
+      {
+        "point_fa": "بازی به طور مداوم بازیکنان را برای کشف و جستجو تشویق می‌کند.",
+        "evidence_en": "The upside, though, is that there are more than enough needles to find, so you're constantly being rewarded for letting intrigue be your guide."
+      },
+      {
+        "point_fa": "بازی Crimson Desert به طور کلی تجربه‌ای جذاب و شگفت‌انگیز ارائه می‌دهد.",
+        "evidence_en": "Crimson Desert Is a Remarkable World That Asks More From Players Than It Should After all the time I spent in Crimson Desert , I clearly have a lot of complaints about its design, but it's hard to say it's not worth playing—because it absolutely is."
+      }
+    ],
+    "negatives": [
+      {
+        "point_fa": "بازی با مشکلاتی در طراحی و سیستم‌های خود مواجه است که می‌تواند تجربه را دشوار کند.",
+        "evidence_en": "Crimson Desert Is a Remarkable World That Asks More From Players Than It Should After all the time I spent in Crimson Desert , I clearly have a lot of complaints about its design, but it's hard to say it's not worth playing—because it absolutely is."
+      },
+      {
+        "point_fa": "داستان بازی به اندازه کافی قوی نیست و شخصیت‌ها توسعه چندانی ندارند.",
+        "evidence_en": "Crimson Desert's Open World Overshadows a Story That Struggles to Stick It's clear that Pearl Abyss wanted Crimson Desert 's open world to be the star of the show, because not only do you need to spend plenty of time with it if you hope to make good progress in the story, but also the story itself really isn't too much to write home about."
+      },
+      {
+        "point_fa": "بازی به طور مکرر بازیکنان را مجبور به صبر و تحمل می‌کند و این می‌تواند خسته‌کننده باشد.",
+        "evidence_en": "It's one thing for a game to demand patience from its players, but it's another for it to feel like that patience is constantly being tested by systems that resist the player instead of working with them."
+      }
+    ],
     "technical_notes": [],
-    "verdict": [],
+    "verdict": [
+      {
+        "point_fa": "بازی Crimson Desert یک دنیای شگفت‌انگیز است که از بازیکنان بیشتر از آنچه که باید می‌طلبد.",
+        "evidence_en": "Crimson Desert Is a Remarkable World That Asks More From Players Than It Should After all the time I spent in Crimson Desert , I clearly have a lot of complaints about its design, but it's hard to say it's not worth playing—because it absolutely is.",
+        "evidence_id": "E093"
+      }
+    ],
     "platform_mentioned": "PC"
   },
   "quality_audit": {
-    "status": "needs_review",
-    "verified_point_count": 0,
-    "categorized_point_count": 0,
-    "category_count": 0,
-    "category_keys": [],
-    "coverage_fa": "بدون پوشش دسته‌ای",
+    "status": "acceptable",
+    "verified_point_count": 7,
+    "categorized_point_count": 6,
+    "category_count": 2,
+    "category_keys": [
+      "gameplay",
+      "world_design"
+    ],
+    "coverage_fa": "پوشش چندبخشی",
     "section_counts": {
-      "positives": 0,
-      "negatives": 0,
+      "positives": 4,
+      "negatives": 3,
       "technical_notes": 0
     },
-    "reasons_fa": [
-      "هیچ شاهد تأییدشده‌ای ثبت نشده است"
-    ],
-    "quality_rank": 0,
-    "action_fa": "بازخوانی انتخابی توصیه می‌شود"
+    "reasons_fa": [],
+    "quality_rank": 870,
+    "action_fa": "برای استفاده‌ی پایدار قابل‌قبول است"
   },
   "refresh_meta": {
     "failed_selective_refreshes": 0,
     "max_failed_selective_refreshes": 2,
     "manual_review": false,
     "manual_review_reason_fa": "",
-    "last_selective_refresh_at_utc": "",
-    "last_selective_refresh_outcome": ""
+    "last_selective_refresh_at_utc": "2026-07-05T23:33:12+00:00",
+    "last_selective_refresh_outcome": "merged_improved"
   }
 }
