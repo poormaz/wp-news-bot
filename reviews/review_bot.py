@@ -81,7 +81,7 @@ OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0") or "0")
 # را روی ۵ می‌گذاریم تا «اجماع منتقدان» و «تفاوت دیدگاه سایت‌ها» معنای واقعی
 # داشته باشند؛ سقف ۱۰ فقط یک یادآوریِ نرم است، نه محدودیت سخت‌گیرانه.
 # «پنج منبع» حداقل تحریریه است و Workflow اجازه ندارد با مقدار ۳ آن را دور بزند.
-_requested_review_min_sources = int(os.getenv("REVIEW_MIN_SOURCES", "5") or "5")
+_requested_REVIEW_MIN_SOURCES = max(5, int(os.getenv("REVIEW_MIN_SOURCES", "5") or "5"))
 REVIEW_MIN_SOURCES = min(max(_requested_review_min_sources, 5), 10)
 REVIEW_RECOMMENDED_MAX_SOURCES = int(
     os.getenv("REVIEW_RECOMMENDED_MAX_SOURCES", "10") or "10"
