@@ -4613,7 +4613,7 @@ def _single_pass_editorial_plan(facts: dict) -> dict[str, list[dict]] | None:
 
 
 def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: str = "") -> str:
-    """پرامپتِ یک‌مرحله‌ای. شناسه‌های پشتیبان در کد متصل می‌شوند، نه با فرمت‌سازی مدل."""
+    """پرامپتِ یک‌مرحله‌ای با بریف تحریریِ روشن؛ شناسه‌های پشتیبان در کد متصل می‌شوند."""
     labels = {
         "opening": "Crimson Desert در عمل",
         "world_gameplay": "جهان بازی و گیم‌پلی",
@@ -4622,11 +4622,36 @@ def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: 
         "conclusion": "جمع‌بندی Poormaz",
     }
     synthesis_sections = {"audience", "conclusion"}
+    section_jobs = {
+        "opening": (
+            "در دو تا سه جمله، تز مرکزی نقد را بساز: مهم‌ترین کشش بازی در برابر "
+            "مهم‌ترین هزینه‌ی آن. نتیجه‌گیری نکن و متن معرفی بازی ننویس."
+        ),
+        "world_gameplay": (
+            "دو پاراگراف متمایز: پاراگراف اول درباره‌ی اینکه جهان چگونه کنجکاوی و "
+            "اکتشاف را پیش می‌برد؛ پاراگراف دوم درباره‌ی اینکه حرکت، مبارزه یا سیستم‌ها "
+            "چگونه ریتم بازی را تغییر می‌دهند. هر پاراگراف باید یک نتیجه‌ی ملموس برای بازیکن داشته باشد."
+        ),
+        "friction": (
+            "دو پاراگراف متمایز: اول اصطکاک سیستم‌ها، شفافیت، تعادل یا پیشروی؛ دوم هزینه‌ی "
+            "آن‌ها برای ریتم، روایت یا حس کنترل. مشکل‌ها را فهرست نکن، زنجیره‌ی علت و معلول بساز."
+        ),
+        "audience": (
+            "یک توصیه‌ی خرید عملی بده: چه تیپ بازیکنی از این اصطکاک لذت می‌برد و چه تیپی احتمالاً "
+            "بهتر است صبر کند یا سراغ گزینه‌ی دیگری برود. جمله‌های بدنه را خلاصه نکن."
+        ),
+        "conclusion": (
+            "یک حکم روشن و سنجیده بده: ارزش تجربه کجاست، بهای آن چیست، و آیا این معامله برای مخاطب "
+            "درست جواب می‌دهد یا نه. از تکرار تز افتتاحیه پرهیز کن."
+        ),
+    }
+
     brief = {}
     for key, items in plan.items():
         brief[key] = {
             "label": labels[key],
             "mode": "synthesis" if key in synthesis_sections else "reporting",
+            "job_fa": section_jobs[key],
             "evidence_cards": [
                 {
                     "topic": _PUBLIC_TOPIC_LABELS.get(item.get("topic"), "تصویر کلی"),
@@ -4636,7 +4661,7 @@ def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: 
                         "caution": "احتیاط",
                     }.get(item.get("sentiment"), "خنثی"),
                     "approved_claim_fa": item["text_fa"],
-                    # برای درک دقیق دامنه‌ی ادعا است، نه نقل یا ترجمه‌ی لفظی.
+                    # زمینه فقط برای فهم دقیق ادعاست، نه برای نقل یا ترجمه‌ی لفظی.
                     "context_en": clean_text(str(item.get("evidence_en") or ""))[:420],
                 }
                 for item in items
@@ -4646,31 +4671,31 @@ def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: 
     retry_note = ""
     if retry_reason:
         retry_note = f"""
-The previous full draft was rejected for publication quality: {retry_reason}
-Rewrite the ENTIRE article from scratch. Keep the same evidence map, add more
-specific analysis, and do not preserve sentences from the prior draft.
+The previous full draft was rejected for this reason: {retry_reason}
+Rewrite the ENTIRE article from scratch. Do not preserve wording, paragraph order,
+or shortcuts from the prior draft. Correct the issue without adding unsupported claims.
 """
 
     return f"""
 You are the senior Persian games editor for Poormaz. Write ONE coherent,
 publication-ready Persian review of \"{facts['game']}\".
 
-This is not a digest of bullet points. It must read like one critic who has a
-clear thesis, develops it, tests it against the evidence, and reaches a fair
-recommendation. A reader must learn not merely WHAT works or fails, but WHY
-those details change the rhythm and feel of play.
+This is a critic's article, not a summary of notes. The review must have a clear
+argument: identify what the game promises in practice, show where that promise pays
+off, and show where the same ambition creates friction. Every paragraph must advance
+the argument. A reader should understand not just WHAT a feature is, but HOW it
+changes decision-making, pacing, learning, curiosity, or fatigue.
 
-You receive a locked editorial map. In reporting sections, use every assigned
-card naturally and only in its assigned section. The English context clarifies
-nuance only: never quote it, translate it verbatim, or mention it. You may make
-bounded editorial inferences about pacing, clarity, reward, and friction when
-they directly follow from the approved claims. Never invent a feature, scene,
-plot detail, technical cause, comparison, or consensus.
+You receive a locked editorial map. Reporting sections must use every assigned card
+once, naturally, and only in its assigned section. Treat the cards as reporting notes:
+never paste or lightly paraphrase them one after another. Instead, turn each card into
+a premise and explain its consequence. The English context is only for nuance. Never
+quote it, translate it literally, mention it, or add facts beyond it.
 
 Locked editorial map:
 {json.dumps(brief, ensure_ascii=False, indent=2)}
 {retry_note}
-Return exactly one JSON object with these five objects and NOTHING else:
+Return exactly one JSON object, with exactly these five objects and NOTHING else:
 {{
   \"opening\": {{\"text_fa\": \"...\"}},
   \"world_gameplay\": {{\"text_fa\": \"...\"}},
@@ -4679,38 +4704,43 @@ Return exactly one JSON object with these five objects and NOTHING else:
   \"conclusion\": {{\"text_fa\": \"...\"}}
 }}
 
-Editorial rules:
-- Write all five sections in ONE pass as one connected review, not five detached summaries.
-- Opening: state the central contradiction in 2 developed sentences. No plot setup or trailer copy.
-- World/gameplay: write 2 substantial paragraphs in the same string. Explain how exploration,
-  interaction, movement, combat, or systems shape the experience, using the assigned cards.
-- Friction: write 2 substantial paragraphs in the same string. Explain how weak clarity, balance,
-  progression, inventory, quest flow, or writing affects momentum. Do not merely list problems.
-- Audience: give a practical purchase recommendation based on temperament and priorities, not a
-  recap of the previous sections.
-- Conclusion: deliver a decisive but measured verdict. Do not repeat the opening sentence.
-- Reporting sections must use every assigned fact exactly once and only in that section.
-- In synthesis sections, make a fresh recommendation or verdict from the assigned tension;
-  do not restate prior sentences.
-- No English quotations, URLs, source names, citations, IDs, Markdown, or labels inside text_fa.
+Non-negotiable writing rules:
+- Write all five sections in ONE pass as a connected review, not five detached summaries.
+- Follow the job_fa for each section exactly.
+- In world_gameplay and friction, use two paragraphs separated by a blank line inside text_fa.
+- Every reporting paragraph must contain at least one concrete detail from an assigned card AND one
+  explanation of its consequence. Use clear causal writing such as «برای همین»، «نتیجه‌اش این است که»،
+  «وقتی ...، ...» only where natural.
+- Do not upgrade evidence. A card saying a story is worth exploring does NOT permit calling the story
+  deep, powerful, memorable, or its characters compelling. A card saying the world is beautiful does
+  NOT permit calling it best-in-class or technically flawless. Stay exactly within the evidence.
+- Do not make vague claims such as «مشکلات جدی»، «شخصیت‌های جذاب»، «جهان غنی»، «تجربه‌ای دوگانه»،
+  «نیاز به بهبود»، or «بازیکنان را رها می‌کند» unless the same sentence immediately names the concrete
+  system or consequence that justifies the claim.
+- Do not use bare praise. Words like «زیبا»، «وسیع»، «متنوع»، «روان»، «غنی»، «جذاب» are allowed only
+  when the same sentence explains what the player can do because of that quality and why it matters.
+- Do not invent a feature, scene, quest type, plot detail, technical cause, comparison, or critical consensus.
+- Do not use English quotations, URLs, source names, citations, IDs, Markdown, or labels inside text_fa.
 - Do not use: امتیاز، نمره، متاکریتیک، Poormaz، منتقد، سایت، منبع، شواهد.
-- Avoid filler and ad copy, especially: «تجربه‌ای جذاب»، «جهان غنی»، «نیاز به بهبود»،
-  «به بازیکنان ارائه می‌دهد»، «با وعده‌های بزرگ»، «بهترین در تاریخ».
-- Do not call the world beautiful or immersive unless the sentence also explains what the player
-  actually does there and why that action matters.
-- Fluent contemporary Persian only. Avoid repeating whole sentences between sections.
+- Avoid canned openings and transitions: «در نهایت»، «با وجود جذابیت‌ها»، «این بازی برای بازیکنانی که»،
+  «به بازیکنان ارائه می‌دهد»، «با وعده‌های بزرگ»، «بهترین در تاریخ»، «تجربه‌ای جذاب».
+- Audience must use an explicit decision rule: who should buy now, who should wait or skip, and why.
+- Conclusion must answer the practical question «آیا این بازی ارزش وقت گذاشتن دارد؟» without repeating
+  sentences or phrasing from the opening.
 
-Length target:
-- opening: 60–105 words
-- world_gameplay: 180–270 words
-- friction: 180–270 words
-- audience: 70–110 words
-- conclusion: 85–130 words
-- Total: 600–850 Persian words.
-Before returning JSON, silently check that the total comfortably exceeds 560 Persian words.
-Do not pad with empty praise: add analysis, causal links, and a clear editorial stance instead.
+Length and pace:
+- opening: 75–105 Persian words
+- world_gameplay: 210–280 Persian words across two paragraphs
+- friction: 210–280 Persian words across two paragraphs
+- audience: 85–115 Persian words
+- conclusion: 95–130 Persian words
+- Total target: 680–850 Persian words.
+
+Before returning JSON, silently verify: every section fulfills its job, all assigned reporting
+cards have been used, no unsupported adjective upgrades a claim, and the article is comfortably
+longer than 620 Persian words. Do not pad with praise; expand by adding causal analysis and a
+specific, useful editorial judgment.
 """.strip()
-
 
 def _editorial_text_value(value) -> str:
     """مدل گاهی wrapper شیء را درست می‌فرستد و گاهی متن را مستقیم؛ هر دو قابل قبول‌اند."""
@@ -4827,7 +4857,7 @@ def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
                 "conclusion_fa": normalized["conclusion"]["text_fa"],
                 "section_supports": {key: value["supports"] for key, value in normalized.items()},
                 "editorial_plan": {key: [item["id"] for item in items] for key, items in plan.items()},
-                "method": "openai_single_pass_grounded_editorial_v31",
+                "method": "openai_single_pass_grounded_editorial_v32",
                 "word_count": total_words,
             }
 
@@ -5012,7 +5042,7 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     markdown.extend(["", "## منابع بررسی‌شده", *source_lines])
 
     return {
-        "status": "preview_single_pass_editorial_v31",
+        "status": "preview_single_pass_editorial_v32",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
