@@ -4695,13 +4695,14 @@ Editorial rules:
 - Fluent contemporary Persian only. Be precise, fair, and readable.
 
 Length guidance:
-- opening: roughly 55–115 words
-- world_gameplay: roughly 100–190 words
-- friction: roughly 100–190 words
-- audience: roughly 55–110 words
-- conclusion: roughly 55–110 words
-- Total: roughly 420–700 Persian words. Do not pad merely to hit a number.
-A concise, complete section is better than filler.
+- opening: aim for 45–95 words
+- world_gameplay: aim for 90–170 words
+- friction: aim for 90–170 words
+- audience: aim for 40–85 words
+- conclusion: aim for 40–85 words
+- Total: aim for 380–620 Persian words. Do not pad merely to hit a number.
+Length is editorial guidance, not a reason to add filler. A concise, complete
+section is better than generic repetition.
 """.strip()
 
 
@@ -4740,15 +4741,17 @@ def _validate_single_pass_editorial(
         return None, "فرمت JSON مقاله معتبر نیست"
 
     fact_by_id = _fact_map(facts)
-    # Length is a sanity check, not a trapdoor. Persian prose can convey a complete
-    # editorial thought in fewer tokens than English, so rejecting an otherwise safe,
-    # grounded article for three missing words merely creates a bad fallback.
+    # Length is a smoke detector, not a guillotine. The previous versions discarded
+    # grounded, coherent drafts because one Persian paragraph missed an arbitrary
+    # word target by a handful of tokens. Keep hard validation for provenance,
+    # supports, forbidden content, and cross-section repetition; use only a small
+    # floor here to reject genuinely empty sections.
     specs = {
-        "opening": {"min_words": 45, "max_words": 160, "required_topics": None, "required_sentiments": None},
-        "world_gameplay": {"min_words": 90, "max_words": 250, "required_topics": {"world_design", "gameplay"}, "required_sentiments": {"positive"}},
-        "friction": {"min_words": 90, "max_words": 250, "required_topics": {"gameplay", "story", "technical"}, "required_sentiments": {"negative", "caution"}},
-        "audience": {"min_words": 45, "max_words": 150, "required_topics": None, "required_sentiments": None},
-        "conclusion": {"min_words": 45, "max_words": 150, "required_topics": None, "required_sentiments": None},
+        "opening": {"min_words": 24, "max_words": 180, "required_topics": None, "required_sentiments": None},
+        "world_gameplay": {"min_words": 55, "max_words": 280, "required_topics": {"world_design", "gameplay"}, "required_sentiments": {"positive"}},
+        "friction": {"min_words": 55, "max_words": 280, "required_topics": {"gameplay", "story", "technical"}, "required_sentiments": {"negative", "caution"}},
+        "audience": {"min_words": 24, "max_words": 170, "required_topics": None, "required_sentiments": None},
+        "conclusion": {"min_words": 24, "max_words": 170, "required_topics": None, "required_sentiments": None},
     }
 
     normalized = {}
@@ -4793,7 +4796,7 @@ def _validate_single_pass_editorial(
     total_words = sum(len(value["text_fa"].split()) for value in normalized.values())
     if total_words > 900:
         return None, f"مقاله بیش از حد بلند است ({total_words} واژه)"
-    if total_words < 340:
+    if total_words < 240:
         return None, f"مقاله برای انتشار بیش از حد کوتاه است ({total_words} واژه)"
     return normalized, None
 
@@ -4846,7 +4849,7 @@ def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
                 "conclusion_fa": normalized["conclusion"]["text_fa"],
                 "section_supports": {key: value["supports"] for key, value in normalized.items()},
                 "editorial_plan": {key: [item["id"] for item in items] for key, items in plan.items()},
-                "method": "openai_single_pass_grounded_editorial_v27",
+                "method": "openai_single_pass_grounded_editorial_v28",
                 "word_count": total_words,
             }
 
@@ -4922,6 +4925,20 @@ def run_single_pass_editorial_regression_checks() -> None:
     ]
     assert len(reporting_ids) == len(set(reporting_ids))
     assert len(plan["opening"]) == 2 and len(plan["friction"]) == 3
+
+    # Editorial validation must not reject a concise, grounded five-part article
+    # solely because one section is shorter than the prompt's preferred target.
+    concise_raw = {
+        "opening": {"text_fa": "این بازی میان فرصت‌های فراوان برای درگیر شدن با جهانش و چند مانع طراحی‌شده، تجربه‌ای نابرابر اما قابل توجه می‌سازد. در نتیجه، کیفیت کلی آن نه با یک لحظه‌ی درخشان، بلکه با توان بازیکن برای کنار آمدن با این نوسان دائمی سنجیده می‌شود.", "supports": [item["id"] for item in plan["opening"]]},
+        "world_gameplay": {"text_fa": "دنیای بازی فرصت کاوش و تعامل را جدی می‌گیرد و همین موضوع در بهترین لحظات، ریتم تجربه را جلو می‌برد. تنوع فعالیت‌ها و حس کشف، انگیزه‌ی اصلی برای ادامه دادن است و جهان را از یک پس‌زمینه‌ی صرف فراتر می‌برد. وقتی بازیکن مسیر خودش را انتخاب می‌کند، بازی با جزئیات محیطی و امکان واکنش به موقعیت‌ها، حس ماجراجویی را حفظ می‌کند و اجازه می‌دهد هر مسیر حال‌وهوای متفاوتی داشته باشد.", "supports": [item["id"] for item in plan["world_gameplay"]]},
+        "friction": {"text_fa": "در سوی دیگر، چند سیستم و چالش طراحی‌شده گاهی به‌جای ساختن فشار جذاب، مسیر بازی را کند می‌کنند. این ایرادها باعث می‌شوند رسیدن به لحظات خوب همیشه به اندازه‌ی خود آن لحظات روان نباشد. بعضی توقف‌ها به‌جای آنکه بازیکن را به یادگیری دقیق‌تر تشویق کنند، حس آزمون‌وخطای فرسایشی می‌سازند و تداوم تجربه را تحت فشار قرار می‌دهند. همین ناهماهنگی در بلندمدت اثر خود را نشان می‌دهد.", "supports": [item["id"] for item in plan["friction"]]},
+        "audience": {"text_fa": "برای بازیکنی که از آزمون‌وخطا، کشف تدریجی و ساختن مسیر شخصی لذت می‌برد، این تجربه می‌تواند جذاب باشد. کسانی که ریتم کاملاً روان و راهنمایی دائمی می‌خواهند، بهتر است با انتظار محتاطانه‌تری وارد آن شوند.", "supports": [item["id"] for item in plan["audience"]]},
+        "conclusion": {"text_fa": "نتیجه، اثری بلندپروازانه است که ارزشش به میزان صبر بازیکن و علاقه‌اش به درگیری با سیستم‌های متعدد بستگی دارد. در بهترین حالت، تجربه‌ای ماندگار می‌سازد؛ در بدترین حالت، همان بلندپروازی به مانعی برای لذت بردن تبدیل می‌شود.", "supports": [item["id"] for item in plan["conclusion"]]},
+    }
+    normalized, reason = _validate_single_pass_editorial(
+        concise_raw, facts=facts, plan=plan, allowed_site_names=set()
+    )
+    assert normalized is not None, reason
     assert len(plan["audience"]) == 2 and len(plan["conclusion"]) == 2
     assert all(item["id"] in reporting_ids for item in plan["audience"] + plan["conclusion"])
 
@@ -5017,7 +5034,7 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     markdown.extend(["", "## منابع بررسی‌شده", *source_lines])
 
     return {
-        "status": "preview_single_pass_editorial_v27",
+        "status": "preview_single_pass_editorial_v28",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
