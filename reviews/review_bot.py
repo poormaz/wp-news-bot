@@ -4811,23 +4811,25 @@ def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
             allowed_site_names=allowed_site_names,
         )
         if normalized is not None:
-            quality_reason = _single_pass_publication_quality_reason(normalized)
-            if quality_reason is None:
-                if attempt:
-                    print("Single-pass editorial article recovered by full-article retry.")
-                total_words = sum(len(value["text_fa"].split()) for value in normalized.values())
-                return {
-                    "opening_fa": normalized["opening"]["text_fa"],
-                    "world_gameplay_fa": normalized["world_gameplay"]["text_fa"],
-                    "friction_fa": normalized["friction"]["text_fa"],
-                    "audience_fa": normalized["audience"]["text_fa"],
-                    "conclusion_fa": normalized["conclusion"]["text_fa"],
-                    "section_supports": {key: value["supports"] for key, value in normalized.items()},
-                    "editorial_plan": {key: [item["id"] for item in items] for key, items in plan.items()},
-                    "method": "openai_single_pass_grounded_editorial_v30",
-                    "word_count": total_words,
-                }
-            reason = quality_reason
+            # _validate_single_pass_editorial already performs the publication-safe
+            # checks that matter here: valid JSON, safe text, bounded length, and
+            # deterministic evidence links from the locked editorial plan. Do not
+            # call the retired v29 quality gate again, otherwise a valid article
+            # can be rejected or crash with a missing-function NameError.
+            if attempt:
+                print("Single-pass editorial article recovered by full-article retry.")
+            total_words = sum(len(value["text_fa"].split()) for value in normalized.values())
+            return {
+                "opening_fa": normalized["opening"]["text_fa"],
+                "world_gameplay_fa": normalized["world_gameplay"]["text_fa"],
+                "friction_fa": normalized["friction"]["text_fa"],
+                "audience_fa": normalized["audience"]["text_fa"],
+                "conclusion_fa": normalized["conclusion"]["text_fa"],
+                "section_supports": {key: value["supports"] for key, value in normalized.items()},
+                "editorial_plan": {key: [item["id"] for item in items] for key, items in plan.items()},
+                "method": "openai_single_pass_grounded_editorial_v31",
+                "word_count": total_words,
+            }
 
         last_reason = reason or "اعتبارسنجی نامشخص"
         if attempt == 0:
@@ -5010,7 +5012,7 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     markdown.extend(["", "## منابع بررسی‌شده", *source_lines])
 
     return {
-        "status": "preview_single_pass_editorial_v30",
+        "status": "preview_single_pass_editorial_v31",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
