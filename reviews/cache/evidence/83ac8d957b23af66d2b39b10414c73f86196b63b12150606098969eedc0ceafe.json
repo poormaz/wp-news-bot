@@ -1,11 +1,11 @@
 {
   "cache_version": "source_evidence_cache_v1",
-  "created_at_utc": "2026-07-02T00:12:10+00:00",
+  "created_at_utc": "2026-07-06T00:09:01+00:00",
   "game": "Crimson Desert",
   "platform": "PC",
   "requested_url": "https://www.destructoid.com/reviews/crimson-desert-review",
   "final_url": "https://www.destructoid.com/reviews/crimson-desert-review",
-  "source_text_sha256": "882cfdebdf8bc03f26a19df12624905ba342b5d4a5a78bba9497ba33d135e725",
+  "source_text_sha256": "c51e45f9e00a2f44c7f3bff22ccf958e0a638f2d34a685326baab21ab380d9fc",
   "analysis": {
     "site_name": "Destructoid",
     "title": "Crimson Desert Review - Vast, violent, and impossible to put down",
@@ -15,7 +15,23 @@
     "score_method": "jsonld_reviewRating",
     "score_confidence": 100,
     "score_evidence": "{\"@type\": \"Review\", \"reviewRating\": {\"@type\": \"Rating\", \"ratingValue\": \"8.5\", \"bestRating\": 10, \"worstRating\": 0}}",
+    "analysis_protocol": "excerpt_ids_v2",
     "positives": [
+      {
+        "point_fa": "این بازی دارای یک دنیای وسیع و پر از محتوا است.",
+        "evidence_en": "Recommended Videos Here, we have a huge open world filled with loads of content, exciting locations to visit, and stories to experience.",
+        "evidence_id": "E005"
+      },
+      {
+        "point_fa": "کنترل اسب در بازی بسیار خوب است و تجربه‌ای لذت‌بخش را فراهم می‌کند.",
+        "evidence_en": "The horse, your primary vessel, controls so well that it puts many other AAA games to shame.",
+        "evidence_id": "E035"
+      },
+      {
+        "point_fa": "داستان و شخصیت‌های بازی ارزش کاوش دارند.",
+        "evidence_en": "At the end of the day, though, Crimson Desert is a fine title, with a story, characters, and world worth exploring.",
+        "evidence_id": "E080"
+      },
       {
         "point_fa": "بازی تجربه‌ای جذاب و غیرقابل ترک را ارائه می‌دهد.",
         "evidence_en": "the game is impossible to put down once you get going."
@@ -23,12 +39,18 @@
     ],
     "negatives": [
       {
-        "point_fa": "ترجمه و نوشتار بازی در برخی موارد ضعیف است.",
-        "evidence_en": "the translation does not always carry over well."
+        "point_fa": "بازی از نظر نوشتار کیفیت کافی ندارد.",
+        "evidence_en": "Where I did feel an overall lack of quality was the writing itself.",
+        "evidence_id": "E017"
       },
       {
-        "point_fa": "پازل‌ها در بازی می‌توانند بسیار دشوار و گیج‌کننده باشند.",
-        "evidence_en": "many puzzles are almost impossible to solve without help."
+        "point_fa": "برخی از نبردهای رئیس به شدت نامتعادل هستند.",
+        "evidence_en": "Most of the game’s bosses, despite being cool and unique and interesting design-wise, are totally unbalanced.",
+        "evidence_id": "E059"
+      },
+      {
+        "point_fa": "ترجمه و نوشتار بازی در برخی موارد ضعیف است.",
+        "evidence_en": "the translation does not always carry over well."
       }
     ],
     "technical_notes": [
@@ -37,20 +59,36 @@
         "evidence_en": "I did notice a significant dip in performance in the last few days of the review window."
       }
     ],
+    "verdict": [],
     "platform_mentioned": "PC"
   },
   "quality_audit": {
     "status": "acceptable",
-    "verified_point_count": 4,
-    "categorized_point_count": 2,
-    "category_count": 2,
+    "verified_point_count": 8,
+    "categorized_point_count": 6,
+    "category_count": 4,
+    "category_keys": [
+      "gameplay",
+      "story",
+      "technical",
+      "world_design"
+    ],
+    "coverage_fa": "پوشش گسترده",
     "section_counts": {
-      "positives": 1,
-      "negatives": 2,
+      "positives": 4,
+      "negatives": 3,
       "technical_notes": 1
     },
     "reasons_fa": [],
-    "quality_rank": 422,
+    "quality_rank": 1020,
     "action_fa": "برای استفاده‌ی پایدار قابل‌قبول است"
+  },
+  "refresh_meta": {
+    "failed_selective_refreshes": 0,
+    "max_failed_selective_refreshes": 2,
+    "manual_review": false,
+    "manual_review_reason_fa": "",
+    "last_selective_refresh_at_utc": "2026-07-06T00:09:01+00:00",
+    "last_selective_refresh_outcome": "merged_improved"
   }
 }
