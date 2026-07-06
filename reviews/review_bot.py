@@ -4495,7 +4495,7 @@ def _build_public_article_fallback(facts: dict) -> dict:
         "friction_fa": weaknesses,
         "audience_fa": audience,
         "conclusion_fa": conclusion,
-        "method": "deterministic_editorial_fallback_v25",
+        "method": "deterministic_editorial_fallback_v26",
     }
 
 
@@ -4559,8 +4559,10 @@ def _pick_editorial_facts(
 
 def _single_pass_editorial_plan(facts: dict) -> dict[str, list[dict]] | None:
     """
-    یک نقشه‌ی غیرتکراری برای کل مقاله می‌سازد. هر fact دقیقاً به یک بخش تعلق
-    دارد؛ بنابراین مدل مجاز نیست همان ادعا را با لباس تازه در بخش بعدی تکرار کند.
+    برای بخش‌های گزارشیِ مقاله واقعیت‌های یکتا انتخاب می‌شود. «مخاطب» و
+    «جمع‌بندی» عمداً واقعیت تازه مطالبه نمی‌کنند: آن دو باید از نتایجِ بدنه
+    یک توصیه و حکم تحریری بسازند، نه اینکه برای پر کردن سهمیه همان نکات را
+    دوباره با کلمات تازه تکرار کنند.
     """
     all_facts = [item for item in facts.get("facts", []) if isinstance(item, dict) and item.get("id")]
     used_ids: set[str] = set()
@@ -4576,39 +4578,33 @@ def _single_pass_editorial_plan(facts: dict) -> dict[str, list[dict]] | None:
         used_ids.update(item["id"] for item in picked if item.get("id"))
         return picked
 
-    # تز آغازین: یک وعده‌ی مشخص و یک اصطکاک مشخص.
+    # بدنه‌ی گزارش‌شونده: هر fact فقط یک بار اینجا مصرف می‌شود.
     opening_pos = take(topics={"world_design", "gameplay"}, sentiments={"positive"}, count=1)
     opening_neg = take(topics={"gameplay", "story", "technical"}, sentiments={"negative", "caution"}, count=1)
-
-    # بدنه‌ی مثبت و منفی باید از آغاز جدا باشند تا همان گزاره در هر پاراگراف برنگردد.
     world = take(topics={"world_design", "gameplay"}, sentiments={"positive"}, count=3)
     friction = take(topics={"gameplay", "story", "technical"}, sentiments={"negative", "caution"}, count=3)
 
-    # دو بخش پایانی با واقعیت‌های استفاده‌نشده ساخته می‌شوند، نه با بازگویی بدنه.
-    audience_pos = take(topics=None, sentiments={"positive"}, count=1)
-    audience_neg = take(topics=None, sentiments={"negative", "caution"}, count=1)
-    conclusion_pos = take(topics=None, sentiments={"positive"}, count=1)
-    conclusion_neg = take(topics=None, sentiments={"negative", "caution"}, count=1)
+    if (
+        len(opening_pos) < 1
+        or len(opening_neg) < 1
+        or len(world) < 3
+        or len(friction) < 3
+    ):
+        return None
 
-    plan = {
+    # این دو بخش synthesis هستند. شناسه‌ها فقط پایه‌ی استدلال‌اند و مدل حق
+    # بازگویی گزاره‌هایشان را ندارد. چنین طرحی با مجموعه‌داده‌ی واقعی هم کار
+    # می‌کند، حتی وقتی تعداد نکات منفی کمتر از تعداد تیترهای مقاله است.
+    audience = [world[-1], friction[-1]]
+    conclusion = [opening_pos[0], opening_neg[0]]
+
+    return {
         "opening": opening_pos + opening_neg,
         "world_gameplay": world,
         "friction": friction,
-        "audience": audience_pos + audience_neg,
-        "conclusion": conclusion_pos + conclusion_neg,
+        "audience": audience,
+        "conclusion": conclusion,
     }
-
-    minimums = {
-        "opening": 2,
-        "world_gameplay": 3,
-        "friction": 3,
-        "audience": 2,
-        "conclusion": 2,
-    }
-    if any(len(plan[key]) < minimum for key, minimum in minimums.items()):
-        return None
-    return plan
-
 
 def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: str = "") -> str:
     labels = {
@@ -4618,10 +4614,12 @@ def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: 
         "audience": "مناسب چه کسی است؟",
         "conclusion": "جمع‌بندی Poormaz",
     }
+    synthesis_sections = {"audience", "conclusion"}
     brief = {}
     for key, items in plan.items():
         brief[key] = {
             "label": labels[key],
+            "mode": "synthesis" if key in synthesis_sections else "reporting",
             "facts": [
                 {
                     "id": item["id"],
@@ -4675,8 +4673,13 @@ Editorial rules:
 - Audience tells readers what kind of player may enjoy this game, without merely
   repeating the prior two sections.
 - Conclusion delivers a measured final judgment using its own assigned facts.
-- Use every assigned fact exactly once in its assigned section. Supports must list
-  exactly the IDs assigned to that section, in any order.
+- In reporting sections (opening, world_gameplay, friction), use every assigned
+  fact exactly once and only in that section.
+- In synthesis sections (audience, conclusion), the listed IDs are reasoning
+  anchors only. Do not restate, paraphrase, list, or hint at their factual claims.
+  Instead write a fresh recommendation or final judgment that logically follows
+  from the overall contrast. Supports must still list exactly the IDs assigned to
+  that section, in any order.
 - Use only the supplied facts. Never add lore, features, systems, technical causes,
   comparisons, fixes, story details, scores, reviewers, sources, websites, or claims
   from general knowledge.
@@ -4806,7 +4809,10 @@ def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
 
     plan = _single_pass_editorial_plan(facts)
     if plan is None:
-        print("Single-pass editorial plan lacks enough unique verified facts; using deterministic fallback.")
+        print(
+            "Single-pass editorial plan lacks enough verified reporting facts "
+            f"({len(_fact_map(facts))} available); using deterministic fallback."
+        )
         return _build_public_article_fallback(facts)
 
     last_reason = ""
@@ -4836,7 +4842,7 @@ def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
                 "conclusion_fa": normalized["conclusion"]["text_fa"],
                 "section_supports": {key: value["supports"] for key, value in normalized.items()},
                 "editorial_plan": {key: [item["id"] for item in items] for key, items in plan.items()},
-                "method": "openai_single_pass_grounded_editorial_v25",
+                "method": "openai_single_pass_grounded_editorial_v26",
                 "word_count": total_words,
             }
 
@@ -4901,15 +4907,19 @@ def run_single_pass_editorial_regression_checks() -> None:
             {"id": "F8", "topic": "story", "sentiment": "negative", "text_fa": "بعضی مأموریت‌ها تکراری می‌شوند."},
             {"id": "F9", "topic": "world_design", "sentiment": "positive", "text_fa": "طراحی محیط حس کشف را تقویت می‌کند."},
             {"id": "F10", "topic": "gameplay", "sentiment": "negative", "text_fa": "مدیریت موجودی گاهی دست‌وپاگیر است."},
-            {"id": "F11", "topic": "gameplay", "sentiment": "positive", "text_fa": "مبارزات در بهترین لحظات ریتم خوبی دارند."},
-            {"id": "F12", "topic": "technical", "sentiment": "caution", "text_fa": "برخی مشکلات فنی جزئی دیده شده است."},
         ],
     }
     plan = _single_pass_editorial_plan(facts)
     assert plan is not None
-    assigned = [item["id"] for items in plan.values() for item in items]
-    assert len(assigned) == len(set(assigned))
+    reporting_ids = [
+        item["id"]
+        for key in ("opening", "world_gameplay", "friction")
+        for item in plan[key]
+    ]
+    assert len(reporting_ids) == len(set(reporting_ids))
     assert len(plan["opening"]) == 2 and len(plan["friction"]) == 3
+    assert len(plan["audience"]) == 2 and len(plan["conclusion"]) == 2
+    assert all(item["id"] in reporting_ids for item in plan["audience"] + plan["conclusion"])
 
 def run_longform_retry_regression_checks() -> None:
     sample_facts = {
@@ -5003,14 +5013,14 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     markdown.extend(["", "## منابع بررسی‌شده", *source_lines])
 
     return {
-        "status": "preview_single_pass_editorial_v25",
+        "status": "preview_single_pass_editorial_v26",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
         "markdown": "\n".join(markdown).strip() + "\n",
         "source_links": source_links,
         "review_note_fa": "این متن فقط پیش‌نمایش است و هنوز در وردپرس ساخته یا منتشر نشده است.",
-        "writing_mode": sections.get("method", "deterministic_editorial_fallback_v25"),
+        "writing_mode": sections.get("method", "deterministic_editorial_fallback_v26"),
         "word_count": sections.get("word_count"),
         "section_supports": sections.get("section_supports", {}),
     }
