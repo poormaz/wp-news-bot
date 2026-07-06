@@ -4215,6 +4215,69 @@ def _fact_map(facts: dict) -> dict[str, dict]:
     }
 
 
+def _public_section_validation_reason(
+    value,
+    *,
+    allowed_fact_ids: set[str],
+    fact_by_id: dict[str, dict],
+    min_words: int,
+    max_words: int,
+    min_supports: int,
+    required_topics: set[str] | None = None,
+    required_sentiments: set[str] | None = None,
+    allowed_site_names: set[str],
+) -> str | None:
+    """دلیل قابل‌فهم رد شدن یک بخش عمومی، برای retry هدفمند."""
+    if not isinstance(value, dict):
+        return "فرمت JSON بخش معتبر نیست"
+
+    text_fa = clean_text(str(value.get("text_fa") or ""))
+    if not text_fa:
+        return "متن بخش خالی است"
+    if _has_broken_character(text_fa):
+        return "متن دارای نویسه‌ی خراب است"
+
+    word_count = len(text_fa.split())
+    if word_count < min_words:
+        return f"متن کوتاه است ({word_count} واژه، حداقل {min_words})"
+    if word_count > max_words:
+        return f"متن بلند است ({word_count} واژه، حداکثر {max_words})"
+    if re.search(r"https?://|[#*`]|(?:^|\s)-\s", text_fa):
+        return "متن شامل Markdown یا لینک است"
+    if _public_article_forbidden_text(text_fa):
+        return "متن شامل واژه‌های داخلی یا نمره‌دهی است"
+
+    for site_name in allowed_site_names:
+        if site_name and site_name.casefold() in text_fa.casefold():
+            return "نام منبع در متن عمومی آمده است"
+
+    trailer_markers = (
+        "وفاداری", "قهرمانان شکل", "سرزمین‌های سخت", "خطرات ناشناخته",
+        "به دنیای بازی", "وارد دنیای",
+    )
+    if any(marker in text_fa.casefold() for marker in trailer_markers):
+        return "متن به لحن تریلری یا تبلیغاتی رفته است"
+
+    supports = []
+    for ref in value.get("supports", []) or []:
+        ref = clean_text(str(ref or ""))
+        if ref in allowed_fact_ids and ref not in supports:
+            supports.append(ref)
+
+    if len(supports) < min_supports:
+        return f"شناسه‌های پشتیبان کافی نیستند ({len(supports)} از {min_supports})"
+
+    support_facts = [fact_by_id[item] for item in supports]
+    if required_topics and not any(item.get("topic") in required_topics for item in support_facts):
+        return "پشتیبان‌ها موضوع لازم برای این بخش را ندارند"
+    if required_sentiments and not any(
+        item.get("sentiment") in required_sentiments for item in support_facts
+    ):
+        return "پشتیبان‌ها جهت‌گیری لازم برای این بخش را ندارند"
+
+    return None
+
+
 def _normalize_editorial_section(
     value,
     *,
@@ -4227,34 +4290,155 @@ def _normalize_editorial_section(
     required_sentiments: set[str] | None = None,
     allowed_site_names: set[str],
 ) -> dict | None:
-    if not isinstance(value, dict):
+    reason = _public_section_validation_reason(
+        value,
+        allowed_fact_ids=allowed_fact_ids,
+        fact_by_id=fact_by_id,
+        min_words=min_words,
+        max_words=max_words,
+        min_supports=min_supports,
+        required_topics=required_topics,
+        required_sentiments=required_sentiments,
+        allowed_site_names=allowed_site_names,
+    )
+    if reason:
         return None
 
     text_fa = clean_text(str(value.get("text_fa") or ""))
-    if not _public_section_is_safe(
-        text_fa,
-        min_words=min_words,
-        max_words=max_words,
-        allowed_site_names=allowed_site_names,
-    ):
-        return None
-
     supports = []
     for ref in value.get("supports", []) or []:
         ref = clean_text(str(ref or ""))
         if ref in allowed_fact_ids and ref not in supports:
             supports.append(ref)
-    if len(supports) < min_supports:
-        return None
-
-    support_facts = [fact_by_id[item] for item in supports]
-    if required_topics and not any(item.get("topic") in required_topics for item in support_facts):
-        return None
-    if required_sentiments and not any(item.get("sentiment") in required_sentiments for item in support_facts):
-        return None
 
     return {"text_fa": text_fa, "supports": supports}
 
+
+def _section_has_balanced_supports(section: dict, fact_by_id: dict[str, dict]) -> bool:
+    sentiments = {
+        fact_by_id[item].get("sentiment")
+        for item in section.get("supports", [])
+        if item in fact_by_id
+    }
+    return "positive" in sentiments and bool(sentiments & {"negative", "caution"})
+
+
+def _retry_longform_editorial_section(
+    client: OpenAI,
+    *,
+    key: str,
+    spec: dict,
+    facts: dict,
+    fact_by_id: dict[str, dict],
+    allowed_site_names: set[str],
+    failure_reason: str,
+    require_balanced_supports: bool,
+) -> dict | None:
+    """فقط همان بخش مردود را بازنویسی می‌کند، نه کل مقاله را."""
+    writer_facts = [
+        {
+            "id": item["id"],
+            "بخش": _PUBLIC_TOPIC_LABELS.get(item.get("topic"), "تصویر کلی"),
+            "جهت": {
+                "positive": "مثبت",
+                "negative": "منفی",
+                "caution": "احتیاط",
+            }.get(item.get("sentiment"), "خنثی"),
+            "واقعیت": item["text_fa"],
+        }
+        for item in facts.get("facts", [])
+    ]
+
+    section_labels = {
+        "opening": "شروع نقد و تز اصلی",
+        "world_gameplay": "جهان بازی و گیم‌پلی",
+        "friction": "اصطکاک‌ها و ضعف‌ها",
+        "audience": "مخاطب مناسب",
+        "conclusion": "جمع‌بندی",
+    }
+    topic_label = "بدون الزام موضوعی"
+    if spec.get("required_topics"):
+        topic_label = "، ".join(
+            _PUBLIC_TOPIC_LABELS.get(topic, topic)
+            for topic in sorted(spec["required_topics"])
+        )
+    sentiment_label = "بدون الزام جهت‌گیری"
+    if spec.get("required_sentiments"):
+        sentiment_label = "، ".join(sorted(spec["required_sentiments"]))
+
+    prompt = f"""
+You are revising ONLY one section of a Persian game review for Poormaz.
+
+Game: {facts["game"]}
+Section: {section_labels.get(key, key)}
+The prior attempt was rejected because: {failure_reason}
+
+Verified facts:
+{json.dumps({"facts": writer_facts}, ensure_ascii=False, indent=2)}
+
+Return exactly this JSON object:
+{{
+  "text_fa": "...",
+  "supports": ["F..."]
+}}
+
+Hard rules:
+- Write fluent contemporary Persian only.
+- Use only the supplied facts. Do not add game lore, plot, features, causes,
+  comparisons, scores, sources, reviewers, websites, or technical claims.
+- No headings, Markdown, bullets, URLs, English quotes, or source names.
+- Do not use: امتیاز، نمره، متاکریتیک، Poormaz، منتقد، سایت، منبع، شواهد.
+- Do not use trailer language such as وفاداری‌ها مورد آزمایش قرار می‌گیرند,
+  قهرمانان شکل می‌گیرند, سرزمین‌های سخت, or خطرات ناشناخته.
+- Explain concrete cause and effect instead of generic praise.
+- Length: {spec["min_words"]} to {spec["max_words"]} Persian words.
+- Use at least {spec["min_supports"]} distinct support IDs.
+- Required topic coverage: {topic_label}.
+- Required sentiment coverage: {sentiment_label}.
+{"- Supports must include at least one positive and one negative/caution fact." if require_balanced_supports else ""}
+""".strip()
+
+    try:
+        raw = ask_openai_json(client, prompt, max_tokens=1200)
+    except Exception as exc:
+        print(f"Long-form retry for '{key}' failed: {repr(exc)}")
+        return None
+
+    allowed_fact_ids = set(fact_by_id)
+    reason = _public_section_validation_reason(
+        raw,
+        allowed_fact_ids=allowed_fact_ids,
+        fact_by_id=fact_by_id,
+        min_words=spec["min_words"],
+        max_words=spec["max_words"],
+        min_supports=spec["min_supports"],
+        required_topics=spec["required_topics"],
+        required_sentiments=spec["required_sentiments"],
+        allowed_site_names=allowed_site_names,
+    )
+    if reason:
+        print(f"Long-form retry for '{key}' failed validation: {reason}")
+        return None
+
+    section = _normalize_editorial_section(
+        raw,
+        allowed_fact_ids=allowed_fact_ids,
+        fact_by_id=fact_by_id,
+        min_words=spec["min_words"],
+        max_words=spec["max_words"],
+        min_supports=spec["min_supports"],
+        required_topics=spec["required_topics"],
+        required_sentiments=spec["required_sentiments"],
+        allowed_site_names=allowed_site_names,
+    )
+    if section is None:
+        return None
+    if require_balanced_supports and not _section_has_balanced_supports(section, fact_by_id):
+        print(f"Long-form retry for '{key}' lacks balanced supports.")
+        return None
+
+    print(f"Long-form editorial section '{key}' recovered by targeted retry.")
+    return section
 
 def _fallback_text_from_facts(facts: list[dict], *, topic: set[str] | None = None, sentiment: set[str] | None = None, limit: int = 4) -> str:
     chosen = []
@@ -4311,7 +4495,7 @@ def _build_public_article_fallback(facts: dict) -> dict:
         "friction_fa": weaknesses,
         "audience_fa": audience,
         "conclusion_fa": conclusion,
-        "method": "deterministic_editorial_fallback_v21",
+        "method": "deterministic_editorial_fallback_v22",
     }
 
 
@@ -4412,35 +4596,36 @@ Support rules:
     allowed_fact_ids = set(fact_by_id)
     specs = {
         "opening": {
-            "min_words": 90, "max_words": 165, "min_supports": 2,
+            "min_words": 80, "max_words": 170, "min_supports": 2,
             "required_topics": {"world_design", "gameplay", "story", "general"},
             "required_sentiments": {"positive", "negative"},
         },
         "world_gameplay": {
-            "min_words": 170, "max_words": 300, "min_supports": 3,
+            "min_words": 155, "max_words": 300, "min_supports": 3,
             "required_topics": {"world_design", "gameplay"},
             "required_sentiments": {"positive"},
         },
         "friction": {
-            "min_words": 170, "max_words": 300, "min_supports": 3,
+            "min_words": 155, "max_words": 300, "min_supports": 3,
             "required_topics": {"gameplay", "story", "technical"},
             "required_sentiments": {"negative", "caution"},
         },
         "audience": {
-            "min_words": 90, "max_words": 165, "min_supports": 2,
+            "min_words": 80, "max_words": 170, "min_supports": 2,
             "required_topics": None,
             "required_sentiments": {"positive", "negative", "caution"},
         },
         "conclusion": {
-            "min_words": 85, "max_words": 165, "min_supports": 2,
+            "min_words": 80, "max_words": 170, "min_supports": 2,
             "required_topics": None,
             "required_sentiments": {"positive", "negative", "caution"},
         },
     }
 
     normalized = {}
+    balanced_keys = {"opening", "audience", "conclusion"}
     for key, spec in specs.items():
-        section = _normalize_editorial_section(
+        reason = _public_section_validation_reason(
             raw.get(key),
             allowed_fact_ids=allowed_fact_ids,
             fact_by_id=fact_by_id,
@@ -4451,23 +4636,47 @@ Support rules:
             required_sentiments=spec["required_sentiments"],
             allowed_site_names=allowed_site_names,
         )
+        section = None
+        if not reason:
+            section = _normalize_editorial_section(
+                raw.get(key),
+                allowed_fact_ids=allowed_fact_ids,
+                fact_by_id=fact_by_id,
+                min_words=spec["min_words"],
+                max_words=spec["max_words"],
+                min_supports=spec["min_supports"],
+                required_topics=spec["required_topics"],
+                required_sentiments=spec["required_sentiments"],
+                allowed_site_names=allowed_site_names,
+            )
+            if key in balanced_keys and section and not _section_has_balanced_supports(section, fact_by_id):
+                reason = "پشتیبان‌های بخش هم‌زمان نکته‌ی مثبت و منفی/احتیاطی ندارند"
+                section = None
+
         if section is None:
-            print(f"Long-form editorial section '{key}' failed validation; using fallback.")
+            reason = reason or "اعتبارسنجی نامشخص"
+            print(
+                f"Long-form editorial section '{key}' failed validation: {reason}. "
+                "Retrying this section once."
+            )
+            section = _retry_longform_editorial_section(
+                client,
+                key=key,
+                spec=spec,
+                facts=facts,
+                fact_by_id=fact_by_id,
+                allowed_site_names=allowed_site_names,
+                failure_reason=reason,
+                require_balanced_supports=key in balanced_keys,
+            )
+        if section is None:
+            print(
+                f"Long-form editorial section '{key}' could not be recovered; "
+                "using deterministic fallback for this run."
+            )
             return _build_public_article_fallback(facts)
+
         normalized[key] = section
-
-    def has_both_sentiments(section: dict) -> bool:
-        sentiments = {
-            fact_by_id[item]["sentiment"]
-            for item in section["supports"]
-            if item in fact_by_id
-        }
-        return "positive" in sentiments and bool(sentiments & {"negative", "caution"})
-
-    for key in ("opening", "audience", "conclusion"):
-        if not has_both_sentiments(normalized[key]):
-            print(f"Long-form editorial section '{key}' lacks balanced supports; using fallback.")
-            return _build_public_article_fallback(facts)
 
     total_words = sum(len(section["text_fa"].split()) for section in normalized.values())
     if total_words < 620 or total_words > 1080:
@@ -4483,7 +4692,7 @@ Support rules:
         "section_supports": {
             key: value["supports"] for key, value in normalized.items()
         },
-        "method": "openai_longform_grounded_editorial_v21",
+        "method": "openai_longform_grounded_editorial_v22",
         "word_count": total_words,
     }
 
@@ -4525,6 +4734,29 @@ def run_public_article_regression_checks() -> None:
     assert not _public_fact_is_specific(generic["point_fa"], generic["evidence_en"])
     assert _public_fact_is_specific(specific["point_fa"], specific["evidence_en"])
 
+
+
+def run_longform_retry_regression_checks() -> None:
+    sample_facts = {
+        "F1": {"topic": "world_design", "sentiment": "positive"},
+        "F2": {"topic": "story", "sentiment": "negative"},
+    }
+    reason = _public_section_validation_reason(
+        {"text_fa": "کوتاه است.", "supports": ["F1", "F2"]},
+        allowed_fact_ids=set(sample_facts),
+        fact_by_id=sample_facts,
+        min_words=10,
+        max_words=30,
+        min_supports=2,
+        required_topics=None,
+        required_sentiments=None,
+        allowed_site_names=set(),
+    )
+    assert reason and "کوتاه" in reason
+    assert _section_has_balanced_supports(
+        {"supports": ["F1", "F2"]},
+        sample_facts,
+    )
 
 def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     """
@@ -4596,14 +4828,14 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     markdown.extend(["", "## منابع بررسی‌شده", *source_lines])
 
     return {
-        "status": "preview_longform_editorial_v21",
+        "status": "preview_longform_editorial_v22",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
         "markdown": "\n".join(markdown).strip() + "\n",
         "source_links": source_links,
         "review_note_fa": "این متن فقط پیش‌نمایش است و هنوز در وردپرس ساخته یا منتشر نشده است.",
-        "writing_mode": sections.get("method", "deterministic_editorial_fallback_v21"),
+        "writing_mode": sections.get("method", "deterministic_editorial_fallback_v22"),
         "word_count": sections.get("word_count"),
         "section_supports": sections.get("section_supports", {}),
     }
@@ -5562,6 +5794,8 @@ def main():
     print("Evidence protocol regression checks: passed")
     run_public_article_regression_checks()
     print("Public article regression checks: passed")
+    run_longform_retry_regression_checks()
+    print("Long-form retry regression checks: passed")
 
     if not OPENAI_API_KEY:
         fail("OPENAI_API_KEY is missing.")
