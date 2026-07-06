@@ -4613,7 +4613,7 @@ def _single_pass_editorial_plan(facts: dict) -> dict[str, list[dict]] | None:
 
 
 def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: str = "") -> str:
-    """پرامپتِ یک‌مرحله‌ای با بریف تحریریِ روشن؛ شناسه‌های پشتیبان در کد متصل می‌شوند."""
+    """بریف تحریریِ فشرده و مبتنی بر شواهد؛ هدف، نقد دقیق است نه طول‌دادن متن با صفت‌های کلی."""
     labels = {
         "opening": "Crimson Desert در عمل",
         "world_gameplay": "جهان بازی و گیم‌پلی",
@@ -4624,25 +4624,26 @@ def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: 
     synthesis_sections = {"audience", "conclusion"}
     section_jobs = {
         "opening": (
-            "در دو تا سه جمله، تز مرکزی نقد را بساز: مهم‌ترین کشش بازی در برابر "
-            "مهم‌ترین هزینه‌ی آن. نتیجه‌گیری نکن و متن معرفی بازی ننویس."
+            "در دو یا سه جمله، فقط تز مقاله را بساز: مهم‌ترین کشش تجربه در برابر "
+            "هزینه‌ی اصلی آن. از داستان، شخصیت‌ها یا کیفیت فنی حرف نزن مگر کارت همین بخش "
+            "صراحتاً همان را گفته باشد."
         ),
         "world_gameplay": (
-            "دو پاراگراف متمایز: پاراگراف اول درباره‌ی اینکه جهان چگونه کنجکاوی و "
-            "اکتشاف را پیش می‌برد؛ پاراگراف دوم درباره‌ی اینکه حرکت، مبارزه یا سیستم‌ها "
-            "چگونه ریتم بازی را تغییر می‌دهند. هر پاراگراف باید یک نتیجه‌ی ملموس برای بازیکن داشته باشد."
+            "با سه یا چهار جزئیات مشخص توضیح بده چرا اکتشاف یا درگیری‌ها می‌توانند کشش ایجاد کنند. "
+            "هر نکته باید یک اثر عملی برای بازیکن داشته باشد: چه چیزی او را به جلو می‌برد، به آزمودن "
+            "وادار می‌کند یا ریتم بازی را عوض می‌کند. مشکلات و ضعف‌ها را به این بخش نبر."
         ),
         "friction": (
-            "دو پاراگراف متمایز: اول اصطکاک سیستم‌ها، شفافیت، تعادل یا پیشروی؛ دوم هزینه‌ی "
-            "آن‌ها برای ریتم، روایت یا حس کنترل. مشکل‌ها را فهرست نکن، زنجیره‌ی علت و معلول بساز."
+            "چهار اصطکاک مشخص را به یک استدلال وصل کن: مشکل دقیق چیست، در بازی کردن چه احساسی ایجاد می‌کند، "
+            "و چگونه ریتم یا حس کنترل را خراب می‌کند. از کلی‌گویی درباره‌ی «مشکلات جدی» پرهیز کن."
         ),
         "audience": (
-            "یک توصیه‌ی خرید عملی بده: چه تیپ بازیکنی از این اصطکاک لذت می‌برد و چه تیپی احتمالاً "
-            "بهتر است صبر کند یا سراغ گزینه‌ی دیگری برود. جمله‌های بدنه را خلاصه نکن."
+            "یک توصیه‌ی عملیِ خرید بده، نه بازنویسی بدنه. روشن بگو چه بازیکنی با این معامله کنار می‌آید "
+            "و چه کسی بهتر است از بازی عبور کند. «صبر کردن» فقط وقتی مجاز است که کارت‌ها از اصلاح یا آپدیت مشخصی حرف بزنند."
         ),
         "conclusion": (
-            "یک حکم روشن و سنجیده بده: ارزش تجربه کجاست، بهای آن چیست، و آیا این معامله برای مخاطب "
-            "درست جواب می‌دهد یا نه. از تکرار تز افتتاحیه پرهیز کن."
+            "حکم نهاییِ دقیق بده: ارزش تجربه کجاست، بهای آن چیست، و برای مخاطب مناسب آیا این معامله می‌ارزد یا نه. "
+            "بدون تکرار افتتاحیه و بدون وعده‌ی نامستند درباره‌ی آینده‌ی بازی."
         ),
     }
 
@@ -4660,8 +4661,9 @@ def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: 
                         "negative": "منفی",
                         "caution": "احتیاط",
                     }.get(item.get("sentiment"), "خنثی"),
+                    # این جمله تنها ادعای مجازِ کارت است؛ ویژگی تازه به آن اضافه نکن.
                     "approved_claim_fa": item["text_fa"],
-                    # زمینه فقط برای فهم دقیق ادعاست، نه برای نقل یا ترجمه‌ی لفظی.
+                    # زمینه فقط برای فهم دقیق است، نه نقل، ترجمه‌ی لفظی یا افزودن جزئیات تازه.
                     "context_en": clean_text(str(item.get("evidence_en") or ""))[:420],
                 }
                 for item in items
@@ -4672,74 +4674,67 @@ def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: 
     if retry_reason:
         retry_note = f"""
 The previous full draft was rejected for this reason: {retry_reason}
-Rewrite the ENTIRE article from scratch. Do not preserve wording, paragraph order,
-or shortcuts from the prior draft. Correct the issue without adding unsupported claims.
+Rewrite the ENTIRE article from scratch. Remove the problem directly. Do not compensate
+by adding generic praise, claims about the future, or unsupported details.
 """
 
     return f"""
-You are the senior Persian games editor for Poormaz. Write ONE coherent,
-publication-ready Persian review of \"{facts['game']}\".
+You are the senior Persian games editor for Poormaz. Write ONE concise, evidence-disciplined
+Persian review of "{facts['game']}".
 
-This is a critic's article, not a summary of notes. The review must have a clear
-argument: identify what the game promises in practice, show where that promise pays
-off, and show where the same ambition creates friction. Every paragraph must advance
-the argument. A reader should understand not just WHAT a feature is, but HOW it
-changes decision-making, pacing, learning, curiosity, or fatigue.
+The goal is not a long article. The goal is a useful critic's argument. Do not inflate
+the prose to sound literary. A 450-word review with concrete judgment is better than an
+800-word cloud of adjectives.
 
-You receive a locked editorial map. Reporting sections must use every assigned card
-once, naturally, and only in its assigned section. Treat the cards as reporting notes:
-never paste or lightly paraphrase them one after another. Instead, turn each card into
-a premise and explain its consequence. The English context is only for nuance. Never
-quote it, translate it literally, mention it, or add facts beyond it.
+You receive a LOCKED editorial map. In reporting sections, every assigned card is the
+full boundary of what may be asserted. Use each assigned card once, naturally, and only
+in its assigned section. Do not move a negative card into the world/gameplay section or
+turn a narrow positive card into a claim about the whole game. The English context is
+only for nuance. Never quote it, translate it literally, or introduce facts beyond it.
 
 Locked editorial map:
 {json.dumps(brief, ensure_ascii=False, indent=2)}
 {retry_note}
 Return exactly one JSON object, with exactly these five objects and NOTHING else:
 {{
-  \"opening\": {{\"text_fa\": \"...\"}},
-  \"world_gameplay\": {{\"text_fa\": \"...\"}},
-  \"friction\": {{\"text_fa\": \"...\"}},
-  \"audience\": {{\"text_fa\": \"...\"}},
-  \"conclusion\": {{\"text_fa\": \"...\"}}
+  "opening": {{"text_fa": "..."}},
+  "world_gameplay": {{"text_fa": "..."}},
+  "friction": {{"text_fa": "..."}},
+  "audience": {{"text_fa": "..."}},
+  "conclusion": {{"text_fa": "..."}}
 }}
 
-Non-negotiable writing rules:
-- Write all five sections in ONE pass as a connected review, not five detached summaries.
-- Follow the job_fa for each section exactly.
-- In world_gameplay and friction, use two paragraphs separated by a blank line inside text_fa.
-- Every reporting paragraph must contain at least one concrete detail from an assigned card AND one
-  explanation of its consequence. Use clear causal writing such as «برای همین»، «نتیجه‌اش این است که»،
-  «وقتی ...، ...» only where natural.
-- Do not upgrade evidence. A card saying a story is worth exploring does NOT permit calling the story
-  deep, powerful, memorable, or its characters compelling. A card saying the world is beautiful does
-  NOT permit calling it best-in-class or technically flawless. Stay exactly within the evidence.
-- Do not make vague claims such as «مشکلات جدی»، «شخصیت‌های جذاب»، «جهان غنی»، «تجربه‌ای دوگانه»،
-  «نیاز به بهبود»، or «بازیکنان را رها می‌کند» unless the same sentence immediately names the concrete
-  system or consequence that justifies the claim.
-- Do not use bare praise. Words like «زیبا»، «وسیع»، «متنوع»، «روان»، «غنی»، «جذاب» are allowed only
-  when the same sentence explains what the player can do because of that quality and why it matters.
-- Do not invent a feature, scene, quest type, plot detail, technical cause, comparison, or critical consensus.
-- Do not use English quotations, URLs, source names, citations, IDs, Markdown, or labels inside text_fa.
-- Do not use: امتیاز، نمره، متاکریتیک، Poormaz، منتقد، سایت، منبع، شواهد.
-- Avoid canned openings and transitions: «در نهایت»، «با وجود جذابیت‌ها»، «این بازی برای بازیکنانی که»،
-  «به بازیکنان ارائه می‌دهد»، «با وعده‌های بزرگ»، «بهترین در تاریخ»، «تجربه‌ای جذاب».
-- Audience must use an explicit decision rule: who should buy now, who should wait or skip, and why.
-- Conclusion must answer the practical question «آیا این بازی ارزش وقت گذاشتن دارد؟» without repeating
-  sentences or phrasing from the opening.
+Writing rules:
+- Write one connected review, not five summaries.
+- Each reporting sentence must do one of two things: state a precise approved claim, or explain
+  its direct consequence for pacing, learning, exploration, control, or fatigue.
+- A consequence must follow from the card. Do not invent rewards, quest types, plot events,
+  technical causes, player behavior, critical consensus, comparisons, or future fixes.
+- Never turn «worth exploring» into «deep», «compelling», «exciting», «memorable» or «strong».
+  Never turn «beautiful» into «best-in-class», «technically flawless», «immersive» or «rich».
+- Never say «داستانی جذاب»، «شخصیت‌های جذاب»، «تجربه‌ای دوگانه»، «مشکلات جدی»، «نیاز به بهبود»,
+  «بازیکنان را رها می‌کند», «بهترین در تاریخ», «با وعده‌های بزرگ», or «جهان غنی».
+- Avoid generic filler such as «به طرز شگفت‌انگیزی»، «به بازیکنان اجازه می‌دهد»،
+  «می‌تواند تجربه‌ای جذاب ایجاد کند»، «ساعت‌ها غرق می‌شوند»، and «از هر گوشه لذت می‌برند».
+- Do not repeat a fact with a new adjective. State it once, then move the argument forward.
+- Audience must make a buy-or-skip recommendation. Do not tell readers to wait unless the evidence
+  explicitly documents a future patch or release change.
+- Do not use English quotations, URLs, source names, IDs, Markdown, labels, or references to scores
+  inside text_fa. Do not use: امتیاز، نمره، متاکریتیک، Poormaz، منتقد، سایت، منبع، شواهد.
+- Do not state that the story or characters are attractive unless a card explicitly says so.
+- Do not put system ambiguity, boss imbalance, inventory friction, or slowed progression in world_gameplay.
+  Those belong only to friction.
 
-Length and pace:
-- opening: 75–105 Persian words
-- world_gameplay: 210–280 Persian words across two paragraphs
-- friction: 210–280 Persian words across two paragraphs
-- audience: 85–115 Persian words
-- conclusion: 95–130 Persian words
-- Total target: 680–850 Persian words.
+Length:
+- opening: 45–75 Persian words
+- world_gameplay: 135–185 Persian words
+- friction: 145–195 Persian words
+- audience: 55–85 Persian words
+- conclusion: 60–95 Persian words
+- Total target: 440–560 Persian words. Stop when the argument is complete.
 
-Before returning JSON, silently verify: every section fulfills its job, all assigned reporting
-cards have been used, no unsupported adjective upgrades a claim, and the article is comfortably
-longer than 620 Persian words. Do not pad with praise; expand by adding causal analysis and a
-specific, useful editorial judgment.
+Before returning JSON, silently check: every claim is grounded in its assigned card, no sentence
+uses a generic compliment in place of an observation, and the audience advice is actionable.
 """.strip()
 
 def _editorial_text_value(value) -> str:
@@ -4749,6 +4744,41 @@ def _editorial_text_value(value) -> str:
     if isinstance(value, str):
         return clean_text(value)
     return ""
+
+
+def _editorial_claim_quality_reason(section_key: str, text_fa: str) -> str | None:
+    """چند خطای معناییِ پرتکرار را پیش از پذیرش مقاله می‌گیرد، نه با چک طولِ بی‌معنا."""
+    text = clean_text(text_fa).casefold()
+    forbidden_by_section = {
+        "opening": (
+            "داستانی جذاب", "شخصیت‌های جذاب", "تجربه‌ای دوگانه", "وعده‌های بزرگ",
+        ),
+        "world_gameplay": (
+            "سیستم‌های بازی به طور نامشخص", "سیستم‌های بازی نامشخص",
+            "سیستم‌های ناسازگار", "به سمت حدس زدن", "باعث سردرگمی",
+            "نبردهای رئیس", "سیستم موجودی", "سینه‌های ذخیره‌سازی",
+            "سرعت پیشرفت", "کند کردن پیشرفت",
+        ),
+        "audience": (
+            "کمی صبر کنید", "بهتر است صبر کنید", "صبر کنید یا",
+            "بعداً بخرید", "بعدا بخرید",
+        ),
+        "conclusion": (
+            "نیاز به بهبود", "بازیکنان را رها می‌کند", "جستجوی یک تجربه بهتر",
+        ),
+    }
+    for phrase in forbidden_by_section.get(section_key, ()):
+        if phrase in text:
+            return f"عبارت یا ادعای کلیِ نامعتبر دارد: «{phrase}»"
+
+    generic_phrases = (
+        "به طرز شگفت‌انگیزی", "از هر گوشه", "ساعت‌ها در این دنیا",
+        "تجربه‌ای دوگانه", "مشکلات جدی", "جهان غنی",
+    )
+    for phrase in generic_phrases:
+        if phrase in text:
+            return f"عبارت کلی و کم‌اطلاع دارد: «{phrase}»"
+    return None
 
 
 def _validate_single_pass_editorial(
@@ -4790,6 +4820,10 @@ def _validate_single_pass_editorial(
             if words > spec["max_words"]:
                 return None, f"بخش {key}: متن بلند است ({words} واژه، حداکثر {spec['max_words']})"
             return None, f"بخش {key}: متن برای انتشار امن نیست"
+
+        claim_quality_reason = _editorial_claim_quality_reason(key, text_fa)
+        if claim_quality_reason:
+            return None, f"بخش {key}: {claim_quality_reason}"
 
         # این پیوند به نقشه‌ی سرمقاله متکی است، نه فرمت متغیر پاسخ مدل.
         assigned_ids = [item["id"] for item in plan.get(key, []) if item.get("id")]
@@ -4857,7 +4891,7 @@ def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
                 "conclusion_fa": normalized["conclusion"]["text_fa"],
                 "section_supports": {key: value["supports"] for key, value in normalized.items()},
                 "editorial_plan": {key: [item["id"] for item in items] for key, items in plan.items()},
-                "method": "openai_single_pass_grounded_editorial_v32",
+                "method": "openai_single_pass_grounded_editorial_v33",
                 "word_count": total_words,
             }
 
@@ -5042,7 +5076,7 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     markdown.extend(["", "## منابع بررسی‌شده", *source_lines])
 
     return {
-        "status": "preview_single_pass_editorial_v32",
+        "status": "preview_single_pass_editorial_v33",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
