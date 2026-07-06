@@ -4613,6 +4613,7 @@ def _single_pass_editorial_plan(facts: dict) -> dict[str, list[dict]] | None:
 
 
 def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: str = "") -> str:
+    """پرامپتِ یک‌مرحله‌ای. شناسه‌های پشتیبان در کد متصل می‌شوند، نه با فرمت‌سازی مدل."""
     labels = {
         "opening": "Crimson Desert در عمل",
         "world_gameplay": "جهان بازی و گیم‌پلی",
@@ -4628,7 +4629,6 @@ def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: 
             "mode": "synthesis" if key in synthesis_sections else "reporting",
             "evidence_cards": [
                 {
-                    "id": item["id"],
                     "topic": _PUBLIC_TOPIC_LABELS.get(item.get("topic"), "تصویر کلی"),
                     "sentiment": {
                         "positive": "مثبت",
@@ -4636,8 +4636,7 @@ def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: 
                         "caution": "احتیاط",
                     }.get(item.get("sentiment"), "خنثی"),
                     "approved_claim_fa": item["text_fa"],
-                    # فقط برای درک دقیق‌ترِ لحن و دامنه‌ی ادعاست. نباید نقل یا
-                    # ترجمه‌ی لفظی شود و هیچ نام منبعی هم به مدل داده نمی‌شود.
+                    # برای درک دقیق دامنه‌ی ادعا است، نه نقل یا ترجمه‌ی لفظی.
                     "context_en": clean_text(str(item.get("evidence_en") or ""))[:420],
                 }
                 for item in items
@@ -4648,8 +4647,8 @@ def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: 
     if retry_reason:
         retry_note = f"""
 The previous full draft was rejected for publication quality: {retry_reason}
-Rewrite the ENTIRE article from scratch. Expand the analytical core, especially
-world/gameplay and friction. Do not preserve sentences from the prior draft.
+Rewrite the ENTIRE article from scratch. Keep the same evidence map, add more
+specific analysis, and do not preserve sentences from the prior draft.
 """
 
     return f"""
@@ -4661,7 +4660,7 @@ clear thesis, develops it, tests it against the evidence, and reaches a fair
 recommendation. A reader must learn not merely WHAT works or fails, but WHY
 those details change the rhythm and feel of play.
 
-You receive a locked editorial map. In reporting sections, use each assigned
+You receive a locked editorial map. In reporting sections, use every assigned
 card naturally and only in its assigned section. The English context clarifies
 nuance only: never quote it, translate it verbatim, or mention it. You may make
 bounded editorial inferences about pacing, clarity, reward, and friction when
@@ -4671,13 +4670,13 @@ plot detail, technical cause, comparison, or consensus.
 Locked editorial map:
 {json.dumps(brief, ensure_ascii=False, indent=2)}
 {retry_note}
-Return exactly one JSON object with these five objects:
+Return exactly one JSON object with these five objects and NOTHING else:
 {{
-  \"opening\": {{\"text_fa\": \"...\", \"supports\": [\"F...\"]}},
-  \"world_gameplay\": {{\"text_fa\": \"...\", \"supports\": [\"F...\"]}},
-  \"friction\": {{\"text_fa\": \"...\", \"supports\": [\"F...\"]}},
-  \"audience\": {{\"text_fa\": \"...\", \"supports\": [\"F...\"]}},
-  \"conclusion\": {{\"text_fa\": \"...\", \"supports\": [\"F...\"]}}
+  \"opening\": {{\"text_fa\": \"...\"}},
+  \"world_gameplay\": {{\"text_fa\": \"...\"}},
+  \"friction\": {{\"text_fa\": \"...\"}},
+  \"audience\": {{\"text_fa\": \"...\"}},
+  \"conclusion\": {{\"text_fa\": \"...\"}}
 }}
 
 Editorial rules:
@@ -4691,19 +4690,15 @@ Editorial rules:
   recap of the previous sections.
 - Conclusion: deliver a decisive but measured verdict. Do not repeat the opening sentence.
 - Reporting sections must use every assigned fact exactly once and only in that section.
-- In synthesis sections, IDs are reasoning anchors only. Do not restate, paraphrase, list, or hint
-  at their factual claims. Produce a fresh recommendation or final judgment that follows from the
-  article's overall contrast. Supports must still list exactly the assigned IDs.
-- Use only supplied facts and direct inferences from them.
-- Never present an extreme statement from one review as universal agreement.
-- No headings, Markdown, bullets, links, English quotations, URLs, or source names inside text_fa.
+- In synthesis sections, make a fresh recommendation or verdict from the assigned tension;
+  do not restate prior sentences.
+- No English quotations, URLs, source names, citations, IDs, Markdown, or labels inside text_fa.
 - Do not use: امتیاز، نمره، متاکریتیک، Poormaz، منتقد، سایت، منبع، شواهد.
 - Avoid filler and ad copy, especially: «تجربه‌ای جذاب»، «جهان غنی»، «نیاز به بهبود»،
   «به بازیکنان ارائه می‌دهد»، «با وعده‌های بزرگ»، «بهترین در تاریخ».
 - Do not call the world beautiful or immersive unless the sentence also explains what the player
   actually does there and why that action matters.
-- Fluent contemporary Persian only. Vary sentence openings and avoid repeating a distinctive
-  five-word phrase across sections.
+- Fluent contemporary Persian only. Avoid repeating whole sentences between sections.
 
 Length target:
 - opening: 60–105 words
@@ -4717,73 +4712,13 @@ Do not pad with empty praise: add analysis, causal links, and a clear editorial 
 """.strip()
 
 
-def _single_pass_publication_quality_reason(sections: dict[str, dict]) -> str | None:
-    """قوانین کیفیت انتشار، جدا از اعتبارسنجی فرمت و منشأ شواهد."""
-    floors = {
-        "opening": 50,
-        "world_gameplay": 145,
-        "friction": 145,
-        "audience": 55,
-        "conclusion": 65,
-    }
-    for key, floor in floors.items():
-        words = len(clean_text(str(sections.get(key, {}).get("text_fa") or "")).split())
-        if words < floor:
-            return f"بخش {key} برای مقاله‌ی نهایی کوتاه است ({words} واژه، حداقل {floor})"
-
-    total_words = sum(
-        len(clean_text(str(value.get("text_fa") or "")).split())
-        for value in sections.values()
-    )
-    if total_words < 560:
-        return f"مقاله برای انتشار کوتاه است ({total_words} واژه، حداقل 560)"
-    if total_words > 1000:
-        return f"مقاله بیش از حد بلند است ({total_words} واژه)"
-
-    forbidden_flat = (
-        "تجربه ای جذاب",
-        "جهان غنی",
-        "نیاز به بهبود",
-        "به بازیکنان ارائه می دهد",
-        "با وعده های بزرگ",
-        "بهترین در تاریخ",
-    )
-    whole = clean_text(" ".join(str(value.get("text_fa") or "") for value in sections.values()))
-    folded = whole.replace("‌", " ").casefold()
-    if any(phrase in folded for phrase in forbidden_flat):
-        return "مقاله از عبارت تبلیغاتی یا کلیشه‌ای استفاده کرده است"
-
-    # دو بخش اصلی باید تحلیل داشته باشند، نه فقط چهار جمله‌ی هم‌معنا.
-    for key in ("world_gameplay", "friction"):
-        text = clean_text(str(sections[key].get("text_fa") or ""))
-        sentences = [part.strip() for part in re.split(r"[.!؟]", text) if part.strip()]
-        if len(sentences) < 5:
-            return f"بخش {key} به اندازه‌ی کافی بسط تحلیلی ندارد"
-    return None
-
-
-def _cross_section_repetition_reason(sections: dict[str, dict], game: str) -> str | None:
-    """تکرار لفظیِ محسوس بین بخش‌ها را پیدا می‌کند، نه تکرار نام بازی."""
-    game_tokens = {
-        token.casefold() for token in re.findall(r"[\wآ-ی]+", clean_text(game))
-        if len(token) > 2
-    }
-    seen: dict[tuple[str, ...], str] = {}
-    for key, section in sections.items():
-        words = [
-            token.casefold()
-            for token in re.findall(r"[\wآ-ی]+", clean_text(str(section.get("text_fa") or "")))
-            if token.casefold() not in game_tokens
-        ]
-        for index in range(max(0, len(words) - 4)):
-            gram = tuple(words[index:index + 5])
-            if len(set(gram)) < 3:
-                continue
-            previous = seen.get(gram)
-            if previous and previous != key:
-                return "عبارت پنج‌واژه‌ایِ تکراری بین بخش‌ها دیده شد"
-            seen[gram] = key
-    return None
+def _editorial_text_value(value) -> str:
+    """مدل گاهی wrapper شیء را درست می‌فرستد و گاهی متن را مستقیم؛ هر دو قابل قبول‌اند."""
+    if isinstance(value, dict):
+        return clean_text(str(value.get("text_fa") or ""))
+    if isinstance(value, str):
+        return clean_text(value)
+    return ""
 
 
 def _validate_single_pass_editorial(
@@ -4793,59 +4728,42 @@ def _validate_single_pass_editorial(
     plan: dict[str, list[dict]],
     allowed_site_names: set[str],
 ) -> tuple[dict | None, str | None]:
+    """اعتبارسنجی متن و اتصال قطعی provenance از روی نقشه‌ی قفل‌شده‌ی تحریریه.
+
+    شناسه‌ها دیگر از خروجی مدل خوانده نمی‌شوند. مدل نویسنده است، نه مسئول تایپ
+    شناسه‌های داخلی. این کار جلوی ردشدن یک متن سالم به علت JSON تزئینی را می‌گیرد.
+    """
     if not isinstance(raw, dict):
         return None, "فرمت JSON مقاله معتبر نیست"
 
-    fact_by_id = _fact_map(facts)
-    # اینجا فقط صحت ساختار، منشأ نکات و سلامت متن را می‌سنجیم. کیفیت نهایی در
-    # تابع جداگانه بررسی می‌شود تا یک متن معتبر از نظر JSON با متن آماده‌ی
-    # انتشار اشتباه گرفته نشود.
     specs = {
-        "opening": {"min_words": 24, "max_words": 220, "required_topics": None, "required_sentiments": None},
-        "world_gameplay": {"min_words": 55, "max_words": 420, "required_topics": {"world_design", "gameplay"}, "required_sentiments": {"positive"}},
-        "friction": {"min_words": 55, "max_words": 420, "required_topics": {"gameplay", "story", "technical"}, "required_sentiments": {"negative", "caution"}},
-        "audience": {"min_words": 24, "max_words": 220, "required_topics": None, "required_sentiments": None},
-        "conclusion": {"min_words": 24, "max_words": 220, "required_topics": None, "required_sentiments": None},
+        "opening": {"min_words": 24, "max_words": 220},
+        "world_gameplay": {"min_words": 55, "max_words": 420},
+        "friction": {"min_words": 55, "max_words": 420},
+        "audience": {"min_words": 24, "max_words": 220},
+        "conclusion": {"min_words": 24, "max_words": 220},
     }
-
-    normalized = {}
+    normalized: dict[str, dict] = {}
     for key, spec in specs.items():
-        assigned_ids = {item["id"] for item in plan.get(key, []) if item.get("id")}
-        value = raw.get(key)
-        reason = _public_section_validation_reason(
-            value,
-            allowed_fact_ids=assigned_ids,
-            fact_by_id=fact_by_id,
+        text_fa = _editorial_text_value(raw.get(key))
+        if not _public_section_is_safe(
+            text_fa,
             min_words=spec["min_words"],
             max_words=spec["max_words"],
-            min_supports=len(assigned_ids),
-            required_topics=spec["required_topics"],
-            required_sentiments=spec["required_sentiments"],
             allowed_site_names=allowed_site_names,
-        )
-        if reason:
-            return None, f"بخش {key}: {reason}"
+        ):
+            if not text_fa:
+                return None, f"بخش {key}: متن خالی یا فرمت نامعتبر است"
+            words = len(text_fa.split())
+            if words < spec["min_words"]:
+                return None, f"بخش {key}: متن کوتاه است ({words} واژه، حداقل {spec['min_words']})"
+            if words > spec["max_words"]:
+                return None, f"بخش {key}: متن بلند است ({words} واژه، حداکثر {spec['max_words']})"
+            return None, f"بخش {key}: متن برای انتشار امن نیست"
 
-        section = _normalize_editorial_section(
-            value,
-            allowed_fact_ids=assigned_ids,
-            fact_by_id=fact_by_id,
-            min_words=spec["min_words"],
-            max_words=spec["max_words"],
-            min_supports=len(assigned_ids),
-            required_topics=spec["required_topics"],
-            required_sentiments=spec["required_sentiments"],
-            allowed_site_names=allowed_site_names,
-        )
-        if section is None:
-            return None, f"بخش {key}: اعتبارسنجی نامشخص"
-        if set(section["supports"]) != assigned_ids:
-            return None, f"بخش {key}: شناسه‌های پشتیبان دقیقاً با نقشه‌ی تحریریه یکی نیستند"
-        normalized[key] = section
-
-    repeated = _cross_section_repetition_reason(normalized, facts.get("game", ""))
-    if repeated:
-        return None, repeated
+        # این پیوند به نقشه‌ی سرمقاله متکی است، نه فرمت متغیر پاسخ مدل.
+        assigned_ids = [item["id"] for item in plan.get(key, []) if item.get("id")]
+        normalized[key] = {"text_fa": text_fa, "supports": assigned_ids}
 
     total_words = sum(len(value["text_fa"].split()) for value in normalized.values())
     if total_words > 1100:
@@ -4906,7 +4824,7 @@ def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
                     "conclusion_fa": normalized["conclusion"]["text_fa"],
                     "section_supports": {key: value["supports"] for key, value in normalized.items()},
                     "editorial_plan": {key: [item["id"] for item in items] for key, items in plan.items()},
-                    "method": "openai_single_pass_grounded_editorial_v29",
+                    "method": "openai_single_pass_grounded_editorial_v30",
                     "word_count": total_words,
                 }
             reason = quality_reason
@@ -5092,7 +5010,7 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     markdown.extend(["", "## منابع بررسی‌شده", *source_lines])
 
     return {
-        "status": "preview_single_pass_editorial_v29",
+        "status": "preview_single_pass_editorial_v30",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
