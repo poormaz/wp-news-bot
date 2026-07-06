@@ -1,6 +1,6 @@
 {
   "cache_version": "source_evidence_cache_v1",
-  "created_at_utc": "2026-07-06T01:08:28+00:00",
+  "created_at_utc": "2026-07-06T01:27:28+00:00",
   "game": "Crimson Desert",
   "platform": "PC",
   "requested_url": "https://gamerant.com/crimson-desert-review",
@@ -81,7 +81,7 @@
     "max_failed_selective_refreshes": 2,
     "manual_review": false,
     "manual_review_reason_fa": "",
-    "last_selective_refresh_at_utc": "2026-07-06T01:08:28+00:00",
+    "last_selective_refresh_at_utc": "2026-07-06T01:27:28+00:00",
     "last_selective_refresh_outcome": "retained_no_new_coverage"
   }
 }
