@@ -1988,11 +1988,16 @@ def _point_claim_is_compatible(point_fa: str, evidence_en: str) -> bool:
         (("داستان", "روایت", "شخصیت", "دیالوگ"), (r"\bstory\b", r"\bnarrative\b", r"\bplot\b", r"\bcharacter", r"\bdialogue\b", r"\bwriting\b", r"\bquest")),
         (("عملکرد", "فنی", "فریم", "بهینه", "باگ", "کرش"), (r"\bperformance\b", r"\bframe", r"\bbug", r"\bcrash", r"\bstutter", r"\btechnical\b", r"\boptimization")),
         (("ذخیره", "انبار", "صندوق"), (r"\bstorage\b", r"\binventory\b", r"\bchest")),
-        (("پازل",), (r"\bpuzzle")),
+        (("پازل",), (r"\bpuzzle\b",)),
         (("جهان باز", "محیط", "اکتشاف", "دنیا"), (r"\bopen[- ]world\b", r"\bworld\b", r"\benvironment", r"\bexplor")),
     )
 
     for fa_terms, en_patterns in domains:
+        # حتی اگر در نسخه‌های بعدی یک tuple تک‌عضوی اشتباهاً بدون comma نوشته شود،
+        # رشته را یک الگوی واحد در نظر می‌گیریم، نه فهرستی از کاراکترها.
+        if isinstance(en_patterns, str):
+            en_patterns = (en_patterns,)
+
         if any(term in fa for term in fa_terms):
             if not any(re.search(pattern, en, re.I) for pattern in en_patterns):
                 return False
@@ -2353,6 +2358,10 @@ def run_evidence_protocol_regression_checks() -> None:
     )
     assert len(selected) == 1, "یک شاهد نباید دو بار یا با ادعای نامرتبط پذیرفته شود"
     assert selected[0]["evidence_id"] == "E001"
+    assert _point_claim_is_compatible(
+        "پازل‌های بازی آزاردهنده هستند.",
+        "The puzzle design is confusing and frustrating for many players.",
+    ), "الگوی تک‌عضوی پازل نباید به رشته‌ی کاراکترها تبدیل شود"
 
     broken = {
         "positives": [{
