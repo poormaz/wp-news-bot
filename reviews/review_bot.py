@@ -4694,13 +4694,14 @@ Editorial rules:
   می‌گیرند، سرزمین‌های سخت، یا خطرات ناشناخته.
 - Fluent contemporary Persian only. Be precise, fair, and readable.
 
-Length targets:
-- opening: 75–135 words
-- world_gameplay: 125–220 words
-- friction: 125–220 words
-- audience: 75–135 words
-- conclusion: 75–135 words
-- Total: roughly 500–780 Persian words. Do not pad.
+Length guidance:
+- opening: roughly 55–115 words
+- world_gameplay: roughly 100–190 words
+- friction: roughly 100–190 words
+- audience: roughly 55–110 words
+- conclusion: roughly 55–110 words
+- Total: roughly 420–700 Persian words. Do not pad merely to hit a number.
+A concise, complete section is better than filler.
 """.strip()
 
 
@@ -4739,12 +4740,15 @@ def _validate_single_pass_editorial(
         return None, "فرمت JSON مقاله معتبر نیست"
 
     fact_by_id = _fact_map(facts)
+    # Length is a sanity check, not a trapdoor. Persian prose can convey a complete
+    # editorial thought in fewer tokens than English, so rejecting an otherwise safe,
+    # grounded article for three missing words merely creates a bad fallback.
     specs = {
-        "opening": {"min_words": 70, "max_words": 150, "required_topics": None, "required_sentiments": None},
-        "world_gameplay": {"min_words": 115, "max_words": 235, "required_topics": {"world_design", "gameplay"}, "required_sentiments": {"positive"}},
-        "friction": {"min_words": 115, "max_words": 235, "required_topics": {"gameplay", "story", "technical"}, "required_sentiments": {"negative", "caution"}},
-        "audience": {"min_words": 65, "max_words": 150, "required_topics": None, "required_sentiments": None},
-        "conclusion": {"min_words": 65, "max_words": 150, "required_topics": None, "required_sentiments": None},
+        "opening": {"min_words": 45, "max_words": 160, "required_topics": None, "required_sentiments": None},
+        "world_gameplay": {"min_words": 90, "max_words": 250, "required_topics": {"world_design", "gameplay"}, "required_sentiments": {"positive"}},
+        "friction": {"min_words": 90, "max_words": 250, "required_topics": {"gameplay", "story", "technical"}, "required_sentiments": {"negative", "caution"}},
+        "audience": {"min_words": 45, "max_words": 150, "required_topics": None, "required_sentiments": None},
+        "conclusion": {"min_words": 45, "max_words": 150, "required_topics": None, "required_sentiments": None},
     }
 
     normalized = {}
@@ -4789,8 +4793,8 @@ def _validate_single_pass_editorial(
     total_words = sum(len(value["text_fa"].split()) for value in normalized.values())
     if total_words > 900:
         return None, f"مقاله بیش از حد بلند است ({total_words} واژه)"
-    if total_words < 430:
-        return None, f"مقاله برای نقد بلند بیش از حد کوتاه است ({total_words} واژه)"
+    if total_words < 340:
+        return None, f"مقاله برای انتشار بیش از حد کوتاه است ({total_words} واژه)"
     return normalized, None
 
 
@@ -4842,7 +4846,7 @@ def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
                 "conclusion_fa": normalized["conclusion"]["text_fa"],
                 "section_supports": {key: value["supports"] for key, value in normalized.items()},
                 "editorial_plan": {key: [item["id"] for item in items] for key, items in plan.items()},
-                "method": "openai_single_pass_grounded_editorial_v26",
+                "method": "openai_single_pass_grounded_editorial_v27",
                 "word_count": total_words,
             }
 
@@ -5013,7 +5017,7 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     markdown.extend(["", "## منابع بررسی‌شده", *source_lines])
 
     return {
-        "status": "preview_single_pass_editorial_v26",
+        "status": "preview_single_pass_editorial_v27",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
@@ -5660,9 +5664,10 @@ def process_review_job(client: OpenAI, item: dict):
             merged_audit = evidence_quality_audit(merged_analysis)
             improved = merged_audit["quality_rank"] > old_audit["quality_rank"]
 
-            # ارتقای پروتکل می‌تواند با همان تعداد نکته، فقط کیفیت و صحت آن‌ها را
-            # بهتر کند. در این حالت نیز نسخه‌ی تمیز باید ذخیره شود.
-            if protocol_upgrade and merged_audit["verified_point_count"] >= old_audit["verified_point_count"]:
+            # ارتقای پروتکل باید cache قدیمیِ ناسالم را با نسخه‌ی شناسه‌دارِ
+            # قابل‌قبول جایگزین کند، حتی وقتی نسخه‌ی تازه نکته‌های کمتری اما دقیق‌تر
+            # دارد. مقایسه‌ی تعداد خام نکته‌ها اینجا معیار معناداری نیست.
+            if protocol_upgrade and merged_audit["status"] == "acceptable":
                 improved = True
 
             refresh_meta_for_save = _after_selective_refresh(
