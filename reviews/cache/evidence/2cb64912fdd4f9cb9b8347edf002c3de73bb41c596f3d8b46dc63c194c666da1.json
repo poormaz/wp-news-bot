@@ -1,6 +1,6 @@
 {
   "cache_version": "source_evidence_cache_v1",
-  "created_at_utc": "2026-07-06T01:58:53+00:00",
+  "created_at_utc": "2026-07-06T02:09:21+00:00",
   "game": "Crimson Desert",
   "platform": "PC",
   "requested_url": "https://gamerant.com/crimson-desert-review",
@@ -15,52 +15,50 @@
     "score_method": "not_found",
     "score_confidence": 0,
     "score_evidence": "",
+    "analysis_protocol": "excerpt_ids_v2",
     "positives": [
       {
-        "point_fa": "دنیای بازی Crimson Desert یکی از بهترین طراحی‌های دنیای باز را در تاریخ بازی‌ها دارد.",
-        "evidence_en": "Crimson Desert has, without a doubt, what I would consider to be the absolute best open world design I have ever seen in a game—and that's coming from a die-hard Zelda: Breath of the Wild fan."
+        "point_fa": "دنیای باز Crimson Desert به عنوان بزرگترین نقطه قوت آن شناخته می‌شود.",
+        "evidence_en": "If nothing else, Crimson Desert 's open world is its biggest selling point, not just because of how it looks, but because of how it feels.",
+        "evidence_id": "E003"
       },
       {
-        "point_fa": "بازی به بازیکنان این امکان را می‌دهد که به روش‌های مختلفی در دنیای آن تعامل داشته باشند.",
-        "evidence_en": "Basically, a recurring theme in Crimson Desert is \"If you think you can do it, you probably can,\" and that's ultimately due to the game's highly interactive world."
-      },
-      {
-        "point_fa": "بازی به طور مداوم بازیکنان را برای کشف و جستجو تشویق می‌کند.",
-        "evidence_en": "The upside, though, is that there are more than enough needles to find, so you're constantly being rewarded for letting intrigue be your guide."
-      },
-      {
-        "point_fa": "بازی Crimson Desert به طور کلی تجربه‌ای جذاب و شگفت‌انگیز ارائه می‌دهد.",
-        "evidence_en": "Crimson Desert Is a Remarkable World That Asks More From Players Than It Should After all the time I spent in Crimson Desert , I clearly have a lot of complaints about its design, but it's hard to say it's not worth playing—because it absolutely is."
+        "point_fa": "بازی به بازیکنان پاداش‌های مداومی برای کاوش می‌دهد.",
+        "evidence_en": "The upside, though, is that there are more than enough needles to find, so you're constantly being rewarded for letting intrigue be your guide.",
+        "evidence_id": "E006"
       }
     ],
     "negatives": [
       {
-        "point_fa": "بازی با مشکلاتی در طراحی و سیستم‌های خود مواجه است که می‌تواند تجربه را دشوار کند.",
-        "evidence_en": "Crimson Desert Is a Remarkable World That Asks More From Players Than It Should After all the time I spent in Crimson Desert , I clearly have a lot of complaints about its design, but it's hard to say it's not worth playing—because it absolutely is."
+        "point_fa": "سیستم‌های بازی به طور نامشخص و ناسازگار عمل می‌کنند.",
+        "evidence_en": "Crimson Desert Leaves Players Guessing More Than It Guides Them A lot of this comes from how unclear and inconsistent Crimson Desert 's systems can be.",
+        "evidence_id": "E014"
       },
       {
-        "point_fa": "داستان بازی به اندازه کافی قوی نیست و شخصیت‌ها توسعه چندانی ندارند.",
-        "evidence_en": "Crimson Desert's Open World Overshadows a Story That Struggles to Stick It's clear that Pearl Abyss wanted Crimson Desert 's open world to be the star of the show, because not only do you need to spend plenty of time with it if you hope to make good progress in the story, but also the story itself really isn't too much to write home about."
+        "point_fa": "چالش‌های بازی به دلیل الزامات غیرمنطقی به سختی قابل انجام هستند.",
+        "evidence_en": "Many of these battles also have ludicrous completion requirements.",
+        "evidence_id": "E016"
       },
       {
-        "point_fa": "بازی به طور مکرر بازیکنان را مجبور به صبر و تحمل می‌کند و این می‌تواند خسته‌کننده باشد.",
-        "evidence_en": "It's one thing for a game to demand patience from its players, but it's another for it to feel like that patience is constantly being tested by systems that resist the player instead of working with them."
+        "point_fa": "بازی به نظر می‌رسد که می‌خواهد سرعت پیشرفت بازیکن را کاهش دهد.",
+        "evidence_en": "Not because of the challenge they pose, but because, again, it feels as though Crimson Desert wants to slow you down.",
+        "evidence_id": "E017"
       }
     ],
     "technical_notes": [],
     "verdict": [
       {
-        "point_fa": "بازی Crimson Desert یک دنیای شگفت‌انگیز است که از بازیکنان بیشتر از آنچه که باید می‌طلبد.",
-        "evidence_en": "Crimson Desert Is a Remarkable World That Asks More From Players Than It Should After all the time I spent in Crimson Desert , I clearly have a lot of complaints about its design, but it's hard to say it's not worth playing—because it absolutely is.",
-        "evidence_id": "E093"
+        "point_fa": "Crimson Desert تجربه‌ای شگفت‌انگیز در دنیای باز ارائه می‌دهد اما گاهی اوقات بیش از حد از بازیکن انتظار دارد.",
+        "evidence_en": "Crimson Desert Review: A Remarkable Open World That Often Asks Too Much",
+        "evidence_id": "E001"
       }
     ],
     "platform_mentioned": "PC"
   },
   "quality_audit": {
     "status": "acceptable",
-    "verified_point_count": 7,
-    "categorized_point_count": 6,
+    "verified_point_count": 5,
+    "categorized_point_count": 4,
     "category_count": 2,
     "category_keys": [
       "gameplay",
@@ -68,12 +66,12 @@
     ],
     "coverage_fa": "پوشش چندبخشی",
     "section_counts": {
-      "positives": 4,
+      "positives": 2,
       "negatives": 3,
       "technical_notes": 0
     },
     "reasons_fa": [],
-    "quality_rank": 870,
+    "quality_rank": 630,
     "action_fa": "برای استفاده‌ی پایدار قابل‌قبول است"
   },
   "refresh_meta": {
@@ -81,7 +79,7 @@
     "max_failed_selective_refreshes": 2,
     "manual_review": false,
     "manual_review_reason_fa": "",
-    "last_selective_refresh_at_utc": "2026-07-06T01:58:53+00:00",
-    "last_selective_refresh_outcome": "retained_no_new_coverage"
+    "last_selective_refresh_at_utc": "2026-07-06T02:09:21+00:00",
+    "last_selective_refresh_outcome": "merged_improved"
   }
 }
