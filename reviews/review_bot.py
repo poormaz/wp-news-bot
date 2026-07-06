@@ -4495,7 +4495,7 @@ def _build_public_article_fallback(facts: dict) -> dict:
         "friction_fa": weaknesses,
         "audience_fa": audience,
         "conclusion_fa": conclusion,
-        "method": "deterministic_editorial_fallback_v23",
+        "method": "deterministic_editorial_fallback_v24",
     }
 
 
@@ -4577,7 +4577,7 @@ Length targets, counted as Persian words:
 - friction: 150–240 words. Explain the main weaknesses and why they matter.
 - audience: 90–135 words. State who will likely value the experience and who may not.
 - conclusion: 90–135 words. Give a balanced final judgment without mentioning a score.
-- The five sections together should be roughly 600–850 words.
+- The five sections together should usually land around 520–850 words.
 - Do not pad a section with repeated claims just to hit an arbitrary word target.
 
 Support rules:
@@ -4680,9 +4680,22 @@ Support rules:
         normalized[key] = section
 
     total_words = sum(len(section["text_fa"].split()) for section in normalized.values())
-    if total_words < 540 or total_words > 980:
-        print(f"Long-form editorial total length {total_words} is out of range; using fallback.")
+    # Every section has already passed its own evidence, support, and length checks.
+    # A soft whole-article target must never discard a valid review because it is a
+    # handful of words short, otherwise 538 versus 540 silently becomes a full fallback.
+    if total_words > 980:
+        print(f"Long-form editorial total length {total_words} exceeds the safety cap; using fallback.")
         return _build_public_article_fallback(facts)
+    if total_words < 520:
+        print(
+            f"Long-form editorial total length {total_words} is below the preferred 520-word target, "
+            "but every section passed validation; preserving the valid article."
+        )
+    elif total_words < 540:
+        print(
+            f"Long-form editorial total length {total_words} is slightly below the 540-word preference; "
+            "preserving the valid article."
+        )
 
     return {
         "opening_fa": normalized["opening"]["text_fa"],
@@ -4693,7 +4706,7 @@ Support rules:
         "section_supports": {
             key: value["supports"] for key, value in normalized.items()
         },
-        "method": "openai_longform_grounded_editorial_v23",
+        "method": "openai_longform_grounded_editorial_v24",
         "word_count": total_words,
     }
 
@@ -4829,14 +4842,14 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     markdown.extend(["", "## منابع بررسی‌شده", *source_lines])
 
     return {
-        "status": "preview_longform_editorial_v23",
+        "status": "preview_longform_editorial_v24",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
         "markdown": "\n".join(markdown).strip() + "\n",
         "source_links": source_links,
         "review_note_fa": "این متن فقط پیش‌نمایش است و هنوز در وردپرس ساخته یا منتشر نشده است.",
-        "writing_mode": sections.get("method", "deterministic_editorial_fallback_v23"),
+        "writing_mode": sections.get("method", "deterministic_editorial_fallback_v24"),
         "word_count": sections.get("word_count"),
         "section_supports": sections.get("section_supports", {}),
     }
