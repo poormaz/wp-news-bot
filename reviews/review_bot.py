@@ -4495,7 +4495,7 @@ def _build_public_article_fallback(facts: dict) -> dict:
         "friction_fa": weaknesses,
         "audience_fa": audience,
         "conclusion_fa": conclusion,
-        "method": "deterministic_editorial_fallback_v22",
+        "method": "deterministic_editorial_fallback_v23",
     }
 
 
@@ -4572,12 +4572,13 @@ Return exactly one JSON object with these five objects:
 }}
 
 Length targets, counted as Persian words:
-- opening: 100–150 words. Establish the review's thesis directly, without plot setup.
-- world_gameplay: 190–280 words. Explain the strongest concrete qualities.
-- friction: 190–280 words. Explain the main weaknesses and why they matter.
-- audience: 110–150 words. State who will likely value the experience and who may not.
-- conclusion: 100–150 words. Give a balanced final judgment without mentioning a score.
-- The five sections together should be roughly 700–950 words.
+- opening: 90–135 words. Establish the review's thesis directly, without plot setup.
+- world_gameplay: 150–240 words. Explain the strongest concrete qualities.
+- friction: 150–240 words. Explain the main weaknesses and why they matter.
+- audience: 90–135 words. State who will likely value the experience and who may not.
+- conclusion: 90–135 words. Give a balanced final judgment without mentioning a score.
+- The five sections together should be roughly 600–850 words.
+- Do not pad a section with repeated claims just to hit an arbitrary word target.
 
 Support rules:
 - Every section needs the IDs of the facts it actually uses.
@@ -4596,27 +4597,27 @@ Support rules:
     allowed_fact_ids = set(fact_by_id)
     specs = {
         "opening": {
-            "min_words": 80, "max_words": 170, "min_supports": 2,
+            "min_words": 70, "max_words": 160, "min_supports": 2,
             "required_topics": {"world_design", "gameplay", "story", "general"},
             "required_sentiments": {"positive", "negative"},
         },
         "world_gameplay": {
-            "min_words": 155, "max_words": 300, "min_supports": 3,
+            "min_words": 130, "max_words": 270, "min_supports": 3,
             "required_topics": {"world_design", "gameplay"},
             "required_sentiments": {"positive"},
         },
         "friction": {
-            "min_words": 155, "max_words": 300, "min_supports": 3,
+            "min_words": 130, "max_words": 270, "min_supports": 3,
             "required_topics": {"gameplay", "story", "technical"},
             "required_sentiments": {"negative", "caution"},
         },
         "audience": {
-            "min_words": 80, "max_words": 170, "min_supports": 2,
+            "min_words": 70, "max_words": 160, "min_supports": 2,
             "required_topics": None,
             "required_sentiments": {"positive", "negative", "caution"},
         },
         "conclusion": {
-            "min_words": 80, "max_words": 170, "min_supports": 2,
+            "min_words": 70, "max_words": 160, "min_supports": 2,
             "required_topics": None,
             "required_sentiments": {"positive", "negative", "caution"},
         },
@@ -4679,7 +4680,7 @@ Support rules:
         normalized[key] = section
 
     total_words = sum(len(section["text_fa"].split()) for section in normalized.values())
-    if total_words < 620 or total_words > 1080:
+    if total_words < 540 or total_words > 980:
         print(f"Long-form editorial total length {total_words} is out of range; using fallback.")
         return _build_public_article_fallback(facts)
 
@@ -4692,7 +4693,7 @@ Support rules:
         "section_supports": {
             key: value["supports"] for key, value in normalized.items()
         },
-        "method": "openai_longform_grounded_editorial_v22",
+        "method": "openai_longform_grounded_editorial_v23",
         "word_count": total_words,
     }
 
@@ -4828,14 +4829,14 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     markdown.extend(["", "## منابع بررسی‌شده", *source_lines])
 
     return {
-        "status": "preview_longform_editorial_v22",
+        "status": "preview_longform_editorial_v23",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
         "markdown": "\n".join(markdown).strip() + "\n",
         "source_links": source_links,
         "review_note_fa": "این متن فقط پیش‌نمایش است و هنوز در وردپرس ساخته یا منتشر نشده است.",
-        "writing_mode": sections.get("method", "deterministic_editorial_fallback_v22"),
+        "writing_mode": sections.get("method", "deterministic_editorial_fallback_v23"),
         "word_count": sections.get("word_count"),
         "section_supports": sections.get("section_supports", {}),
     }
