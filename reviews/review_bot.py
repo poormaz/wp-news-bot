@@ -3957,9 +3957,9 @@ def _build_grounded_article_blocks(dossier: dict) -> dict:
 
 def _public_article_sources(dossier: dict) -> list[dict]:
     """
-    متن عمومی فقط از منابعی ساخته می‌شود که در همین اجرا حداقل کیفیت لازم را
-    داشته‌اند. منبعی که صرفاً یک شاهد نازک دارد می‌تواند در dossier بماند، اما
-    نباید لحن و نتیجه‌ی مقاله را به‌هم بزند.
+    متن عمومی فقط از منابعی ساخته می‌شود که در همین پرونده از کنترل کیفیت
+    عبور کرده‌اند. یک منبع نازک یا علامت‌خورده برای بازبینی دستی، همچنان در
+    dossier می‌ماند اما لحن نقد نهایی را تعیین نمی‌کند.
     """
     sources = list(dossier.get("review_sources", []) or [])
     usable = [
@@ -3969,73 +3969,206 @@ def _public_article_sources(dossier: dict) -> list[dict]:
     return usable if len(usable) >= REVIEW_MIN_SOURCES else sources
 
 
-def _public_article_points(
-    review_sources: list[dict],
-    section: str,
-    max_items: int,
-) -> list[str]:
-    points = []
-    seen = set()
+_PUBLIC_TOPIC_LABELS = {
+    "world_design": "جهان بازی و اکتشاف",
+    "gameplay": "گیم‌پلی و مبارزه",
+    "story": "روایت و نوشتار",
+    "technical": "فنی و عملکرد",
+    "general": "تصویر کلی",
+}
 
-    for source in review_sources:
-        for point in source.get(section, []) or []:
-            if not isinstance(point, dict):
-                continue
+_PUBLIC_TOPIC_ORDER = (
+    "world_design",
+    "gameplay",
+    "story",
+    "technical",
+    "general",
+)
 
-            point_fa = clean_text(str(point.get("point_fa") or ""))
-            if not point_fa or _has_broken_character(point_fa):
-                continue
+# چنین نکاتی به‌تنهایی برای نوشتن یک نقد خوب کافی نیستند. آن‌ها معمولاً فقط
+# تکرار «جذاب است» هستند و بدون توضیح چرایی، متن را به تبلیغ بازی تبدیل می‌کنند.
+_PUBLIC_GENERIC_POINT_MARKERS = (
+    "تجربه‌ای جذاب",
+    "تجربه جذاب",
+    "شگفت‌انگیز",
+    "ارزش تجربه",
+    "ارزش بازی کردن",
+    "غیرقابل ترک",
+    "بسیار سرگرم‌کننده",
+)
 
-            key = point_fa.casefold()
-            if key in seen:
-                continue
+_PUBLIC_SPECIFIC_POINT_MARKERS = (
+    "جهان", "اکتشاف", "کاوش", "تعامل", "مبارز", "نبرد", "باس",
+    "رئیس", "پازل", "سیستم", "مکانیک", "کنترل", "اسب", "داستان",
+    "روایت", "شخصیت", "نوشتار", "ترجمه", "ماموریت", "عملکرد", "فنی",
+    "باگ", "موجودی", "ذخیره", "زمان", "طراحی", "پیشرفت",
+)
 
-            seen.add(key)
-            points.append(point_fa)
 
-            if len(points) >= max_items:
-                return points
+def _public_fact_topic(point: dict, section: str) -> str:
+    """یک دسته‌ی تحریریه‌ای برای انتخاب واقعیت‌های مقاله، نه برای امتیازدهی."""
+    category, _ = classify_evidence_rule_based(
+        {
+            "evidence_en": str(point.get("evidence_en") or ""),
+            "section": section,
+        }
+    )
+    if category in _PUBLIC_TOPIC_LABELS:
+        return category
 
-    return points
+    text = clean_text(str(point.get("point_fa") or "")).casefold()
+    if any(word in text for word in ("جهان", "اکتشاف", "کاوش", "محیط", "تعامل")):
+        return "world_design"
+    if any(word in text for word in ("مبارز", "نبرد", "باس", "رئیس", "پازل", "کنترل", "اسب", "مکانیک", "سیستم")):
+        return "gameplay"
+    if any(word in text for word in ("داستان", "روایت", "شخصیت", "نوشتار", "ترجمه", "ماموریت")):
+        return "story"
+    if any(word in text for word in ("عملکرد", "فنی", "باگ", "کرش", "بهینه")):
+        return "technical"
+    return "general"
+
+
+def _public_fact_is_specific(point_fa: str, evidence_en: str) -> bool:
+    """کلی‌گویی‌های تکراری را پیش از رسیدن به نویسنده حذف می‌کند."""
+    point_fa = clean_text(point_fa)
+    evidence_en = clean_text(evidence_en)
+
+    if not point_fa or _has_broken_character(point_fa):
+        return False
+    if len(point_fa.split()) < 4:
+        return False
+
+    # نقل‌قول‌های خیلی بلند معمولاً از استخراج بدِ HTML آمده‌اند و نباید به
+    # عنوان پایه‌ی یک ادعای تحریریه‌ای استفاده شوند.
+    evidence_word_count = len(re.findall(r"\b[\w'-]+\b", evidence_en))
+    if evidence_en and evidence_word_count > 42:
+        return False
+
+    folded = point_fa.casefold()
+    has_generic_marker = any(marker in folded for marker in _PUBLIC_GENERIC_POINT_MARKERS)
+    has_specific_marker = any(marker in folded for marker in _PUBLIC_SPECIFIC_POINT_MARKERS)
+    if has_generic_marker and not has_specific_marker:
+        return False
+
+    return True
+
+
+def _public_fact_key(point_fa: str) -> str:
+    text = clean_text(point_fa).casefold()
+    text = re.sub(r"[\W_]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _public_facts_from_sources(review_sources: list[dict]) -> list[dict]:
+    """
+    یک brief فشرده برای نویسنده می‌سازد. هر منبع حداکثر سه واقعیت دارد تا یک
+    نقد بلند، ناخواسته به بازنویسی یک سایت واحد تبدیل نشود.
+    """
+    raw = []
+    evidence_sentiments: dict[str, set[str]] = {}
+
+    for source_index, source in enumerate(review_sources, start=1):
+        site_name = clean_text(str(source.get("site_name") or ""))
+        for section, sentiment in (
+            ("positives", "positive"),
+            ("negatives", "negative"),
+            ("technical_notes", "caution"),
+        ):
+            for point_index, point in enumerate(source.get(section, []) or [], start=1):
+                if not isinstance(point, dict):
+                    continue
+                point_fa = clean_text(str(point.get("point_fa") or ""))
+                evidence_en = clean_text(str(point.get("evidence_en") or ""))
+                if not _public_fact_is_specific(point_fa, evidence_en):
+                    continue
+
+                evidence_key = evidence_en.casefold() or _public_fact_key(point_fa)
+                evidence_sentiments.setdefault(evidence_key, set()).add(sentiment)
+                raw.append(
+                    {
+                        "id": f"F{source_index:02d}{section[0].upper()}{point_index}",
+                        "site_name": site_name,
+                        "topic": _public_fact_topic(point, section),
+                        "sentiment": sentiment,
+                        "text_fa": point_fa,
+                        "evidence_key": evidence_key,
+                    }
+                )
+
+    # یک شاهد واحد که هم مثبت و هم منفی ثبت شده، نتیجه‌گیری دوپهلو است. آن را
+    # به نویسنده نمی‌دهیم تا مجبور نشود از همان جمله دو ادعای متضاد بسازد.
+    conflict_keys = {
+        key for key, sentiments in evidence_sentiments.items()
+        if "positive" in sentiments and "negative" in sentiments
+    }
+
+    raw = [item for item in raw if item["evidence_key"] not in conflict_keys]
+
+    # اولویت با نکات مشخص‌تر است، اما تنوع منبع و موضوع هم حفظ می‌شود.
+    def priority(item: dict) -> tuple:
+        text = item["text_fa"]
+        specificity = sum(marker in text.casefold() for marker in _PUBLIC_SPECIFIC_POINT_MARKERS)
+        topic_rank = _PUBLIC_TOPIC_ORDER.index(item["topic"]) if item["topic"] in _PUBLIC_TOPIC_ORDER else 99
+        sentiment_rank = 0 if item["sentiment"] in {"positive", "negative"} else 1
+        return (topic_rank, sentiment_rank, -specificity, len(text))
+
+    raw.sort(key=priority)
+
+    selected = []
+    seen_texts = set()
+    source_counts: dict[str, int] = {}
+    topic_counts: dict[str, int] = {}
+    topic_limits = {
+        "world_design": 5,
+        "gameplay": 5,
+        "story": 4,
+        "technical": 2,
+        "general": 2,
+    }
+
+    for item in raw:
+        text_key = _public_fact_key(item["text_fa"])
+        if not text_key or text_key in seen_texts:
+            continue
+
+        site_name = item["site_name"] or "Unknown"
+        topic = item["topic"]
+        if source_counts.get(site_name, 0) >= 3:
+            continue
+        if topic_counts.get(topic, 0) >= topic_limits.get(topic, 3):
+            continue
+
+        seen_texts.add(text_key)
+        source_counts[site_name] = source_counts.get(site_name, 0) + 1
+        topic_counts[topic] = topic_counts.get(topic, 0) + 1
+        selected.append({key: value for key, value in item.items() if key != "evidence_key"})
+
+    return selected[:16]
 
 
 def _public_article_fact_pack(dossier: dict) -> dict:
     review_sources = _public_article_sources(dossier)
     assessment = dossier.get("poormaz_assessment", {}) or {}
     metacritic = dossier.get("metacritic", {}) or {}
-    game_intro = dossier.get("game_intro", {}) or {}
 
     return {
         "game": clean_text(str(dossier.get("game") or "")) or "بازی",
         "platform": clean_text(str(dossier.get("platform") or "")),
-        "intro_fa": clean_text(str(game_intro.get("intro_fa") or "")),
         "poormaz_score": assessment.get("overall_score_10"),
         "metascore": metacritic.get("metascore_100"),
         "critic_count": metacritic.get("critic_review_count"),
-        "scorecard": list(assessment.get("scorecard", []) or []),
-        "positives": _public_article_points(review_sources, "positives", 6),
-        "negatives": _public_article_points(review_sources, "negatives", 6),
-        "technical": _public_article_points(review_sources, "technical_notes", 3),
+        "facts": _public_facts_from_sources(review_sources),
         "sources": review_sources,
     }
 
 
 def _public_article_forbidden_text(text: str) -> bool:
     forbidden = (
-        "پوشش شواهد",
-        "شواهد تأییدشده",
-        "پرونده‌ی فعلی",
-        "پرونده فعلی",
-        "سطح اطمینان",
-        "برداشت اولیه",
-        "به‌صورت خودکار",
-        "منبع بررسی‌شده",
-        "منابع بررسی‌شده",
-        "نقدهای انتخاب‌شده",
-        "مدل زبانی",
-        "هوش مصنوعی",
-        "evidence",
-        "confidence",
+        "پوشش شواهد", "شواهد تأییدشده", "پرونده‌ی فعلی", "پرونده فعلی",
+        "سطح اطمینان", "برداشت اولیه", "به‌صورت خودکار", "منبع بررسی‌شده",
+        "منابع بررسی‌شده", "نقدهای انتخاب‌شده", "مدل زبانی", "هوش مصنوعی",
+        "evidence", "confidence", "متاکریتیک", "poormaz", "امتیاز",
+        "نمره", "منتقد", "سایت", "وب‌سایت", "منبع",
     )
     folded = clean_text(text).casefold()
     return any(token.casefold() in folded for token in forbidden)
@@ -4063,135 +4196,296 @@ def _public_section_is_safe(
         if site_name and site_name.casefold() in value.casefold():
             return False
 
+    # جمله‌های تریلری معمولاً از توضیح تبلیغاتی بازی می‌آیند، نه از خود نقد.
+    trailer_markers = (
+        "وفاداری", "قهرمانان شکل", "سرزمین‌های سخت", "خطرات ناشناخته",
+        "به دنیای بازی", "وارد دنیای",
+    )
+    if any(marker in value.casefold() for marker in trailer_markers):
+        return False
+
     return True
 
 
-def _fallback_public_section(points: list[str], lead: str, empty: str) -> str:
-    if not points:
-        return empty
+def _fact_map(facts: dict) -> dict[str, dict]:
+    return {
+        item["id"]: item
+        for item in facts.get("facts", [])
+        if isinstance(item, dict) and item.get("id")
+    }
 
-    body = " ".join(points[:4])
-    return f"{lead} {body}".strip()
+
+def _normalize_editorial_section(
+    value,
+    *,
+    allowed_fact_ids: set[str],
+    fact_by_id: dict[str, dict],
+    min_words: int,
+    max_words: int,
+    min_supports: int,
+    required_topics: set[str] | None = None,
+    required_sentiments: set[str] | None = None,
+    allowed_site_names: set[str],
+) -> dict | None:
+    if not isinstance(value, dict):
+        return None
+
+    text_fa = clean_text(str(value.get("text_fa") or ""))
+    if not _public_section_is_safe(
+        text_fa,
+        min_words=min_words,
+        max_words=max_words,
+        allowed_site_names=allowed_site_names,
+    ):
+        return None
+
+    supports = []
+    for ref in value.get("supports", []) or []:
+        ref = clean_text(str(ref or ""))
+        if ref in allowed_fact_ids and ref not in supports:
+            supports.append(ref)
+    if len(supports) < min_supports:
+        return None
+
+    support_facts = [fact_by_id[item] for item in supports]
+    if required_topics and not any(item.get("topic") in required_topics for item in support_facts):
+        return None
+    if required_sentiments and not any(item.get("sentiment") in required_sentiments for item in support_facts):
+        return None
+
+    return {"text_fa": text_fa, "supports": supports}
+
+
+def _fallback_text_from_facts(facts: list[dict], *, topic: set[str] | None = None, sentiment: set[str] | None = None, limit: int = 4) -> str:
+    chosen = []
+    for item in facts:
+        if topic and item.get("topic") not in topic:
+            continue
+        if sentiment and item.get("sentiment") not in sentiment:
+            continue
+        chosen.append(item.get("text_fa", ""))
+        if len(chosen) >= limit:
+            break
+    return " ".join(text for text in chosen if text)
 
 
 def _build_public_article_fallback(facts: dict) -> dict:
+    """مسیر امن در صورت شکست مدل. کوتاه‌تر است، اما ادعای تازه نمی‌سازد."""
+    all_facts = facts.get("facts", [])
     game = facts["game"]
-    positives = facts["positives"]
-    negatives = facts["negatives"]
-    technical = facts["technical"]
-
-    opening = facts["intro_fa"] or (
-        f"{game} عنوانی است که میان طراحی جهان، گیم‌پلی و روایت، ایده‌های متعددی را کنار هم می‌گذارد."
+    world_and_gameplay = _fallback_text_from_facts(
+        all_facts,
+        topic={"world_design", "gameplay"},
+        sentiment={"positive"},
+        limit=4,
     )
-    strengths = _fallback_public_section(
-        positives,
-        "بزرگ‌ترین نقطه‌ی قوت بازی در لحظاتی دیده می‌شود که اجازه می‌دهد بازیکن با جهان و سیستم‌هایش درگیر شود.",
-        "در بررسی‌های موجود، نقطه‌ی قوت مستقلی برای این بخش ثبت نشده است.",
+    friction = _fallback_text_from_facts(
+        all_facts,
+        topic={"gameplay", "story", "technical"},
+        sentiment={"negative", "caution"},
+        limit=5,
     )
-    weakness_points = negatives + technical
-    weaknesses = _fallback_public_section(
-        weakness_points,
-        "با این حال، تجربه همیشه یکدست نیست و چند ضعف مهم جلوی درخشش کامل بازی را می‌گیرد.",
-        "نکته‌ی منفی مستقلی برای این بخش ثبت نشده است.",
+    opening = (
+        f"{game} از آن بازی‌هایی است که در یک بخش می‌تواند بازیکن را کاملاً درگیر کند و در بخش دیگر، صبر او را محک بزند. "
+        "در هسته‌ی تجربه، جهان بازی و شیوه‌ی تعامل با آن نقش پررنگی دارند، اما همین جاه‌طلبی همیشه به یک ریتم یکدست تبدیل نمی‌شود."
+    )
+    strengths = (
+        "بهترین لحظات بازی زمانی شکل می‌گیرند که فرصت اکتشاف و درگیری با سیستم‌های آن را می‌دهد. "
+        + (world_and_gameplay or "جهان بازی و گیم‌پلی، بخش‌های برجسته‌ی تجربه هستند.")
+    )
+    weaknesses = (
+        "در مقابل، چند اصطکاک مهم اجازه نمی‌دهد این کیفیت در تمام مسیر حفظ شود. "
+        + (friction or "روایت و طراحی بعضی از بخش‌ها می‌توانند تجربه را ناهموار کنند.")
     )
     audience = (
-        f"{game} بیشتر برای بازیکنانی مناسب است که از تجربه‌های بزرگ، پرجزئیات و پر از سیستم‌های مختلف لذت می‌برند؛ "
-        "اما کسانی که روایت منسجم و تجربه‌ی کم‌اصطکاک می‌خواهند، باید با احتیاط بیشتری سراغش بروند."
+        f"{game} برای کسی مناسب‌تر است که از اکتشاف، مبارزه و سر و کله زدن با یک تجربه‌ی پرسیستم لذت می‌برد. "
+        "اما اگر روایت منسجم، ریتم نرم و کمترین اصطکاک در طراحی برایتان اولویت مطلق است، بهتر است با انتظار واقع‌بینانه‌تری سراغش بروید."
     )
     conclusion = (
-        f"{game} در بهترین لحظاتش جاه‌طلب، سرگرم‌کننده و پر از ایده است، اما ضعف‌هایش هم آن‌قدر جدی هستند که نادیده گرفته نشوند."
+        f"{game} بازی بی‌نقصی نیست، اما جاه‌طلبی‌اش در بهترین لحظات واقعاً نتیجه می‌دهد. "
+        "ارزش آن بیش از هر چیز به این بستگی دارد که چقدر با نقاط اصطکاکش کنار می‌آیید و در عوض، از اکتشاف و سیستم‌های متنوعش چه می‌خواهید."
     )
     return {
         "opening_fa": opening,
-        "strengths_fa": strengths,
-        "weaknesses_fa": weaknesses,
+        "world_gameplay_fa": strengths,
+        "friction_fa": weaknesses,
         "audience_fa": audience,
         "conclusion_fa": conclusion,
-        "method": "deterministic_fallback",
+        "method": "deterministic_editorial_fallback_v21",
     }
 
 
 def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
     """
-    این‌بار مدل از متن خشک قالبی بازنویسی نمی‌کند. یک بسته‌ی کوچک از واقعیت‌های
-    فارسیِ تأییدشده می‌گیرد و یک نقد طبیعی می‌نویسد. خروجی فقط در صورت عبور از
-    فیلترهای سخت‌گیرانه وارد مقاله می‌شود.
+    یک نقد بلند و طبیعی می‌نویسد، اما فقط با brief فشرده‌ی واقعیات تأییدشده.
+    مدل برای هر بخش شناسه‌ی واقعیت‌های استفاده‌شده را هم برمی‌گرداند تا ساختار
+    مقاله قابل‌ردیابی بماند، بدون آن‌که آن شناسه‌ها وارد متن عمومی شوند.
     """
     allowed_site_names = {
         clean_text(str(source.get("site_name") or ""))
         for source in facts.get("sources", [])
         if clean_text(str(source.get("site_name") or ""))
     }
+    fact_by_id = _fact_map(facts)
+    if len(fact_by_id) < 6 or client is None:
+        return _build_public_article_fallback(facts)
+
+    writer_facts = [
+        {
+            "id": item["id"],
+            "بخش": _PUBLIC_TOPIC_LABELS.get(item.get("topic"), "تصویر کلی"),
+            "جهت": {"positive": "مثبت", "negative": "منفی", "caution": "احتیاط"}.get(item.get("sentiment"), "خنثی"),
+            "واقعیت": item["text_fa"],
+        }
+        for item in facts.get("facts", [])
+    ]
 
     payload = {
         "game": facts["game"],
-        "intro_fa": facts["intro_fa"],
-        "positives": facts["positives"],
-        "negatives": facts["negatives"],
-        "technical_notes": facts["technical"],
-        "poormaz_score_10": facts["poormaz_score"],
-        "metascore_100": facts["metascore"],
+        "facts": writer_facts,
     }
 
     prompt = f"""
-You are the Persian games editor for Poormaz. Write the body sections of a
-natural, publishable Persian review for "{facts['game']}".
+You are the senior Persian games editor for Poormaz. Write a long-form,
+natural, publishable Persian review of "{facts['game']}" from the verified
+editorial facts below.
 
-Use ONLY the verified fact pack below. Do not add, infer, or embellish gameplay
-features, story beats, technical details, scores, platforms, motives, or
-comparisons that are not stated in it.
-
-Verified fact pack:
+Verified editorial brief:
 {json.dumps(payload, ensure_ascii=False, indent=2)}
 
-Writing rules:
-- The reader must feel they are reading a normal, confident game review, not an
-  audit, a list of critic opinions, or a description of an automated process.
-- Do NOT mention websites, reviewers, sources, citations, evidence, Metacritic,
-  Poormaz, scores, or the research process inside these five sections.
-- Do NOT use headings, markdown, lists, direct English quotations, or links.
-- Keep every claim tightly within the supplied Persian fact pack.
-- When facts are mixed, express the tension naturally instead of forcing a
-  positive or negative verdict.
-- Do not invent a fix, a cause, a recommendation, or a comparison.
-- Return strict JSON with exactly these keys:
-  "opening_fa", "strengths_fa", "weaknesses_fa", "audience_fa", "conclusion_fa".
-- opening_fa: 45–95 Persian words.
-- strengths_fa: 65–140 Persian words.
-- weaknesses_fa: 75–155 Persian words.
-- audience_fa: 45–95 Persian words.
-- conclusion_fa: 45–95 Persian words.
+This is not a news item, a press release, an audit, or a summary of critics.
+It must read like one coherent game review with a clear critical point of view.
+The central tension should emerge naturally: specific strengths in world design,
+exploration, systems, or combat can coexist with friction in design, balance,
+writing, story, pacing, or technical stability when the supplied facts support it.
+
+Hard grounding rules:
+- Use ONLY these facts. Do not add story details, names, lore, motives, gameplay
+  features, technical causes, comparisons, fixes, or facts from general knowledge.
+- Do not turn an isolated report into a universal flaw. If a technical caution is
+  represented by little evidence, mention it briefly as a caution, not as the
+  headline verdict.
+- Do not use absolute promotional claims such as "one of the best ever" unless
+  you explicitly soften it as a reviewer impression. Prefer precise explanation
+  over hype.
+- Never mention sources, reviewers, sites, evidence, scores, Metacritic, Poormaz,
+  automation, or this brief inside the article sections.
+- No headings, markdown, bullet lists, direct English quotations, URLs, or lists.
+- Avoid empty praise such as "جذاب و شگفت‌انگیز" unless the same sentence explains
+  exactly what creates that feeling.
+- Never write trailer copy such as "وفاداری‌ها مورد آزمایش قرار می‌گیرند",
+  "قهرمانان شکل می‌گیرند", or vague world-building that is absent from the facts.
+- Write fluent contemporary Persian. Vary sentence rhythm. Be direct, specific,
+  and fair rather than overdramatic.
+
+Return exactly one JSON object with these five objects:
+{{
+  "opening": {{"text_fa": "...", "supports": ["F..."]}},
+  "world_gameplay": {{"text_fa": "...", "supports": ["F..."]}},
+  "friction": {{"text_fa": "...", "supports": ["F..."]}},
+  "audience": {{"text_fa": "...", "supports": ["F..."]}},
+  "conclusion": {{"text_fa": "...", "supports": ["F..."]}}
+}}
+
+Length targets, counted as Persian words:
+- opening: 100–150 words. Establish the review's thesis directly, without plot setup.
+- world_gameplay: 190–280 words. Explain the strongest concrete qualities.
+- friction: 190–280 words. Explain the main weaknesses and why they matter.
+- audience: 110–150 words. State who will likely value the experience and who may not.
+- conclusion: 100–150 words. Give a balanced final judgment without mentioning a score.
+- The five sections together should be roughly 700–950 words.
+
+Support rules:
+- Every section needs the IDs of the facts it actually uses.
+- opening must cite at least one positive and one negative fact.
+- world_gameplay must cite at least three positive facts from world design or gameplay.
+- friction must cite at least three negative/caution facts.
+- audience and conclusion must each cite at least one positive and one negative/caution fact.
 """.strip()
 
     try:
-        raw = ask_openai_json(client, prompt, max_tokens=1800)
+        raw = ask_openai_json(client, prompt, max_tokens=3200)
     except Exception as exc:
-        print(f"Public editorial article failed; using deterministic fallback: {repr(exc)}")
+        print(f"Long-form editorial article failed; using deterministic fallback: {repr(exc)}")
         return _build_public_article_fallback(facts)
 
-    sections = {}
-    ranges = {
-        "opening_fa": (45, 110),
-        "strengths_fa": (55, 165),
-        "weaknesses_fa": (60, 180),
-        "audience_fa": (35, 115),
-        "conclusion_fa": (35, 115),
+    allowed_fact_ids = set(fact_by_id)
+    specs = {
+        "opening": {
+            "min_words": 90, "max_words": 165, "min_supports": 2,
+            "required_topics": {"world_design", "gameplay", "story", "general"},
+            "required_sentiments": {"positive", "negative"},
+        },
+        "world_gameplay": {
+            "min_words": 170, "max_words": 300, "min_supports": 3,
+            "required_topics": {"world_design", "gameplay"},
+            "required_sentiments": {"positive"},
+        },
+        "friction": {
+            "min_words": 170, "max_words": 300, "min_supports": 3,
+            "required_topics": {"gameplay", "story", "technical"},
+            "required_sentiments": {"negative", "caution"},
+        },
+        "audience": {
+            "min_words": 90, "max_words": 165, "min_supports": 2,
+            "required_topics": None,
+            "required_sentiments": {"positive", "negative", "caution"},
+        },
+        "conclusion": {
+            "min_words": 85, "max_words": 165, "min_supports": 2,
+            "required_topics": None,
+            "required_sentiments": {"positive", "negative", "caution"},
+        },
     }
 
-    for key, (min_words, max_words) in ranges.items():
-        candidate = clean_text(str(raw.get(key) or ""))
-        if not _public_section_is_safe(
-            candidate,
-            min_words=min_words,
-            max_words=max_words,
+    normalized = {}
+    for key, spec in specs.items():
+        section = _normalize_editorial_section(
+            raw.get(key),
+            allowed_fact_ids=allowed_fact_ids,
+            fact_by_id=fact_by_id,
+            min_words=spec["min_words"],
+            max_words=spec["max_words"],
+            min_supports=spec["min_supports"],
+            required_topics=spec["required_topics"],
+            required_sentiments=spec["required_sentiments"],
             allowed_site_names=allowed_site_names,
-        ):
-            print(f"Public editorial section '{key}' failed validation; using fallback.")
+        )
+        if section is None:
+            print(f"Long-form editorial section '{key}' failed validation; using fallback.")
             return _build_public_article_fallback(facts)
-        sections[key] = candidate
+        normalized[key] = section
 
-    sections["method"] = "openai_grounded_editorial"
-    return sections
+    def has_both_sentiments(section: dict) -> bool:
+        sentiments = {
+            fact_by_id[item]["sentiment"]
+            for item in section["supports"]
+            if item in fact_by_id
+        }
+        return "positive" in sentiments and bool(sentiments & {"negative", "caution"})
+
+    for key in ("opening", "audience", "conclusion"):
+        if not has_both_sentiments(normalized[key]):
+            print(f"Long-form editorial section '{key}' lacks balanced supports; using fallback.")
+            return _build_public_article_fallback(facts)
+
+    total_words = sum(len(section["text_fa"].split()) for section in normalized.values())
+    if total_words < 620 or total_words > 1080:
+        print(f"Long-form editorial total length {total_words} is out of range; using fallback.")
+        return _build_public_article_fallback(facts)
+
+    return {
+        "opening_fa": normalized["opening"]["text_fa"],
+        "world_gameplay_fa": normalized["world_gameplay"]["text_fa"],
+        "friction_fa": normalized["friction"]["text_fa"],
+        "audience_fa": normalized["audience"]["text_fa"],
+        "conclusion_fa": normalized["conclusion"]["text_fa"],
+        "section_supports": {
+            key: value["supports"] for key, value in normalized.items()
+        },
+        "method": "openai_longform_grounded_editorial_v21",
+        "word_count": total_words,
+    }
 
 
 def run_public_article_regression_checks() -> None:
@@ -4207,6 +4501,12 @@ def run_public_article_regression_checks() -> None:
         max_words=40,
         allowed_site_names=set(),
     )
+    assert not _public_section_is_safe(
+        "این بخش درباره‌ی امتیاز بازی و نمره‌ی منتقدان صحبت می‌کند و نباید در متن اصلی مقاله باشد.",
+        min_words=1,
+        max_words=40,
+        allowed_site_names=set(),
+    )
     assert _public_section_is_safe(
         "بازی در بهترین لحظاتش میان اکتشاف، سیستم‌های متنوع و درگیری‌های پرانرژی تعادل جذابی پیدا می‌کند.",
         min_words=1,
@@ -4214,12 +4514,22 @@ def run_public_article_regression_checks() -> None:
         allowed_site_names=set(),
     )
 
+    generic = {
+        "point_fa": "بازی تجربه‌ای جذاب و شگفت‌انگیز ارائه می‌دهد.",
+        "evidence_en": "The game is wonderful and impossible to put down.",
+    }
+    specific = {
+        "point_fa": "مبارزات با برخی از رئیس‌ها احساس ناعادلانه‌ای دارند.",
+        "evidence_en": "Several boss fights feel unbalanced and punish mistakes too heavily.",
+    }
+    assert not _public_fact_is_specific(generic["point_fa"], generic["evidence_en"])
+    assert _public_fact_is_specific(specific["point_fa"], specific["evidence_en"])
+
 
 def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     """
-    خروجی عمومی، نقدی تمیز و خواندنی است: کارت امتیاز کوتاه، متن روایی طبیعی،
-    و منابع فقط در پایان. جدول‌های داخلی، تفاوت‌های سایت‌ها، وضعیت cache و
-    یادداشت تحریریه هرگز وارد WordPress نمی‌شوند.
+    خروجی عمومی: یک نقد بلند و طبیعی، یک باکس کوتاهِ امتیاز کلی و منابع در
+    انتهای متن. کارت‌های جزء و گزارش‌های داخلی عمداً وارد WordPress نمی‌شوند.
     """
     facts = _public_article_fact_pack(dossier)
     sections = _write_public_article_sections(client, facts)
@@ -4229,10 +4539,9 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     metascore = facts["metascore"]
     critic_count = facts["critic_count"]
     platform = facts["platform"]
-    scorecard = facts["scorecard"]
 
     title_fa = f"نقد و بررسی {game} | جمع‌بندی Poormaz"
-    excerpt_fa = f"نقاط قوت و ضعف {game} در کنار امتیاز Poormaz و نمره‌ی متاکریتیک."
+    excerpt_fa = f"جمع‌بندی Poormaz از نقاط قوت و ضعف {game} بر اساس نقدهای حرفه‌ای."
 
     glance_lines = []
     if overall_score is not None:
@@ -4242,13 +4551,6 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
         glance_lines.append(f"- **متاکریتیک:** {metascore}/100{count_part}")
     if platform:
         glance_lines.append(f"- **پلتفرم بررسی:** {platform}")
-
-    scorecard_lines = ["| بخش | امتیاز |", "|---|---:|"]
-    for card in scorecard:
-        scorecard_lines.append(
-            f"| {clean_text(str(card.get('label_fa') or 'نامشخص'))} | "
-            f"{_format_score_10(card.get('score_10'))} |"
-        )
 
     source_lines = []
     source_links = []
@@ -4277,17 +4579,12 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
         f"> {excerpt_fa}",
     ]
 
-    if sections["opening_fa"]:
-        markdown.extend(["", "## معرفی بازی", sections["opening_fa"]])
-
     if glance_lines:
         markdown.extend(["", "## در یک نگاه", *glance_lines])
 
-    if scorecard_lines and len(scorecard_lines) > 2:
-        markdown.extend(["", "## کارت امتیاز Poormaz", "", *scorecard_lines])
-
-    markdown.extend(["", "## چرا تجربه‌اش می‌ارزد؟", sections["strengths_fa"]])
-    markdown.extend(["", "## کجا ناامید می‌کند؟", sections["weaknesses_fa"]])
+    markdown.extend(["", "## Crimson Desert در عمل", sections["opening_fa"]])
+    markdown.extend(["", "## جهان بازی و گیم‌پلی", sections["world_gameplay_fa"]])
+    markdown.extend(["", "## اصطکاک‌هایی که نمی‌شود نادیده گرفت", sections["friction_fa"]])
     markdown.extend(["", "## مناسب چه کسی است؟", sections["audience_fa"]])
 
     conclusion = sections["conclusion_fa"]
@@ -4299,14 +4596,16 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     markdown.extend(["", "## منابع بررسی‌شده", *source_lines])
 
     return {
-        "status": "preview_clean_editorial_v19",
+        "status": "preview_longform_editorial_v21",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
         "markdown": "\n".join(markdown).strip() + "\n",
         "source_links": source_links,
         "review_note_fa": "این متن فقط پیش‌نمایش است و هنوز در وردپرس ساخته یا منتشر نشده است.",
-        "writing_mode": sections.get("method", "deterministic_fallback"),
+        "writing_mode": sections.get("method", "deterministic_editorial_fallback_v21"),
+        "word_count": sections.get("word_count"),
+        "section_supports": sections.get("section_supports", {}),
     }
 
 def save_article_preview(game: str, article_preview: dict) -> str:
