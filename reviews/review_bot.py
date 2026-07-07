@@ -4587,14 +4587,17 @@ def _single_pass_editorial_plan(facts: dict) -> dict[str, list[dict]] | None:
 
     # بدنه واقعاً جا برای تحلیل داشته باشد. هر واقعیت گزارشی تنها در همین یکی
     # از دو بخش مصرف می‌شود و مدل می‌تواند رابطه‌ی علت و معلولشان را توضیح دهد.
-    world = take(topics={"world_design", "gameplay"}, sentiments={"positive"}, count=4)
-    friction = take(topics={"gameplay", "story", "technical"}, sentiments={"negative", "caution"}, count=4)
+    # عمداً روی ۲ تا ۳ نکته در هر بخش قفل می‌شود، نه بیشتر: وقتی مدل مجبور به
+    # پوشش ۴ کارت جدا در یک بخش کوتاه باشد، معمولاً با صفت‌های کلی آن‌ها را به
+    # هم می‌چسباند تا جا شوند. با ۳ نکته، هرکدام واقعاً یک مشاهده می‌شود.
+    world = take(topics={"world_design", "gameplay"}, sentiments={"positive"}, count=3)
+    friction = take(topics={"gameplay", "story", "technical"}, sentiments={"negative", "caution"}, count=3)
 
     if (
         len(opening_pos) < 1
         or len(opening_neg) < 1
-        or len(world) < 4
-        or len(friction) < 4
+        or len(world) < 2
+        or len(friction) < 2
     ):
         return None
 
@@ -4615,7 +4618,7 @@ def _single_pass_editorial_plan(facts: dict) -> dict[str, list[dict]] | None:
 def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: str = "") -> str:
     """بریف تحریریِ فشرده و مبتنی بر شواهد؛ هدف، نقد دقیق است نه طول‌دادن متن با صفت‌های کلی."""
     labels = {
-        "opening": "Crimson Desert در عمل",
+        "opening": "بازی در عمل",
         "world_gameplay": "جهان بازی و گیم‌پلی",
         "friction": "اصطکاک‌هایی که نمی‌شود نادیده گرفت",
         "audience": "مناسب چه کسی است؟",
@@ -4629,13 +4632,15 @@ def _single_pass_prompt(facts: dict, plan: dict[str, list[dict]], retry_reason: 
             "صراحتاً همان را گفته باشد."
         ),
         "world_gameplay": (
-            "با سه یا چهار جزئیات مشخص توضیح بده چرا اکتشاف یا درگیری‌ها می‌توانند کشش ایجاد کنند. "
-            "هر نکته باید یک اثر عملی برای بازیکن داشته باشد: چه چیزی او را به جلو می‌برد، به آزمودن "
-            "وادار می‌کند یا ریتم بازی را عوض می‌کند. مشکلات و ضعف‌ها را به این بخش نبر."
+            "دقیقاً همین دو یا سه کارت را با جزئیات مشخص باز کن؛ توضیح بده چرا اکتشاف یا درگیری‌ها "
+            "می‌توانند کشش ایجاد کنند. هر نکته باید یک اثر عملی برای بازیکن داشته باشد: چه چیزی او را "
+            "به جلو می‌برد، به آزمودن وادار می‌کند یا ریتم بازی را عوض می‌کند. مشکلات و ضعف‌ها را به "
+            "این بخش نبر. این نکات سقف ادعای مجاز است، نه نمونه‌ای از میان گزینه‌های بیشتر."
         ),
         "friction": (
-            "چهار اصطکاک مشخص را به یک استدلال وصل کن: مشکل دقیق چیست، در بازی کردن چه احساسی ایجاد می‌کند، "
-            "و چگونه ریتم یا حس کنترل را خراب می‌کند. از کلی‌گویی درباره‌ی «مشکلات جدی» پرهیز کن."
+            "دقیقاً همین دو یا سه اصطکاک را به یک استدلال وصل کن: مشکل دقیق چیست، در بازی کردن چه احساسی "
+            "ایجاد می‌کند، و چگونه ریتم یا حس کنترل را خراب می‌کند. از کلی‌گویی درباره‌ی «مشکلات جدی» "
+            "پرهیز کن. این نکات سقف ادعای مجاز است، نه نمونه‌ای از میان گزینه‌های بیشتر."
         ),
         "audience": (
             "یک توصیه‌ی عملیِ خرید بده، نه بازنویسی بدنه. روشن بگو چه بازیکنی با این معامله کنار می‌آید "
@@ -4727,11 +4732,13 @@ Writing rules:
 
 Length:
 - opening: 45–75 Persian words
-- world_gameplay: 135–185 Persian words
-- friction: 145–195 Persian words
-- audience: 55–85 Persian words
-- conclusion: 60–95 Persian words
-- Total target: 440–560 Persian words. Stop when the argument is complete.
+- world_gameplay: 100–150 Persian words
+- friction: 100–150 Persian words
+- audience: 55–80 Persian words
+- conclusion: 60–90 Persian words
+- Total target: 450–550 Persian words. Stop when the argument is complete. Current
+  evidence supports a precise 500-word review, not a longer one — padding past 550
+  words to sound more literary is a failure, not a bonus.
 
 Before returning JSON, silently check: every claim is grounded in its assigned card, no sentence
 uses a generic compliment in place of an observation, and the audience advice is actionable.
@@ -4797,11 +4804,11 @@ def _validate_single_pass_editorial(
         return None, "فرمت JSON مقاله معتبر نیست"
 
     specs = {
-        "opening": {"min_words": 24, "max_words": 220},
-        "world_gameplay": {"min_words": 55, "max_words": 420},
-        "friction": {"min_words": 55, "max_words": 420},
-        "audience": {"min_words": 24, "max_words": 220},
-        "conclusion": {"min_words": 24, "max_words": 220},
+        "opening": {"min_words": 35, "max_words": 95},
+        "world_gameplay": {"min_words": 80, "max_words": 175},
+        "friction": {"min_words": 80, "max_words": 175},
+        "audience": {"min_words": 40, "max_words": 100},
+        "conclusion": {"min_words": 45, "max_words": 110},
     }
     normalized: dict[str, dict] = {}
     for key, spec in specs.items():
@@ -4830,11 +4837,154 @@ def _validate_single_pass_editorial(
         normalized[key] = {"text_fa": text_fa, "supports": assigned_ids}
 
     total_words = sum(len(value["text_fa"].split()) for value in normalized.values())
-    if total_words > 1100:
-        return None, f"مقاله بیش از حد بلند است ({total_words} واژه)"
-    if total_words < 240:
-        return None, f"مقاله برای انتشار بیش از حد کوتاه است ({total_words} واژه)"
+    if total_words > 620:
+        return None, f"مقاله بیش از حد بلند است ({total_words} واژه؛ هدف ۴۵۰ تا ۵۵۰ واژه)"
+    if total_words < 380:
+        return None, f"مقاله برای انتشار بیش از حد کوتاه است ({total_words} واژه؛ هدف ۴۵۰ تا ۵۵۰ واژه)"
     return normalized, None
+
+
+_TRIM_PASS_SECTION_ORDER = ("opening", "world_gameplay", "friction", "audience", "conclusion")
+
+
+def _trim_pass_is_safe(
+    original_texts: dict[str, str],
+    edited_raw,
+    allowed_site_names: set[str],
+) -> tuple[bool, str | None]:
+    """
+    فقط ویرایشی را قبول می‌کند که واقعاً «کوتاه‌سازی» باشد، نه بازنویسی. اگر
+    حتی یک بخش این آزمون را رد کند، کل پاسِ ویرایش نادیده گرفته می‌شود و متنِ
+    قبل از ویرایش (که خودش قبلاً تأیید شده) بدون تغییر می‌ماند.
+    """
+    if not isinstance(edited_raw, dict):
+        return False, "خروجی ویرایش JSON معتبر نیست"
+
+    for key in _TRIM_PASS_SECTION_ORDER:
+        original_text = clean_text(original_texts.get(key, ""))
+        edited_text = _editorial_text_value(edited_raw.get(key))
+
+        if not edited_text:
+            return False, f"بخش {key} در ویرایش خالی برگشته است"
+        if _has_broken_character(edited_text):
+            return False, f"بخش {key} پس از ویرایش نویسه‌ی خراب دارد"
+
+        original_words = len(original_text.split()) or 1
+        edited_words = len(edited_text.split())
+
+        # این پاس فقط باید کوتاه‌تر یا هم‌اندازه کند؛ بلندتر شدن یعنی مدل به‌جای
+        # حذف مشکل، جمله‌ی تازه اضافه کرده است.
+        if edited_words > original_words * 1.08 + 3:
+            return False, f"بخش {key} به‌جای کوتاه‌تر شدن، بلندتر شده است"
+        # افت بیش از حد یعنی احتمالاً محتوای معتبر هم حذف شده، نه فقط مشکل.
+        if edited_words < original_words * 0.5:
+            return False, f"بخش {key} بیش از حد کوتاه شده است"
+
+        if not _extract_numbers(edited_text).issubset(_extract_numbers(original_text)):
+            return False, f"بخش {key} عدد تازه‌ای اضافه کرده است"
+
+        for site_name in allowed_site_names:
+            if site_name and site_name.casefold() in edited_text.casefold():
+                return False, f"بخش {key} نام یک منبع را اضافه کرده است"
+
+        if _editorial_claim_quality_reason(key, edited_text):
+            return False, f"بخش {key} پس از ویرایش همچنان عبارت کلی یا نامعتبر دارد"
+
+    return True, None
+
+
+def apply_editorial_trim_pass(
+    client: OpenAI,
+    sections: dict,
+    allowed_site_names: set[str],
+) -> dict:
+    """
+    یک پاسِ ویرایشیِ کوتاه و محدود، درست بعد از تولید مقاله‌ی تأییدشده. کار این
+    پاس فقط حذف یا کوتاه‌سازی است -- نویسه‌ی خراب، ادعای مطلقِ بی‌پشتوانه،
+    تکرار یک نکته با صفتی تازه در بخشی دیگر، و هر عبارت کلی‌ای که تا اینجا دوام
+    آورده. این پاس هرگز اجازه‌ی افزودن جمله، ادعا یا واقعیت تازه ندارد.
+
+    اگر OpenAI در دسترس نباشد یا خروجی از آزمون‌های ایمنی رد شود، دقیقاً همان
+    مقاله‌ی قبل از ویرایش بدون تغییر برگردانده می‌شود -- این پاس هرگز یک مقاله‌ی
+    خوب را به fallback خشک تبدیل نمی‌کند و هرگز کل مقاله را از نو نمی‌نویسد.
+    """
+    if client is None:
+        return sections
+
+    original_texts = {
+        key: clean_text(str(sections.get(f"{key}_fa") or ""))
+        for key in _TRIM_PASS_SECTION_ORDER
+    }
+    section_labels = {
+        "opening": "شروع نقد",
+        "world_gameplay": "جهان بازی و گیم‌پلی",
+        "friction": "اصطکاک‌ها و ضعف‌ها",
+        "audience": "مخاطب مناسب",
+        "conclusion": "جمع‌بندی",
+    }
+
+    prompt = f"""
+You are a copy editor for a Persian game review, NOT its writer. You receive five
+already-approved sections. Your ONLY allowed actions are deleting words/sentences or
+shortening a sentence. You must NEVER add a new sentence, a new claim, a new fact, or
+rephrase clean content that has no problem.
+
+Sections (Persian labels shown for context only, keys stay in English in your reply):
+{json.dumps({section_labels[key]: original_texts[key] for key in _TRIM_PASS_SECTION_ORDER}, ensure_ascii=False, indent=2)}
+
+Fix ONLY these problems, and ONLY by cutting or shortening:
+1. Broken or garbled characters.
+2. Unsupported absolute claims ("the best game ever", "flawless", "undeniably",
+   "definitely", "without question").
+3. A fact or phrase repeated across sections, or repeated within one section using a
+   different adjective. Keep the first occurrence, delete the repeat.
+4. Any remaining generic marketing phrase not immediately explained by a concrete,
+   specific reason already present in the same sentence.
+5. Over-definitive concluding language that claims more certainty than the rest of the
+   section supports.
+
+If a section already has none of these problems, return it completely unchanged,
+character for character.
+
+Return exactly this JSON object, with English keys, one per section:
+{{
+  "opening": {{"text_fa": "..."}},
+  "world_gameplay": {{"text_fa": "..."}},
+  "friction": {{"text_fa": "..."}},
+  "audience": {{"text_fa": "..."}},
+  "conclusion": {{"text_fa": "..."}}
+}}
+""".strip()
+
+    try:
+        raw = ask_openai_json(client, prompt, max_tokens=1500)
+    except Exception as exc:
+        print(f"Editorial trim pass failed, keeping pre-edit article: {repr(exc)}")
+        return sections
+
+    is_safe, reason = _trim_pass_is_safe(original_texts, raw, allowed_site_names)
+    if not is_safe:
+        print(f"Editorial trim pass rejected ({reason}); keeping pre-edit article.")
+        return sections
+
+    result = dict(sections)
+    changed_count = 0
+    for key in _TRIM_PASS_SECTION_ORDER:
+        edited_text = _editorial_text_value(raw.get(key))
+        if edited_text and edited_text != original_texts[key]:
+            changed_count += 1
+        result[f"{key}_fa"] = edited_text or original_texts[key]
+
+    result["word_count"] = sum(
+        len(result[f"{key}_fa"].split()) for key in _TRIM_PASS_SECTION_ORDER
+    )
+    if changed_count:
+        print(f"Editorial trim pass shortened {changed_count} section(s).")
+        result["method"] = f"{result.get('method', '')}+trim_pass"
+    else:
+        print("Editorial trim pass found nothing to cut.")
+
+    return result
 
 
 def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
@@ -4883,7 +5033,7 @@ def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
             if attempt:
                 print("Single-pass editorial article recovered by full-article retry.")
             total_words = sum(len(value["text_fa"].split()) for value in normalized.values())
-            return {
+            sections = {
                 "opening_fa": normalized["opening"]["text_fa"],
                 "world_gameplay_fa": normalized["world_gameplay"]["text_fa"],
                 "friction_fa": normalized["friction"]["text_fa"],
@@ -4894,6 +5044,10 @@ def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
                 "method": "openai_single_pass_grounded_editorial_v33",
                 "word_count": total_words,
             }
+            # پاسِ ویرایشیِ کوتاه: فقط تکرار، ادعای مطلق، نویسه‌ی خراب و عبارت
+            # کلیِ باقی‌مانده را حذف می‌کند؛ هرگز مقاله را از نو نمی‌نویسد و هرگز
+            # آن را به fallback خشک تبدیل نمی‌کند (رجوع کنید به apply_editorial_trim_pass).
+            return apply_editorial_trim_pass(client, sections, allowed_site_names)
 
         last_reason = reason or "اعتبارسنجی نامشخص"
         if attempt == 0:
@@ -4966,23 +5120,39 @@ def run_single_pass_editorial_regression_checks() -> None:
         for item in plan[key]
     ]
     assert len(reporting_ids) == len(set(reporting_ids))
-    assert len(plan["opening"]) == 2 and len(plan["friction"]) == 4
+    assert len(plan["opening"]) == 2 and len(plan["friction"]) == 3
 
-    # Editorial validation must not reject a concise, grounded five-part article
-    # solely because one section is shorter than the prompt's preferred target.
+    # Editorial validation must accept a properly-lengthed five-part article
+    # that lands inside the new 450–550-word target band, not just any
+    # grounded text regardless of length.
     concise_raw = {
-        "opening": {"text_fa": "این بازی میان فرصت‌های فراوان برای درگیر شدن با جهانش و چند مانع طراحی‌شده، تجربه‌ای نابرابر اما قابل توجه می‌سازد. در نتیجه، کیفیت کلی آن نه با یک لحظه‌ی درخشان، بلکه با توان بازیکن برای کنار آمدن با این نوسان دائمی سنجیده می‌شود.", "supports": [item["id"] for item in plan["opening"]]},
-        "world_gameplay": {"text_fa": "دنیای بازی فرصت کاوش و تعامل را جدی می‌گیرد و همین موضوع در بهترین لحظات، ریتم تجربه را جلو می‌برد. تنوع فعالیت‌ها و حس کشف، انگیزه‌ی اصلی برای ادامه دادن است و جهان را از یک پس‌زمینه‌ی صرف فراتر می‌برد. وقتی بازیکن مسیر خودش را انتخاب می‌کند، بازی با جزئیات محیطی و امکان واکنش به موقعیت‌ها، حس ماجراجویی را حفظ می‌کند و اجازه می‌دهد هر مسیر حال‌وهوای متفاوتی داشته باشد.", "supports": [item["id"] for item in plan["world_gameplay"]]},
-        "friction": {"text_fa": "در سوی دیگر، چند سیستم و چالش طراحی‌شده گاهی به‌جای ساختن فشار جذاب، مسیر بازی را کند می‌کنند. این ایرادها باعث می‌شوند رسیدن به لحظات خوب همیشه به اندازه‌ی خود آن لحظات روان نباشد. بعضی توقف‌ها به‌جای آنکه بازیکن را به یادگیری دقیق‌تر تشویق کنند، حس آزمون‌وخطای فرسایشی می‌سازند و تداوم تجربه را تحت فشار قرار می‌دهند. همین ناهماهنگی در بلندمدت اثر خود را نشان می‌دهد.", "supports": [item["id"] for item in plan["friction"]]},
-        "audience": {"text_fa": "برای بازیکنی که از آزمون‌وخطا، کشف تدریجی و ساختن مسیر شخصی لذت می‌برد، این تجربه می‌تواند جذاب باشد. کسانی که ریتم کاملاً روان و راهنمایی دائمی می‌خواهند، بهتر است با انتظار محتاطانه‌تری وارد آن شوند.", "supports": [item["id"] for item in plan["audience"]]},
-        "conclusion": {"text_fa": "نتیجه، اثری بلندپروازانه است که ارزشش به میزان صبر بازیکن و علاقه‌اش به درگیری با سیستم‌های متعدد بستگی دارد. در بهترین حالت، تجربه‌ای ماندگار می‌سازد؛ در بدترین حالت، همان بلندپروازی به مانعی برای لذت بردن تبدیل می‌شود.", "supports": [item["id"] for item in plan["conclusion"]]},
+        "opening": {"text_fa": "این بازی میان فرصت‌های فراوان برای درگیر شدن با جهانش و چند مانع طراحی‌شده در مسیر پیشرفت، تجربه‌ای نابرابر اما قابل توجه می‌سازد. کیفیت کلی آن نه با یک لحظه‌ی درخشان، بلکه با توان بازیکن برای کنار آمدن با این نوسان دائمی سنجیده می‌شود، و همین نوسان تا پایان بازی هم به‌طور کامل برطرف نمی‌شود.", "supports": [item["id"] for item in plan["opening"]]},
+        "world_gameplay": {"text_fa": "دنیای بازی فرصت کاوش و تعامل را جدی می‌گیرد و همین موضوع در بهترین لحظات، ریتم تجربه را جلو می‌برد. وقتی بازیکن مسیر خودش را انتخاب می‌کند و به‌جای دنبال کردن یک خط مستقیم، به کاوش در گوشه‌های کمتر دیده‌شده‌ی نقشه می‌رود، جزئیات محیطی و امکان واکنش به موقعیت‌های تازه، حس ماجراجویی را زنده نگه می‌دارد. کنترل حرکت هنگام مبارزه هم به همین حس کمک می‌کند، چون واکنش‌ها سریع و قابل پیش‌بینی‌اند و بازیکن به‌جای حدس زدن، روی مهارت خودش حساب می‌کند. زنجیره کردن حرکات پیاپی بدون از دست دادن کنترل، حتی در میانه‌ی درگیری‌های شلوغ هم روان می‌ماند، و امکان جابه‌جایی سریع بین سلاح‌ها همین ریتم را در مبارزات طولانی‌تر هم حفظ می‌کند. این ترکیب باعث می‌شود حتی مسیرهای فرعی هم ارزش وقت گذاشتن داشته باشند.", "supports": [item["id"] for item in plan["world_gameplay"]]},
+        "friction": {"text_fa": "در سوی دیگر، چند سیستم طراحی‌شده گاهی به‌جای ساختن فشار جذاب، مسیر بازی را کند می‌کنند. مدیریت موجودی یکی از این نقطه‌هاست: نبود جای کافی برای نگهداری منابع، بازیکن را مجبور می‌کند مدام به منوها برگردد و همین وقفه، ریتم اکتشاف را می‌شکند. برخی مبارزات با رئیس‌ها هم تعادل مشخصی ندارند و به‌جای آزمودن مهارت، بیشتر به حفظ کردن الگوی حمله شبیه می‌شوند، طوری که یک اشتباه ساده می‌تواند کل تلاش چند دقیقه‌ای را از بین ببرد و بازیکن را وادار به تکرار همان توالی کند. این ایرادها باعث می‌شوند رسیدن به لحظات خوب همیشه به اندازه‌ی خود آن لحظات روان نباشد و بازیکن باید مدام با این ناهماهنگی کنار بیاید.", "supports": [item["id"] for item in plan["friction"]]},
+        "audience": {"text_fa": "برای بازیکنی که از آزمون‌وخطا، کشف تدریجی و ساختن مسیر شخصی در دنیایی بزرگ لذت می‌برد، این تجربه می‌تواند جذاب باشد و ساعت‌های زیادی از او بگیرد، بی‌آنکه احساس اتلاف وقت کند. کسانی که ریتم کاملاً روان، مدیریت ساده‌تر منابع و راهنمایی دائمی می‌خواهند، بهتر است با انتظار محتاطانه‌تری وارد آن شوند، چون همین نقطه‌ها می‌توانند به‌مرور خستگی‌شان کنند و انگیزه‌شان را کم کنند.", "supports": [item["id"] for item in plan["audience"]]},
+        "conclusion": {"text_fa": "نتیجه، اثری بلندپروازانه است که ارزشش به میزان صبر بازیکن و علاقه‌اش به درگیری با سیستم‌های متعدد بستگی دارد. در بهترین حالت، تجربه‌ای ماندگار می‌سازد که کاوش و کنترل مبارزه محور اصلی آن است؛ در بدترین حالت، مدیریت موجودی و تعادل نامنظم مبارزات، همان بلندپروازی را به مانعی برای لذت بردن از همان کاوش تبدیل می‌کنند.", "supports": [item["id"] for item in plan["conclusion"]]},
     }
     normalized, reason = _validate_single_pass_editorial(
         concise_raw, facts=facts, plan=plan, allowed_site_names=set()
     )
     assert normalized is not None, reason
+    total_words = sum(len(value["text_fa"].split()) for value in normalized.values())
+    assert 380 <= total_words <= 620, f"fixture total word count out of bounds: {total_words}"
     assert len(plan["audience"]) == 2 and len(plan["conclusion"]) == 2
     assert all(item["id"] in reporting_ids for item in plan["audience"] + plan["conclusion"])
+
+    # A well-formed article that overshoots the 450-550 target band must still
+    # be rejected by the mechanical gate, not just discouraged by the prompt.
+    bloated_raw = dict(concise_raw)
+    bloated_raw["world_gameplay"] = {
+        "text_fa": concise_raw["world_gameplay"]["text_fa"] + (" " + "کلمه " * 400).strip(),
+        "supports": concise_raw["world_gameplay"]["supports"],
+    }
+    bloated_normalized, bloated_reason = _validate_single_pass_editorial(
+        bloated_raw, facts=facts, plan=plan, allowed_site_names=set()
+    )
+    assert bloated_normalized is None
+    assert bloated_reason and "بلند" in bloated_reason
 
 def run_longform_retry_regression_checks() -> None:
     sample_facts = {
@@ -5005,6 +5175,57 @@ def run_longform_retry_regression_checks() -> None:
         {"supports": ["F1", "F2"]},
         sample_facts,
     )
+
+
+def run_editorial_trim_pass_regression_checks() -> None:
+    original_texts = {
+        "opening": "این بازی در بهترین لحظاتش کاوش را جدی می‌گیرد، اما یک ضعف مشخص همیشه در پس‌زمینه باقی می‌ماند.",
+        "world_gameplay": "کنترل حرکت هنگام مبارزه روان است و زنجیره کردن حرکات پیاپی حس رضایت‌بخشی می‌سازد.",
+        "friction": "مدیریت موجودی دست‌وپاگیر است، چون بازیکن را مدام و بدون دلیل روشن به منوهای فرعی برمی‌گرداند.",
+        "audience": "برای بازیکنی که از آزمون‌وخطا لذت می‌برد مناسب است، برای بقیه شاید خسته‌کننده باشد.",
+        "conclusion": "ارزش این بازی به میزان تحمل بازیکن برای این اصطکاک‌ها بستگی دارد.",
+    }
+
+    # 1) A genuine trim (shorter, same numbers/names, no new claims) must pass.
+    good_edit = {
+        key: {"text_fa": text} for key, text in original_texts.items()
+    }
+    good_edit["friction"] = {"text_fa": "مدیریت موجودی دست‌وپاگیر است، چون بازیکن را مدام به منوهای فرعی برمی‌گرداند."}
+    is_safe, reason = _trim_pass_is_safe(original_texts, good_edit, set())
+    assert is_safe, reason
+
+    # 2) An edit that got LONGER instead of shorter must be rejected.
+    longer_edit = dict(good_edit)
+    longer_edit["opening"] = {
+        "text_fa": original_texts["opening"] + " و این موضوع تا انتهای بازی هم با جزئیات بیشتری ادامه پیدا می‌کند و حتی به شکل‌های تازه‌ای هم بروز می‌کند."
+    }
+    is_safe, reason = _trim_pass_is_safe(original_texts, longer_edit, set())
+    assert not is_safe and "بلندتر" in reason
+
+    # 3) An edit that introduces a brand-new number must be rejected.
+    new_number_edit = dict(good_edit)
+    new_number_edit["conclusion"] = {"text_fa": "امتیاز این بازی ۹۵ از ۱۰۰ است."}
+    is_safe, reason = _trim_pass_is_safe(original_texts, new_number_edit, set())
+    assert not is_safe and "عدد" in reason
+
+    # 4) An edit that introduces a source/site name must be rejected.
+    site_name_edit = dict(good_edit)
+    site_name_edit["audience"] = {"text_fa": original_texts["audience"] + " به گفته‌ی IGN."}
+    is_safe, reason = _trim_pass_is_safe(original_texts, site_name_edit, {"IGN"})
+    assert not is_safe and "منبع" in reason
+
+    # 5) Over-trimming (losing more than half the section) must be rejected.
+    over_trim_edit = dict(good_edit)
+    over_trim_edit["world_gameplay"] = {"text_fa": "کنترل خوب است."}
+    is_safe, reason = _trim_pass_is_safe(original_texts, over_trim_edit, set())
+    assert not is_safe and "کوتاه" in reason
+
+    # 6) apply_editorial_trim_pass must return sections untouched when client is None.
+    sections = {f"{key}_fa": text for key, text in original_texts.items()}
+    sections["method"] = "openai_single_pass_grounded_editorial_v33"
+    unchanged = apply_editorial_trim_pass(None, sections, set())
+    assert unchanged == sections
+
 
 def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     """
@@ -5062,7 +5283,7 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
     if glance_lines:
         markdown.extend(["", "## در یک نگاه", *glance_lines])
 
-    markdown.extend(["", "## Crimson Desert در عمل", sections["opening_fa"]])
+    markdown.extend(["", f"## {game} در عمل", sections["opening_fa"]])
     markdown.extend(["", "## جهان بازی و گیم‌پلی", sections["world_gameplay_fa"]])
     markdown.extend(["", "## اصطکاک‌هایی که نمی‌شود نادیده گرفت", sections["friction_fa"]])
     markdown.extend(["", "## مناسب چه کسی است؟", sections["audience_fa"]])
@@ -6047,6 +6268,8 @@ def main():
     print("Long-form retry regression checks: passed")
     run_single_pass_editorial_regression_checks()
     print("Single-pass editorial regression checks: passed")
+    run_editorial_trim_pass_regression_checks()
+    print("Editorial trim pass regression checks: passed")
 
     if not OPENAI_API_KEY:
         fail("OPENAI_API_KEY is missing.")
