@@ -4,6 +4,7 @@ import sys
 import json
 import yaml
 import hashlib
+import math
 from datetime import datetime, timezone
 import requests
 from html import unescape, escape
@@ -1567,8 +1568,8 @@ def extract_review_score(page: dict) -> dict:
         header_text = visible_text[:2500]
 
         wccftech_patterns = [
-            r"(?is)\bGaming\s+(?:Score\s*)?(\d(?:\.\d+)?)\b",
-            r"(?is)\bScore\s*:?\s*(\d(?:\.\d+)?)\b.{0,120}?\bGaming\b",
+            r"(?is)\bGaming\s+(?:Score\s*)?(\d{1,2}(?:\.\d+)?)\b",
+            r"(?is)\bScore\s*:?\s*(\d{1,2}(?:\.\d+)?)\b.{0,120}?\bGaming\b",
         ]
 
         for pattern in wccftech_patterns:
@@ -2422,18 +2423,49 @@ def build_evidence_index(review_sources: list[dict]) -> dict[str, dict]:
     return evidence_index
 
 
+def _floor_to_half(value) -> float | None:
+    """عدد را همیشه رو به پایین به نزدیک‌ترین نیم‌نمره می‌برد."""
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    numeric = min(max(numeric, 1.0), 10.0)
+    return math.floor((numeric + 1e-9) * 2) / 2
+
+
+def _round_to_half(value) -> float | None:
+    """برای امتیازهای جزئی فقط عدد کامل یا نیم‌نمره تولید می‌کند."""
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    numeric = min(max(numeric, 1.0), 10.0)
+    return round(numeric * 2) / 2
+
+
+def _source_is_score_eligible(source: dict) -> bool:
+    """منبع manual_review یا کم‌کیفیت نباید روی هیچ امتیازی اثر بگذارد."""
+    runtime = source.get("runtime_quality_audit") or {}
+    if runtime:
+        return runtime.get("status") == "acceptable"
+    cached = (source.get("evidence_cache") or {}).get("quality_audit") or {}
+    return cached.get("status") == "acceptable"
+
+
 def calculate_overall_score(dossier: dict) -> dict:
     """
-    امتیاز کلی را شفاف و قطعی می‌سازد:
-    70٪ متاکریتیک + 30٪ میانگین نمره‌ی نقدهای انتخاب‌شده.
-    سپس به بازه‌ی مجازِ نزدیک به متاکریتیک محدود می‌شود.
+    امتیاز نهایی Poormaz مستقیماً از متاکریتیک می‌آید و همیشه رو به پایین
+    به نزدیک‌ترین نیم‌نمره گرد می‌شود. مثال: 88 -> 8.5 و 77 -> 7.5.
+    نمره‌های نقدهای انتخاب‌شده فقط برای گزارش و کنترل تحریریه نگه داشته
+    می‌شوند و منبعی که acceptable نیست، در آن میانگین هم وارد نمی‌شود.
     """
-    metacritic_raw = (
-        dossier.get("metacritic", {}) or {}
-    ).get("metascore_100")
+    metacritic_raw = (dossier.get("metacritic", {}) or {}).get("metascore_100")
 
     metacritic_score = None
-
     try:
         if metacritic_raw is not None:
             metacritic_score = round(float(metacritic_raw) / 10, 1)
@@ -2441,49 +2473,34 @@ def calculate_overall_score(dossier: dict) -> dict:
         metacritic_score = None
 
     source_scores = []
-
     for source in dossier.get("review_sources", []) or []:
+        if not _source_is_score_eligible(source):
+            continue
         score = as_score_10(source.get("review_score_10"))
-
         if score is not None:
             source_scores.append(score)
 
     source_average = (
-        round(sum(source_scores) / len(source_scores), 1)
+        round(sum(source_scores) / len(source_scores), 2)
         if source_scores
         else None
     )
 
-    if metacritic_score is not None and source_average is not None:
-        raw_score = (
-            REVIEW_METACRITIC_WEIGHT * metacritic_score
-            + (1 - REVIEW_METACRITIC_WEIGHT) * source_average
-        )
-
-        lower = max(0.0, metacritic_score - REVIEW_SCORE_MAX_DELTA)
-        upper = min(10.0, metacritic_score + REVIEW_SCORE_MAX_DELTA)
-        overall_score = round(min(max(raw_score, lower), upper), 1)
-
+    if metacritic_score is not None:
+        overall_score = _floor_to_half(metacritic_score)
         formula_fa = (
-            "امتیاز کلی با فرمول ۷۰٪ نمره متاکریتیک و ۳۰٪ میانگین "
-            "نقدهای انتخاب‌شده محاسبه شده و برای فاصله نگرفتن از "
-            "اجماع منتقدان محدود شده است."
-        )
-    elif metacritic_score is not None:
-        overall_score = metacritic_score
-        formula_fa = (
-            "به‌دلیل نبود نمره معتبر از نقدهای انتخاب‌شده، "
-            "امتیاز کلی برابر با متاکریتیک است."
+            "امتیاز نهایی از نمره متاکریتیک گرفته شده و همیشه رو به پایین "
+            "به نزدیک‌ترین نیم‌نمره گرد شده است."
         )
     elif source_average is not None:
-        overall_score = source_average
+        overall_score = _floor_to_half(source_average)
         formula_fa = (
-            "به‌دلیل نبود متاکریتیک، امتیاز کلی از میانگین "
-            "نقدهای انتخاب‌شده به دست آمده است."
+            "به‌دلیل نبود نمره متاکریتیک، میانگین نقدهای معتبر رو به پایین "
+            "به نزدیک‌ترین نیم‌نمره گرد شده است."
         )
     else:
         overall_score = None
-        formula_fa = "داده‌ی عددی کافی برای محاسبه امتیاز کلی وجود ندارد."
+        formula_fa = "داده‌ی عددی کافی برای محاسبه امتیاز نهایی وجود ندارد."
 
     return {
         "overall_score_10": overall_score,
@@ -2491,9 +2508,8 @@ def calculate_overall_score(dossier: dict) -> dict:
         "selected_review_average_10": source_average,
         "selected_review_scores": source_scores,
         "formula_fa": formula_fa,
+        "rounding_policy": "floor_to_nearest_0.5",
     }
-
-
 
 def _matches_any(text: str, patterns: tuple[str, ...]) -> bool:
     return any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns)
@@ -2655,6 +2671,89 @@ CATEGORY_LABELS = {
 }
 
 
+SCORECARD_CATEGORY_ORDER = (
+    "gameplay",
+    "visuals",
+    "story",
+    "world_design",
+    "technical",
+    "value",
+)
+
+SCORECARD_CATEGORY_LABELS = {
+    "gameplay": "گیم‌پلی",
+    "visuals": "گرافیک و طراحی هنری",
+    "story": "داستان و شخصیت‌پردازی",
+    "world_design": "طراحی جهان و اکتشاف",
+    "technical": "عملکرد فنی",
+    "value": "ارزش خرید و محتوا",
+}
+
+
+def _signal_direction(evidence_signals: list[dict]) -> float:
+    values = {
+        "positive": 1.0,
+        "negative": -1.0,
+        "mixed": 0.0,
+        "neutral": 0.0,
+    }
+    if not evidence_signals:
+        return 0.0
+    return sum(values.get(item.get("sentiment"), 0.0) for item in evidence_signals) / len(evidence_signals)
+
+
+def _balance_scorecard_to_overall(rows: list[dict], overall_score: float) -> list[dict]:
+    """جمع شش امتیاز جزئی را دقیقاً برابر شش برابر امتیاز نهایی می‌کند."""
+    if not rows:
+        return rows
+
+    target_units = int(round(float(overall_score) * 2)) * len(rows)
+    for row in rows:
+        row["_units"] = int(round(float(row["score_10"]) * 2))
+        row["_raw_units"] = float(row.get("_raw_score_10", row["score_10"])) * 2
+
+    def choose(direction: int) -> dict | None:
+        if direction > 0:
+            candidates = [row for row in rows if row["_units"] < 20]
+            candidates.sort(
+                key=lambda row: (
+                    row["_raw_units"] - row["_units"],
+                    row.get("_direction_value", 0.0),
+                    row.get("evidence_count", 0),
+                    -row["_units"],
+                ),
+                reverse=True,
+            )
+        else:
+            candidates = [row for row in rows if row["_units"] > 2]
+            candidates.sort(
+                key=lambda row: (
+                    row["_raw_units"] - row["_units"],
+                    row.get("_direction_value", 0.0),
+                    -row.get("evidence_count", 0),
+                    row["_units"],
+                )
+            )
+        return candidates[0] if candidates else None
+
+    guard = 0
+    while sum(row["_units"] for row in rows) != target_units and guard < 500:
+        guard += 1
+        direction = 1 if sum(row["_units"] for row in rows) < target_units else -1
+        row = choose(direction)
+        if row is None:
+            break
+        row["_units"] += direction
+
+    for row in rows:
+        row["score_10"] = row.pop("_units") / 2
+        row.pop("_raw_units", None)
+        row.pop("_raw_score_10", None)
+        row.pop("_direction_value", None)
+
+    return rows
+
+
 def classify_evidence_rule_based(item: dict) -> tuple[str | None, str | None]:
     """
     دسته‌بندی قانون‌محور با اولویتِ معنایی.
@@ -2701,6 +2800,41 @@ def classify_evidence_rule_based(item: dict) -> tuple[str | None, str | None]:
         return None, None
 
     return category, sentiment
+
+
+def run_wccftech_score_extraction_regression_checks() -> None:
+    """
+    قفل کردنِ باگِ واقعی: الگوی امتیازِ Wccftech از \\d به‌جای \\d{1,2} استفاده
+    می‌کرد، پس یک نمره‌ی کامل «۱۰» هرگز به‌عنوان نمره تشخیص داده نمی‌شد (چون
+    \\d فقط یک رقم می‌گیرد و مرزِ کلمه بعد از رقمِ اول شکست می‌خورد). این تست
+    دقیقاً همان صفحه‌ی واقعی را شبیه‌سازی می‌کند، نه یک سناریوی انتزاعیِ مشابه.
+    """
+    page_perfect_score = {
+        "url": "https://wccftech.com/review/crimson-desert-review-blissfully-lost-in-pywell/",
+        "html": "<html><body>Crimson Desert Review</body></html>",
+        "score_text": (
+            "Crimson Desert Review – Blissfully Lost In Pywel. "
+            "Gaming Score 10. A staggering achievement in open-world design "
+            "that rarely lets up across its many locations and side content."
+        ),
+    }
+    result_perfect = extract_review_score(page_perfect_score)
+    assert result_perfect["review_score_10"] == 10.0, (
+        f"a perfect Wccftech score of 10 must be captured as 10.0, got: {result_perfect}"
+    )
+    assert result_perfect["score_method"] == "wccftech_header_score"
+
+    # امتیازهای اعشاریِ معمولی (که همیشه درست کار می‌کردند) نباید با این
+    # اصلاح خراب شوند.
+    page_decimal_score = {
+        "url": "https://wccftech.com/review/some-other-game-review/",
+        "html": "<html><body>Some Other Game Review</body></html>",
+        "score_text": "Some Other Game Review. Gaming Score 8.5. A strong outing overall.",
+    }
+    result_decimal = extract_review_score(page_decimal_score)
+    assert result_decimal["review_score_10"] == 8.5, (
+        f"a normal decimal Wccftech score must still parse correctly, got: {result_decimal}"
+    )
 
 
 def run_rule_based_regression_checks() -> None:
@@ -2798,25 +2932,15 @@ def run_metadata_regression_checks() -> None:
 def category_score_from_evidence(
     overall_score: float | None,
     evidence_signals: list[dict],
-) -> tuple[float | None, str, str]:
+) -> tuple[float | None, str, str, float]:
     """
-    امتیاز دسته‌ای را با قانون ثابت می‌سازد. یک شاهد تنها اجازه ندارد
-    دسته را بیش از حد از امتیاز کلی دور کند.
+    امتیاز اولیه‌ی هر بخش را از جهت شواهد می‌سازد. خروجی بعداً در سطح کل
+    کارت امتیاز متعادل می‌شود تا میانگین شش بخش دقیقاً برابر امتیاز نهایی باشد.
     """
-    if overall_score is None or not evidence_signals:
-        return None, "نامشخص", "برداشت اولیه"
+    if overall_score is None:
+        return None, "نامشخص", "داده محدود", 0.0
 
-    signal_values = {
-        "positive": 1.0,
-        "negative": -1.0,
-        "mixed": 0.0,
-        "neutral": 0.0,
-    }
-    values = [
-        signal_values.get(item.get("sentiment"), 0.0)
-        for item in evidence_signals
-    ]
-    direction_value = sum(values) / len(values)
+    direction_value = _signal_direction(evidence_signals)
     evidence_count = len(evidence_signals)
     source_count = len({
         item.get("site_name", "")
@@ -2824,36 +2948,33 @@ def category_score_from_evidence(
         if item.get("site_name")
     })
 
-    if evidence_count >= 3 and source_count >= 2:
+    if evidence_count >= 4 and source_count >= 3:
+        coverage_factor = 1.0
+        confidence_fa = "خوب"
+    elif evidence_count >= 3 and source_count >= 2:
         coverage_factor = 0.75
-    elif evidence_count >= 2 or source_count >= 2:
-        coverage_factor = 0.50
-    else:
-        coverage_factor = 0.25
-
-    delta = REVIEW_CATEGORY_MAX_DELTA * direction_value * coverage_factor
-    raw_score = overall_score + delta
-
-    lower = max(0.0, overall_score - REVIEW_CATEGORY_MAX_DELTA)
-    upper = min(10.0, overall_score + REVIEW_CATEGORY_MAX_DELTA)
-    score_10 = round(min(max(raw_score, lower), upper), 1)
-
-    if direction_value >= 0.50:
-        trend_fa = "مثبت"
-    elif direction_value <= -0.50:
-        trend_fa = "منفی"
-    else:
-        trend_fa = "ترکیبی"
-
-    if evidence_count >= 3 and source_count >= 2:
         confidence_fa = "متوسط"
-    elif evidence_count >= 2 or source_count >= 2:
+    elif evidence_count >= 1:
+        coverage_factor = 0.40
         confidence_fa = "محدود"
     else:
-        confidence_fa = "برداشت اولیه"
+        coverage_factor = 0.0
+        confidence_fa = "داده محدود"
 
-    return score_10, trend_fa, confidence_fa
+    raw_score = float(overall_score) + REVIEW_CATEGORY_MAX_DELTA * direction_value * coverage_factor
+    raw_score = min(max(raw_score, 1.0), 10.0)
+    score_10 = _round_to_half(raw_score)
 
+    if direction_value >= 0.35:
+        trend_fa = "مثبت"
+    elif direction_value <= -0.35:
+        trend_fa = "منفی"
+    elif evidence_signals:
+        trend_fa = "ترکیبی"
+    else:
+        trend_fa = "داده محدود"
+
+    return score_10, trend_fa, confidence_fa, raw_score
 
 def build_game_intro(
     client: OpenAI,
@@ -2923,34 +3044,42 @@ Rules:
 
 def build_poormaz_assessment(client: OpenAI, dossier: dict) -> dict:
     """
-    کارت امتیاز را فقط از شواهد تأییدشده و قواعد قابل‌بررسی می‌سازد.
-    مدل در این مرحله هیچ نقشی در دسته‌بندی ندارد.
+    شش امتیاز ثابت Poormaz را فقط از منابع acceptable می‌سازد. همه‌ی نمره‌ها
+    کامل یا نیم‌نمره‌اند و میانگینشان دقیقاً با امتیاز نهایی برابر است.
     """
-    del client  # API در این مرحله عمداً استفاده نمی‌شود.
+    del client
 
     score_info = calculate_overall_score(dossier)
-    evidence_index = build_evidence_index(
-        dossier.get("review_sources", []) or []
-    )
+    eligible_sources = [
+        source for source in dossier.get("review_sources", []) or []
+        if _source_is_score_eligible(source)
+    ]
+    evidence_index = build_evidence_index(eligible_sources)
 
-    if not evidence_index or score_info.get("overall_score_10") is None:
+    if score_info.get("overall_score_10") is None:
         return {
             **score_info,
             "scorecard": [],
+            "scorecard_average_10": None,
+            "scorecard_sum_10": None,
             "evidence_index": evidence_index,
-            "classification_method": "rule_based",
+            "classification_method": "rule_based_balanced_half_steps",
             "uncategorized_refs": [],
         }
 
     signals_by_category: dict[str, list[dict]] = {
-        key: [] for key in CATEGORY_LABELS
+        key: [] for key in SCORECARD_CATEGORY_ORDER
     }
     uncategorized_refs = []
 
     for ref_id, item in evidence_index.items():
         category, sentiment = classify_evidence_rule_based(item)
+        # شواهد صوتی در مقاله باقی می‌مانند، اما برای کارت شش‌گانه به بخش
+        # ارائه‌ی هنری کمک می‌کنند تا یک کارت هفتمِ ناخواسته نسازند.
+        if category == "audio":
+            category = "visuals"
 
-        if category is None or sentiment is None:
+        if category not in signals_by_category or sentiment is None:
             uncategorized_refs.append(ref_id)
             continue
 
@@ -2963,61 +3092,57 @@ def build_poormaz_assessment(client: OpenAI, dossier: dict) -> dict:
         )
 
     scorecard = []
+    overall = float(score_info["overall_score_10"])
 
-    for key in CATEGORY_LABELS:
+    for key in SCORECARD_CATEGORY_ORDER:
         signals = signals_by_category[key]
-
-        if not signals:
-            continue
-
-        score_10, trend_fa, confidence_fa = category_score_from_evidence(
-            score_info["overall_score_10"],
+        score_10, trend_fa, confidence_fa, raw_score = category_score_from_evidence(
+            overall,
             signals,
         )
-
-        if score_10 is None:
-            continue
-
         scorecard.append(
             {
                 "key": key,
-                "label_fa": CATEGORY_LABELS[key],
-                "score_10": score_10,
+                "label_fa": SCORECARD_CATEGORY_LABELS[key],
+                "score_10": score_10 if score_10 is not None else overall,
                 "trend_fa": trend_fa,
                 "confidence_fa": confidence_fa,
                 "evidence_count": len(signals),
                 "source_count": len({
-                    signal["site_name"]
-                    for signal in signals
-                    if signal["site_name"]
+                    signal["site_name"] for signal in signals if signal["site_name"]
                 }),
-                "supported_refs": [
-                    signal["ref_id"]
-                    for signal in signals
-                ],
+                "supported_refs": [signal["ref_id"] for signal in signals],
                 "evidence_signals": [
-                    {
-                        "ref_id": signal["ref_id"],
-                        "sentiment": signal["sentiment"],
-                    }
+                    {"ref_id": signal["ref_id"], "sentiment": signal["sentiment"]}
                     for signal in signals
                 ],
+                "_raw_score_10": raw_score,
+                "_direction_value": _signal_direction(signals),
             }
         )
+
+    scorecard = _balance_scorecard_to_overall(scorecard, overall)
+    scorecard_sum = round(sum(float(row["score_10"]) for row in scorecard), 1)
+    scorecard_average = round(scorecard_sum / len(scorecard), 1)
 
     return {
         **score_info,
         "scorecard": scorecard,
+        "scorecard_average_10": scorecard_average,
+        "scorecard_sum_10": scorecard_sum,
+        "scorecard_average_matches_overall": abs(scorecard_average - overall) < 1e-9,
         "evidence_index": evidence_index,
-        "classification_method": "rule_based",
+        "classification_method": "rule_based_balanced_half_steps",
         "uncategorized_refs": uncategorized_refs,
     }
 
 def _format_score_10(value) -> str:
     try:
-        return f"{float(value):.1f}/10"
+        numeric = float(value)
     except (TypeError, ValueError):
         return "نامشخص"
+    number = str(int(numeric)) if numeric.is_integer() else f"{numeric:.1f}"
+    return f"{number}/10"
 
 
 def _source_score_label(source: dict) -> str:
@@ -3956,32 +4081,32 @@ def _build_grounded_article_blocks(dossier: dict) -> dict:
 
 
 def _public_article_sources(dossier: dict) -> list[dict]:
-    """
-    متن عمومی فقط از منابعی ساخته می‌شود که در همین پرونده از کنترل کیفیت
-    عبور کرده‌اند. یک منبع نازک یا علامت‌خورده برای بازبینی دستی، همچنان در
-    dossier می‌ماند اما لحن نقد نهایی را تعیین نمی‌کند.
-    """
-    sources = list(dossier.get("review_sources", []) or [])
-    usable = [
-        source for source in sources
-        if (source.get("runtime_quality_audit") or {}).get("status") == "acceptable"
+    """متن عمومی و امتیازدهی فقط از منابعی با وضعیت acceptable استفاده می‌کنند."""
+    return [
+        source for source in dossier.get("review_sources", []) or []
+        if _source_is_score_eligible(source)
     ]
-    return usable if len(usable) >= REVIEW_MIN_SOURCES else sources
 
 
 _PUBLIC_TOPIC_LABELS = {
     "world_design": "جهان بازی و اکتشاف",
     "gameplay": "گیم‌پلی و مبارزه",
-    "story": "روایت و نوشتار",
+    "visuals": "گرافیک و طراحی هنری",
+    "audio": "صداگذاری و موسیقی",
+    "story": "روایت و شخصیت‌پردازی",
     "technical": "فنی و عملکرد",
+    "value": "ارزش خرید و محتوا",
     "general": "تصویر کلی",
 }
 
 _PUBLIC_TOPIC_ORDER = (
-    "world_design",
     "gameplay",
-    "story",
+    "world_design",
+    "visuals",
     "technical",
+    "story",
+    "value",
+    "audio",
     "general",
 )
 
@@ -4002,6 +4127,8 @@ _PUBLIC_SPECIFIC_POINT_MARKERS = (
     "رئیس", "پازل", "سیستم", "مکانیک", "کنترل", "اسب", "داستان",
     "روایت", "شخصیت", "نوشتار", "ترجمه", "ماموریت", "عملکرد", "فنی",
     "باگ", "موجودی", "ذخیره", "زمان", "طراحی", "پیشرفت",
+    "گرافیک", "نورپردازی", "انیمیشن", "بافت", "صداگذاری", "موسیقی",
+    "قیمت", "محتوا", "ارزش خرید", "تکرارپذیری",
 )
 
 
@@ -4061,7 +4188,7 @@ def _public_fact_key(point_fa: str) -> str:
 
 def _public_facts_from_sources(review_sources: list[dict]) -> list[dict]:
     """
-    یک brief فشرده برای نویسنده می‌سازد. هر منبع حداکثر سه واقعیت دارد تا یک
+    یک brief فشرده برای نویسنده می‌سازد. هر منبع حداکثر پنج واقعیت دارد تا یک
     نقد بلند، ناخواسته به بازنویسی یک سایت واحد تبدیل نشود.
     """
     raw = []
@@ -4122,10 +4249,13 @@ def _public_facts_from_sources(review_sources: list[dict]) -> list[dict]:
     source_counts: dict[str, int] = {}
     topic_counts: dict[str, int] = {}
     topic_limits = {
-        "world_design": 5,
-        "gameplay": 5,
-        "story": 4,
-        "technical": 2,
+        "gameplay": 6,
+        "world_design": 6,
+        "visuals": 4,
+        "story": 5,
+        "technical": 4,
+        "value": 3,
+        "audio": 3,
         "general": 2,
     }
 
@@ -4136,7 +4266,7 @@ def _public_facts_from_sources(review_sources: list[dict]) -> list[dict]:
 
         site_name = item["site_name"] or "Unknown"
         topic = item["topic"]
-        if source_counts.get(site_name, 0) >= 3:
+        if source_counts.get(site_name, 0) >= 5:
             continue
         if topic_counts.get(topic, 0) >= topic_limits.get(topic, 3):
             continue
@@ -4146,20 +4276,23 @@ def _public_facts_from_sources(review_sources: list[dict]) -> list[dict]:
         topic_counts[topic] = topic_counts.get(topic, 0) + 1
         selected.append({key: value for key, value in item.items() if key != "evidence_key"})
 
-    return selected[:16]
+    return selected[:24]
 
 
 def _public_article_fact_pack(dossier: dict) -> dict:
     review_sources = _public_article_sources(dossier)
     assessment = dossier.get("poormaz_assessment", {}) or {}
     metacritic = dossier.get("metacritic", {}) or {}
+    game_intro = dossier.get("game_intro", {}) or {}
 
     return {
         "game": clean_text(str(dossier.get("game") or "")) or "بازی",
         "platform": clean_text(str(dossier.get("platform") or "")),
+        "game_intro_fa": clean_text(str(game_intro.get("intro_fa") or "")),
         "poormaz_score": assessment.get("overall_score_10"),
         "metascore": metacritic.get("metascore_100"),
         "critic_count": metacritic.get("critic_review_count"),
+        "scorecard": assessment.get("scorecard", []) or [],
         "facts": _public_facts_from_sources(review_sources),
         "sources": review_sources,
     }
@@ -4281,42 +4414,6 @@ def _public_section_validation_reason(
     return None
 
 
-def _normalize_editorial_section(
-    value,
-    *,
-    allowed_fact_ids: set[str],
-    fact_by_id: dict[str, dict],
-    min_words: int,
-    max_words: int,
-    min_supports: int,
-    required_topics: set[str] | None = None,
-    required_sentiments: set[str] | None = None,
-    allowed_site_names: set[str],
-) -> dict | None:
-    reason = _public_section_validation_reason(
-        value,
-        allowed_fact_ids=allowed_fact_ids,
-        fact_by_id=fact_by_id,
-        min_words=min_words,
-        max_words=max_words,
-        min_supports=min_supports,
-        required_topics=required_topics,
-        required_sentiments=required_sentiments,
-        allowed_site_names=allowed_site_names,
-    )
-    if reason:
-        return None
-
-    text_fa = clean_text(str(value.get("text_fa") or ""))
-    supports = []
-    for ref in value.get("supports", []) or []:
-        ref = clean_text(str(ref or ""))
-        if ref in allowed_fact_ids and ref not in supports:
-            supports.append(ref)
-
-    return {"text_fa": text_fa, "supports": supports}
-
-
 def _section_has_balanced_supports(section: dict, fact_by_id: dict[str, dict]) -> bool:
     sentiments = {
         fact_by_id[item].get("sentiment")
@@ -4326,18 +4423,32 @@ def _section_has_balanced_supports(section: dict, fact_by_id: dict[str, dict]) -
     return "positive" in sentiments and bool(sentiments & {"negative", "caution"})
 
 
-def _retry_longform_editorial_section(
+_SINGLE_PASS_SECTION_LABELS = {
+    "opening": "شروع نقد و تز اصلی",
+    "world_gameplay": "جهان بازی و گیم‌پلی",
+    "friction": "اصطکاک‌ها و ضعف‌ها",
+    "audience": "مخاطب مناسب",
+    "conclusion": "جمع‌بندی",
+}
+
+
+def _write_targeted_section_revision(
     client: OpenAI,
     *,
     key: str,
+    game: str,
+    assigned_facts: list[dict],
     spec: dict,
-    facts: dict,
-    fact_by_id: dict[str, dict],
     allowed_site_names: set[str],
     failure_reason: str,
-    require_balanced_supports: bool,
 ) -> dict | None:
-    """فقط همان بخش مردود را بازنویسی می‌کند، نه کل مقاله را."""
+    """
+    پیش از هر بازنویسیِ کل مقاله یا هر fallback، فقط همان یک بخشِ مردود را،
+    با همان مجموعه‌ی واقعیت‌های از پیش قفل‌شده (نه یک مخزن بزرگ‌تر برای
+    انتخاب)، دوباره می‌نویسد. این دقیقاً «پاسِ نگارشِ» پیش از تصمیمِ fallback
+    است. اگر خروجی باز هم رد شود یا OpenAI خطا بدهد، None برمی‌گردد و تصمیم
+    نهایی (بازنویسیِ کل مقاله، سپس در نهایت fallback) به تماس‌گیرنده می‌رسد.
+    """
     writer_facts = [
         {
             "id": item["id"],
@@ -4349,99 +4460,59 @@ def _retry_longform_editorial_section(
             }.get(item.get("sentiment"), "خنثی"),
             "واقعیت": item["text_fa"],
         }
-        for item in facts.get("facts", [])
+        for item in assigned_facts
     ]
-
-    section_labels = {
-        "opening": "شروع نقد و تز اصلی",
-        "world_gameplay": "جهان بازی و گیم‌پلی",
-        "friction": "اصطکاک‌ها و ضعف‌ها",
-        "audience": "مخاطب مناسب",
-        "conclusion": "جمع‌بندی",
-    }
-    topic_label = "بدون الزام موضوعی"
-    if spec.get("required_topics"):
-        topic_label = "، ".join(
-            _PUBLIC_TOPIC_LABELS.get(topic, topic)
-            for topic in sorted(spec["required_topics"])
-        )
-    sentiment_label = "بدون الزام جهت‌گیری"
-    if spec.get("required_sentiments"):
-        sentiment_label = "، ".join(sorted(spec["required_sentiments"]))
+    section_label = _SINGLE_PASS_SECTION_LABELS.get(key, key)
 
     prompt = f"""
-You are revising ONLY one section of a Persian game review for Poormaz.
+You are revising ONLY one section of an already-mostly-approved Persian game review
+for Poormaz, about "{game}". The rest of the article is fine; only this section was
+rejected.
 
-Game: {facts["game"]}
-Section: {section_labels.get(key, key)}
-The prior attempt was rejected because: {failure_reason}
+Section: {section_label}
+Why the previous attempt was rejected: {failure_reason}
 
-Verified facts:
+You MUST use exactly these facts, and ONLY these -- they are the full boundary of
+what may be asserted in this section, not a menu to pick from:
 {json.dumps({"facts": writer_facts}, ensure_ascii=False, indent=2)}
 
 Return exactly this JSON object:
-{{
-  "text_fa": "...",
-  "supports": ["F..."]
-}}
+{{"text_fa": "..."}}
 
 Hard rules:
-- Write fluent contemporary Persian only.
-- Use only the supplied facts. Do not add game lore, plot, features, causes,
-  comparisons, scores, sources, reviewers, websites, or technical claims.
-- No headings, Markdown, bullets, URLs, English quotes, or source names.
+- Write fluent contemporary Persian prose only (no bullets, no headings, no Markdown).
+- Use only the facts above. Do not add lore, plot, features, scores, sources,
+  reviewer names, or website names.
 - Do not use: امتیاز، نمره، متاکریتیک، Poormaz، منتقد، سایت، منبع، شواهد.
-- Do not use trailer language such as وفاداری‌ها مورد آزمایش قرار می‌گیرند,
-  قهرمانان شکل می‌گیرند, سرزمین‌های سخت, or خطرات ناشناخته.
 - Explain concrete cause and effect instead of generic praise.
-- Length: {spec["min_words"]} to {spec["max_words"]} Persian words.
-- Use at least {spec["min_supports"]} distinct support IDs.
-- Required topic coverage: {topic_label}.
-- Required sentiment coverage: {sentiment_label}.
-{"- Supports must include at least one positive and one negative/caution fact." if require_balanced_supports else ""}
+- Length target: {spec["min_words"]} to {spec["max_words"]} Persian words -- this is
+  a goal, not a hard wall; a few words over or under is fine.
 """.strip()
 
     try:
-        raw = ask_openai_json(client, prompt, max_tokens=1200)
+        raw = ask_openai_json(client, prompt, max_tokens=900)
     except Exception as exc:
-        print(f"Long-form retry for '{key}' failed: {repr(exc)}")
+        print(f"Targeted writing pass for '{key}' failed: {repr(exc)}")
         return None
 
-    allowed_fact_ids = set(fact_by_id)
-    reason = _public_section_validation_reason(
-        raw,
-        allowed_fact_ids=allowed_fact_ids,
-        fact_by_id=fact_by_id,
+    text_fa = _editorial_text_value(raw)
+    if not _public_section_is_safe(
+        text_fa,
         min_words=spec["min_words"],
         max_words=spec["max_words"],
-        min_supports=spec["min_supports"],
-        required_topics=spec["required_topics"],
-        required_sentiments=spec["required_sentiments"],
         allowed_site_names=allowed_site_names,
-    )
-    if reason:
-        print(f"Long-form retry for '{key}' failed validation: {reason}")
+    ):
+        print(f"Targeted writing pass for '{key}' still failed length/safety checks.")
         return None
 
-    section = _normalize_editorial_section(
-        raw,
-        allowed_fact_ids=allowed_fact_ids,
-        fact_by_id=fact_by_id,
-        min_words=spec["min_words"],
-        max_words=spec["max_words"],
-        min_supports=spec["min_supports"],
-        required_topics=spec["required_topics"],
-        required_sentiments=spec["required_sentiments"],
-        allowed_site_names=allowed_site_names,
-    )
-    if section is None:
-        return None
-    if require_balanced_supports and not _section_has_balanced_supports(section, fact_by_id):
-        print(f"Long-form retry for '{key}' lacks balanced supports.")
+    claim_quality_reason = _editorial_claim_quality_reason(key, text_fa)
+    if claim_quality_reason:
+        print(f"Targeted writing pass for '{key}' still has a claim-quality issue: {claim_quality_reason}")
         return None
 
-    print(f"Long-form editorial section '{key}' recovered by targeted retry.")
-    return section
+    print(f"Section '{key}' fixed by a targeted writing pass (no full regeneration needed).")
+    return {"text_fa": text_fa, "supports": [item["id"] for item in assigned_facts]}
+
 
 def _fallback_text_from_facts(facts: list[dict], *, topic: set[str] | None = None, sentiment: set[str] | None = None, limit: int = 4) -> str:
     chosen = []
@@ -4450,10 +4521,17 @@ def _fallback_text_from_facts(facts: list[dict], *, topic: set[str] | None = Non
             continue
         if sentiment and item.get("sentiment") not in sentiment:
             continue
-        chosen.append(item.get("text_fa", ""))
+        text_fa = clean_text(str(item.get("text_fa") or ""))
+        # مسیر fallback، برخلاف مسیر مدل، تا اینجا هیچ‌جا نویسه‌ی خراب را چک
+        # نکرده بود؛ یک واقعیتِ خراب از استخراج قبلی می‌توانست بی‌هیچ فیلتری
+        # مستقیم وارد امن‌ترین مسیر بشود. اینجا همان آزمونی که مسیر مدل همیشه
+        # از آن رد می‌شود، اعمال می‌شود.
+        if not text_fa or _has_broken_character(text_fa):
+            continue
+        chosen.append(text_fa)
         if len(chosen) >= limit:
             break
-    return " ".join(text for text in chosen if text)
+    return " ".join(chosen)
 
 
 def _build_public_article_fallback(facts: dict) -> dict:
@@ -4498,7 +4576,7 @@ def _build_public_article_fallback(facts: dict) -> dict:
         "friction_fa": weaknesses,
         "audience_fa": audience,
         "conclusion_fa": conclusion,
-        "method": "deterministic_editorial_fallback_v26",
+        "method": "deterministic_editorial_fallback_v27",
     }
 
 
@@ -4753,6 +4831,57 @@ def _editorial_text_value(value) -> str:
     return ""
 
 
+# این فهرست فقط عبارت‌های دقیق قدیمی نیست؛ صفت‌های کلی را تک‌تک نگه می‌دارد تا
+# جایگزینیِ مترادف (مثلاً «پرجزئیات» به‌جای «غنی») دیگر از زیر چک در نرود. یک
+# جمله فقط وقتی مردود می‌شود که این صفتِ کلی را داشته باشد و هیچ جزئیات مشخصی
+# (از _PUBLIC_SPECIFIC_POINT_MARKERS) در همان جمله نیاورده باشد.
+_PROSE_GENERIC_ADJECTIVE_MARKERS = (
+    "غنی", "پرجزئیات", "زیبا", "خیره‌کننده", "شگفت‌انگیز", "عالی", "فوق‌العاده",
+    "گیرا", "پویا", "چشم‌نواز", "نفس‌گیر", "دلنشین", "لذت‌بخش", "بی‌نظیر",
+    "استثنایی", "خارق‌العاده", "تحسین‌برانگیز", "درخشان", "بی‌نقص", "جذاب",
+    "دوگانه", "ماندگار", "فراموش‌نشدنی", "منحصربه‌فرد", "چشمگیر", "افسانه‌ای",
+    "رویایی", "سرشار", "پربار", "کامل", "بی‌عیب",
+)
+
+
+# برخلاف _PUBLIC_SPECIFIC_POINT_MARKERS (که برای فیلترِ واقعیت‌های ورودی
+# ساخته شده و اسم‌های کلیِ موضوعی مثل «جهان»/«داستان»/«شخصیت» را هم دارد)،
+# این فهرست عمداً آن اسم‌های کلی را ندارد. اگر آن‌ها اینجا می‌ماندند، هر
+# جمله‌ای که فقط موضوعش را نام می‌برد (مثلاً «این جهان») بدون هیچ جزئیاتِ
+# واقعی، به‌اشتباه «مشخص» به حساب می‌آمد.
+_PROSE_CONCRETE_DETAIL_MARKERS = (
+    "اکتشاف", "کاوش", "تعامل", "مبارز", "نبرد", "باس", "رئیس", "پازل",
+    "سیستم", "مکانیک", "کنترل", "اسب", "نوشتار", "ترجمه", "ماموریت",
+    "عملکرد", "فنی", "باگ", "موجودی", "ذخیره", "پیشرفت",
+)
+
+
+def _sentence_lacks_concrete_backing(sentence: str) -> bool:
+    """
+    یک جمله را رد می‌کند اگر فقط با صفتِ کلی تعریف کند، بدون هیچ جزئیات مشخصی
+    در همان جمله. این چک روی خودِ ریشه‌ی کلمه کار می‌کند، نه یک عبارتِ دقیقِ
+    از پیش‌نویسی‌شده -- بنابراین با عوض کردن مترادف دور زده نمی‌شود.
+
+    یک استثنا: اگر جمله صریحاً همان صفتِ کلی را نفی یا رد می‌کند (مثلاً «نه با
+    یک لحظه‌ی درخشان، بلکه...»)، رد نمی‌شود -- این خودش نشانه‌ی پرهیز از
+    تعریفِ خالی است، نه خودِ مشکل.
+    """
+    folded = clean_text(sentence).casefold()
+    has_generic = any(marker in folded for marker in _PROSE_GENERIC_ADJECTIVE_MARKERS)
+    if not has_generic:
+        return False
+
+    has_specific = any(marker in folded for marker in _PROSE_CONCRETE_DETAIL_MARKERS)
+    if has_specific:
+        return False
+
+    negation_markers = ("نه ", "نه‌فقط", "نه‌تنها", " نیست", "به‌جای", "بدون ", "فاقد ")
+    if any(marker in folded for marker in negation_markers):
+        return False
+
+    return True
+
+
 def _editorial_claim_quality_reason(section_key: str, text_fa: str) -> str | None:
     """چند خطای معناییِ پرتکرار را پیش از پذیرش مقاله می‌گیرد، نه با چک طولِ بی‌معنا."""
     text = clean_text(text_fa).casefold()
@@ -4780,38 +4909,56 @@ def _editorial_claim_quality_reason(section_key: str, text_fa: str) -> str | Non
 
     generic_phrases = (
         "به طرز شگفت‌انگیزی", "از هر گوشه", "ساعت‌ها در این دنیا",
-        "تجربه‌ای دوگانه", "مشکلات جدی", "جهان غنی",
+        "تجربه‌ای دوگانه", "مشکلات جدی",
     )
     for phrase in generic_phrases:
         if phrase in text:
             return f"عبارت کلی و کم‌اطلاع دارد: «{phrase}»"
+
+    # چکِ سطحِ جمله فقط برای بخش‌هایی اعمال می‌شود که مستقیماً از واقعیت‌های
+    # مشخصِ بازی ساخته شده‌اند (شروع، جهان/گیم‌پلی، اصطکاک‌ها). بخش‌های «مخاطب»
+    # و «جمع‌بندی» ذاتاً زبانِ چارچوب‌بندی/توصیه دارند که واژگانِ مکانیک‌محور
+    # را در هر جمله نخواهد داشت؛ اجباری کردنِ آن روی این دو بخش، مثبتِ کاذب
+    # زیاد تولید می‌کند بدون این‌که مشکلِ واقعی را بگیرد.
+    if section_key in ("opening", "world_gameplay", "friction"):
+        for sentence in re.split(r"(?<=[.!؟?])\s+", clean_text(text_fa)):
+            if sentence and _sentence_lacks_concrete_backing(sentence):
+                return f"جمله‌ی کلی و بدون جزئیاتِ مشخص دارد: «{sentence.strip()}»"
+
     return None
 
 
-def _validate_single_pass_editorial(
+# این اعداد سقفِ عقل‌سلیم‌اند، نه هدفِ سخت‌گیرانه. هدفِ واقعیِ ۴۵۰ تا ۵۵۰ واژه
+# فقط در پرامپت به مدل گفته می‌شود؛ اعتبارسنجی فقط جلوی متنِ واقعاً ناقص یا
+# واقعاً افسارگسیخته را می‌گیرد، نه هر انحرافی از آن هدف را.
+_SINGLE_PASS_SECTION_SPECS = {
+    "opening": {"min_words": 24, "max_words": 220},
+    "world_gameplay": {"min_words": 55, "max_words": 420},
+    "friction": {"min_words": 55, "max_words": 420},
+    "audience": {"min_words": 24, "max_words": 220},
+    "conclusion": {"min_words": 24, "max_words": 220},
+}
+
+
+def _validate_single_pass_editorial_per_section(
     raw,
     *,
-    facts: dict,
     plan: dict[str, list[dict]],
     allowed_site_names: set[str],
-) -> tuple[dict | None, str | None]:
-    """اعتبارسنجی متن و اتصال قطعی provenance از روی نقشه‌ی قفل‌شده‌ی تحریریه.
-
-    شناسه‌ها دیگر از خروجی مدل خوانده نمی‌شوند. مدل نویسنده است، نه مسئول تایپ
-    شناسه‌های داخلی. این کار جلوی ردشدن یک متن سالم به علت JSON تزئینی را می‌گیرد.
+) -> dict[str, dict]:
     """
-    if not isinstance(raw, dict):
-        return None, "فرمت JSON مقاله معتبر نیست"
+    برخلاف _validate_single_pass_editorial، در اولین خطا متوقف نمی‌شود؛ نتیجه‌ی
+    هر بخش را جدا برمی‌گرداند تا پاسِ نگارشِ هدفمند فقط سراغ همان بخش(های)
+    مردود برود، نه این‌که کل مقاله را از نو بنویسد یا مستقیم fallback بزند.
+    """
+    results: dict[str, dict] = {}
 
-    specs = {
-        "opening": {"min_words": 35, "max_words": 95},
-        "world_gameplay": {"min_words": 80, "max_words": 175},
-        "friction": {"min_words": 80, "max_words": 175},
-        "audience": {"min_words": 40, "max_words": 100},
-        "conclusion": {"min_words": 45, "max_words": 110},
-    }
-    normalized: dict[str, dict] = {}
-    for key, spec in specs.items():
+    if not isinstance(raw, dict):
+        for key in _SINGLE_PASS_SECTION_SPECS:
+            results[key] = {"ok": False, "reason": "فرمت JSON مقاله معتبر نیست"}
+        return results
+
+    for key, spec in _SINGLE_PASS_SECTION_SPECS.items():
         text_fa = _editorial_text_value(raw.get(key))
         if not _public_section_is_safe(
             text_fa,
@@ -4820,45 +4967,58 @@ def _validate_single_pass_editorial(
             allowed_site_names=allowed_site_names,
         ):
             if not text_fa:
-                return None, f"بخش {key}: متن خالی یا فرمت نامعتبر است"
-            words = len(text_fa.split())
-            if words < spec["min_words"]:
-                return None, f"بخش {key}: متن کوتاه است ({words} واژه، حداقل {spec['min_words']})"
-            if words > spec["max_words"]:
-                return None, f"بخش {key}: متن بلند است ({words} واژه، حداکثر {spec['max_words']})"
-            return None, f"بخش {key}: متن برای انتشار امن نیست"
+                reason = f"بخش {key}: متن خالی یا فرمت نامعتبر است"
+            else:
+                words = len(text_fa.split())
+                if words < spec["min_words"]:
+                    reason = f"بخش {key}: متن کوتاه است ({words} واژه، حداقل {spec['min_words']})"
+                elif words > spec["max_words"]:
+                    reason = f"بخش {key}: متن بلند است ({words} واژه، حداکثر {spec['max_words']})"
+                else:
+                    reason = f"بخش {key}: متن برای انتشار امن نیست"
+            results[key] = {"ok": False, "reason": reason}
+            continue
 
         claim_quality_reason = _editorial_claim_quality_reason(key, text_fa)
         if claim_quality_reason:
-            return None, f"بخش {key}: {claim_quality_reason}"
+            results[key] = {"ok": False, "reason": f"بخش {key}: {claim_quality_reason}"}
+            continue
 
-        # این پیوند به نقشه‌ی سرمقاله متکی است، نه فرمت متغیر پاسخ مدل.
         assigned_ids = [item["id"] for item in plan.get(key, []) if item.get("id")]
-        normalized[key] = {"text_fa": text_fa, "supports": assigned_ids}
+        results[key] = {"ok": True, "text_fa": text_fa, "supports": assigned_ids}
 
-    total_words = sum(len(value["text_fa"].split()) for value in normalized.values())
-    if total_words > 620:
-        return None, f"مقاله بیش از حد بلند است ({total_words} واژه؛ هدف ۴۵۰ تا ۵۵۰ واژه)"
-    if total_words < 380:
-        return None, f"مقاله برای انتشار بیش از حد کوتاه است ({total_words} واژه؛ هدف ۴۵۰ تا ۵۵۰ واژه)"
-    return normalized, None
+    return results
 
 
 _TRIM_PASS_SECTION_ORDER = ("opening", "world_gameplay", "friction", "audience", "conclusion")
 
+_SECTION_DISPLAY_LABELS = {
+    "opening": "شروع نقد",
+    "world_gameplay": "جهان بازی و گیم‌پلی",
+    "friction": "اصطکاک‌ها و ضعف‌ها",
+    "audience": "مخاطب مناسب",
+    "conclusion": "جمع‌بندی",
+}
 
-def _trim_pass_is_safe(
+
+def _polish_pass_is_safe(
     original_texts: dict[str, str],
     edited_raw,
     allowed_site_names: set[str],
 ) -> tuple[bool, str | None]:
     """
-    فقط ویرایشی را قبول می‌کند که واقعاً «کوتاه‌سازی» باشد، نه بازنویسی. اگر
-    حتی یک بخش این آزمون را رد کند، کل پاسِ ویرایش نادیده گرفته می‌شود و متنِ
-    قبل از ویرایش (که خودش قبلاً تأیید شده) بدون تغییر می‌ماند.
+    برخلاف یک پاسِ صرفاً کوتاه‌کننده، این نسخه اجازه‌ی بهبود هم می‌دهد: می‌تواند
+    یک صفتِ کلی را با جزئیاتی که از قبل جای دیگری در همین مقاله تأیید شده
+    جایگزین کند. آنچه هرگز مجاز نیست، وارد کردن یک جزئیاتِ مشخصِ کاملاً تازه
+    است که نه در همین بخش و نه در بقیه‌ی مقاله‌ی اصلی نبوده -- این دقیقاً
+    مرزِ «بازآرایی از روی مطالبِ تأییدشده» در برابر «اختراعِ ادعای تازه» است.
     """
     if not isinstance(edited_raw, dict):
         return False, "خروجی ویرایش JSON معتبر نیست"
+
+    full_original_text = " ".join(
+        clean_text(original_texts.get(key, "")) for key in _TRIM_PASS_SECTION_ORDER
+    ).casefold()
 
     for key in _TRIM_PASS_SECTION_ORDER:
         original_text = clean_text(original_texts.get(key, ""))
@@ -4872,11 +5032,10 @@ def _trim_pass_is_safe(
         original_words = len(original_text.split()) or 1
         edited_words = len(edited_text.split())
 
-        # این پاس فقط باید کوتاه‌تر یا هم‌اندازه کند؛ بلندتر شدن یعنی مدل به‌جای
-        # حذف مشکل، جمله‌ی تازه اضافه کرده است.
-        if edited_words > original_words * 1.08 + 3:
-            return False, f"بخش {key} به‌جای کوتاه‌تر شدن، بلندتر شده است"
-        # افت بیش از حد یعنی احتمالاً محتوای معتبر هم حذف شده، نه فقط مشکل.
+        # این پاس هم می‌تواند کوتاه کند و هم بهبود دهد، اما نباید عملاً مقاله
+        # را از نو بنویسد یا به‌شکل مشکوکی متورم کند.
+        if edited_words > original_words * 1.35 + 8:
+            return False, f"بخش {key} بیش از حد بلندتر شده است (احتمال بازنویسیِ کامل به‌جای بهبود)"
         if edited_words < original_words * 0.5:
             return False, f"بخش {key} بیش از حد کوتاه شده است"
 
@@ -4890,19 +5049,35 @@ def _trim_pass_is_safe(
         if _editorial_claim_quality_reason(key, edited_text):
             return False, f"بخش {key} پس از ویرایش همچنان عبارت کلی یا نامعتبر دارد"
 
+        # جایگزینیِ صفتِ کلی با جزئیاتِ از-قبل-تأییدشده مجاز است؛ اختراعِ
+        # جزئیاتِ کاملاً تازه (نه در همین بخش، نه در بقیه‌ی مقاله) مجاز نیست.
+        folded_edited = edited_text.casefold()
+        folded_own_original = original_text.casefold()
+        for marker in _PUBLIC_SPECIFIC_POINT_MARKERS:
+            if (
+                marker in folded_edited
+                and marker not in folded_own_original
+                and marker not in full_original_text
+            ):
+                return False, (
+                    f"بخش {key} به‌جای بازآرایی، جزئیاتِ کاملاً تازه‌ای اضافه کرده "
+                    f"که نه در همین بخش و نه در بقیه‌ی مقاله نبوده"
+                )
+
     return True, None
 
 
-def apply_editorial_trim_pass(
+def apply_editorial_polish_pass(
     client: OpenAI,
     sections: dict,
     allowed_site_names: set[str],
 ) -> dict:
     """
-    یک پاسِ ویرایشیِ کوتاه و محدود، درست بعد از تولید مقاله‌ی تأییدشده. کار این
-    پاس فقط حذف یا کوتاه‌سازی است -- نویسه‌ی خراب، ادعای مطلقِ بی‌پشتوانه،
-    تکرار یک نکته با صفتی تازه در بخشی دیگر، و هر عبارت کلی‌ای که تا اینجا دوام
-    آورده. این پاس هرگز اجازه‌ی افزودن جمله، ادعا یا واقعیت تازه ندارد.
+    یک پاسِ ویرایشیِ محدود درست بعد از تولید مقاله‌ی تأییدشده. برخلاف یک پاسِ
+    صرفاً کوتاه‌کننده، این پاس هم می‌تواند حذف/کوتاه کند و هم بهبود دهد: مثلاً
+    یک صفتِ کلیِ بی‌پشتوانه مثل «پرجزئیات» را با ارجاع به جزئیاتی که از قبل
+    جای دیگری در همین مقاله تأیید شده جایگزین کند. آنچه هرگز مجاز نیست،
+    اختراعِ یک جزئیات یا ادعای کاملاً تازه است.
 
     اگر OpenAI در دسترس نباشد یا خروجی از آزمون‌های ایمنی رد شود، دقیقاً همان
     مقاله‌ی قبل از ویرایش بدون تغییر برگردانده می‌شود -- این پاس هرگز یک مقاله‌ی
@@ -4915,33 +5090,36 @@ def apply_editorial_trim_pass(
         key: clean_text(str(sections.get(f"{key}_fa") or ""))
         for key in _TRIM_PASS_SECTION_ORDER
     }
-    section_labels = {
-        "opening": "شروع نقد",
-        "world_gameplay": "جهان بازی و گیم‌پلی",
-        "friction": "اصطکاک‌ها و ضعف‌ها",
-        "audience": "مخاطب مناسب",
-        "conclusion": "جمع‌بندی",
-    }
 
     prompt = f"""
 You are a copy editor for a Persian game review, NOT its writer. You receive five
-already-approved sections. Your ONLY allowed actions are deleting words/sentences or
-shortening a sentence. You must NEVER add a new sentence, a new claim, a new fact, or
-rephrase clean content that has no problem.
+already-approved sections. You may:
+1. Delete or shorten broken text, unsupported absolute claims, or repeated phrasing.
+2. IMPROVE a vague/generic adjective (e.g. "detailed", "rich", "amazing", "stunning")
+   by replacing it with a reference to a concrete detail -- BUT ONLY if that concrete
+   detail is ALREADY stated somewhere in the five sections below (this section or
+   another one). You are reusing/rephrasing existing approved material, never adding
+   anything new.
+
+You must NEVER add a new fact, a new claim, a new number, or any concrete detail that
+is not already present somewhere in the five sections below.
 
 Sections (Persian labels shown for context only, keys stay in English in your reply):
-{json.dumps({section_labels[key]: original_texts[key] for key in _TRIM_PASS_SECTION_ORDER}, ensure_ascii=False, indent=2)}
+{json.dumps({_SECTION_DISPLAY_LABELS[key]: original_texts[key] for key in _TRIM_PASS_SECTION_ORDER}, ensure_ascii=False, indent=2)}
 
-Fix ONLY these problems, and ONLY by cutting or shortening:
+Fix these problems, by cutting, shortening, or substituting with already-established
+material only:
 1. Broken or garbled characters.
 2. Unsupported absolute claims ("the best game ever", "flawless", "undeniably",
    "definitely", "without question").
 3. A fact or phrase repeated across sections, or repeated within one section using a
-   different adjective. Keep the first occurrence, delete the repeat.
-4. Any remaining generic marketing phrase not immediately explained by a concrete,
-   specific reason already present in the same sentence.
-5. Over-definitive concluding language that claims more certainty than the rest of the
-   section supports.
+   different adjective. Keep the first occurrence; cut or replace the repeat.
+4. Any generic marketing adjective (rich, detailed, amazing, stunning, gripping, etc.)
+   that has no concrete backing in the same sentence -- either delete it, or replace
+   it with a short reference to a concrete detail already established elsewhere in
+   these five sections. Do not invent a new detail to justify it.
+5. Over-definitive concluding language that claims more certainty than the sections
+   themselves support.
 
 If a section already has none of these problems, return it completely unchanged,
 character for character.
@@ -4957,14 +5135,14 @@ Return exactly this JSON object, with English keys, one per section:
 """.strip()
 
     try:
-        raw = ask_openai_json(client, prompt, max_tokens=1500)
+        raw = ask_openai_json(client, prompt, max_tokens=5000)
     except Exception as exc:
-        print(f"Editorial trim pass failed, keeping pre-edit article: {repr(exc)}")
+        print(f"Editorial polish pass failed, keeping pre-edit article: {repr(exc)}")
         return sections
 
-    is_safe, reason = _trim_pass_is_safe(original_texts, raw, allowed_site_names)
+    is_safe, reason = _polish_pass_is_safe(original_texts, raw, allowed_site_names)
     if not is_safe:
-        print(f"Editorial trim pass rejected ({reason}); keeping pre-edit article.")
+        print(f"Editorial polish pass rejected ({reason}); keeping pre-edit article.")
         return sections
 
     result = dict(sections)
@@ -4979,19 +5157,23 @@ Return exactly this JSON object, with English keys, one per section:
         len(result[f"{key}_fa"].split()) for key in _TRIM_PASS_SECTION_ORDER
     )
     if changed_count:
-        print(f"Editorial trim pass shortened {changed_count} section(s).")
-        result["method"] = f"{result.get('method', '')}+trim_pass"
+        print(f"Editorial polish pass improved {changed_count} section(s).")
+        result["method"] = f"{result.get('method', '')}+polish_pass"
     else:
-        print("Editorial trim pass found nothing to cut.")
+        print("Editorial polish pass found nothing to change.")
 
     return result
 
 
 def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
     """
-    کل مقاله را در یک درخواست تولید می‌کند. اعتبارسنجی منشأ و اعتبارسنجی کیفیت
-    انتشار جدا هستند؛ این‌طوری نه مقاله‌ی کوتاهِ بی‌اثر قبول می‌شود، نه متن
-    درست صرفاً به‌خاطر یک عدد تصادفی قربانی می‌شود.
+    کل مقاله را می‌سازد. هر بخشی که یک‌بار معتبر شود -- چه در تلاش اول، چه با
+    پاسِ نگارشِ هدفمند، چه در تلاشِ کاملِ دوم -- برای همیشه نگه داشته می‌شود؛
+    هیچ تلاشِ بعدی یک بخشِ از قبل تأییدشده را دور نمی‌ریزد. اگر در پایان هم
+    یک یا دو بخش هنوز معتبر نشوند، فقط همان بخش(های) با متنِ قالب‌محورِ
+    قطعی پر می‌شوند -- نه کل مقاله. fallbackِ قالب‌محور فقط وقتی کل مقاله را
+    جایگزین می‌کند که از ابتدا شواهدِ کافی برای ساختنِ نقشه‌ی سرمقاله نبوده،
+    یا واقعاً هیچ بخشی از هیچ تلاشی قابل‌استفاده نشده باشد.
     """
     allowed_site_names = {
         clean_text(str(source.get("site_name") or ""))
@@ -5009,52 +5191,103 @@ def _write_public_article_sections(client: OpenAI, facts: dict) -> dict:
         )
         return _build_public_article_fallback(facts)
 
-    last_reason = ""
+    best: dict[str, dict] = {}
+    last_validation_reason = ""
+
     for attempt in range(2):
-        prompt = _single_pass_prompt(facts, plan, retry_reason=last_reason)
+        prompt = _single_pass_prompt(facts, plan, retry_reason=last_validation_reason)
         try:
             raw = ask_openai_json(client, prompt, max_tokens=5000)
         except Exception as exc:
-            print(f"Single-pass editorial article failed: {repr(exc)}")
-            return _build_public_article_fallback(facts)
+            print(f"Single-pass editorial article attempt {attempt + 1} failed: {repr(exc)}")
+            raw = None
 
-        normalized, reason = _validate_single_pass_editorial(
-            raw,
-            facts=facts,
-            plan=plan,
-            allowed_site_names=allowed_site_names,
+        if raw is not None:
+            per_section = _validate_single_pass_editorial_per_section(
+                raw, plan=plan, allowed_site_names=allowed_site_names
+            )
+            for key, result in per_section.items():
+                if key in best:
+                    continue  # قبلاً معتبر شده؛ هیچ تلاشِ بعدی آن را دور نمی‌ریزد.
+                if result["ok"]:
+                    best[key] = {
+                        "text_fa": result["text_fa"],
+                        "supports": result["supports"],
+                        "method": "openai_full_pass" if attempt == 0 else "openai_full_retry",
+                    }
+                    continue
+
+                last_validation_reason = result["reason"]
+                # پیش از رفتن به تلاشِ کاملِ بعدی یا fallback، پاسِ نگارشِ
+                # هدفمند فقط همین یک بخش را امتحان می‌کند.
+                spec = _SINGLE_PASS_SECTION_SPECS[key]
+                assigned_facts = plan.get(key, [])
+                if not assigned_facts:
+                    continue
+                fix = _write_targeted_section_revision(
+                    client,
+                    key=key,
+                    game=facts.get("game", ""),
+                    assigned_facts=assigned_facts,
+                    spec=spec,
+                    allowed_site_names=allowed_site_names,
+                    failure_reason=result["reason"],
+                )
+                if fix is not None:
+                    best[key] = {
+                        "text_fa": fix["text_fa"],
+                        "supports": fix["supports"],
+                        "method": "openai_targeted_fix",
+                    }
+
+        if len(best) == 5:
+            break
+
+        remaining = [key for key in _SINGLE_PASS_SECTION_SPECS if key not in best]
+        if attempt == 0 and remaining:
+            print(
+                f"Section(s) still unresolved after attempt 1 ({', '.join(remaining)}); "
+                "retrying the whole article once, but keeping every section already "
+                "validated."
+            )
+
+    if len(best) < 5:
+        missing_keys = [key for key in _SINGLE_PASS_SECTION_SPECS if key not in best]
+        print(
+            f"Could not get valid AI text for: {', '.join(missing_keys)}. Filling only "
+            "those sections with deterministic text; every AI-written section that "
+            "already passed validation is kept exactly as-is."
         )
-        if normalized is not None:
-            # _validate_single_pass_editorial already performs the publication-safe
-            # checks that matter here: valid JSON, safe text, bounded length, and
-            # deterministic evidence links from the locked editorial plan. Do not
-            # call the retired v29 quality gate again, otherwise a valid article
-            # can be rejected or crash with a missing-function NameError.
-            if attempt:
-                print("Single-pass editorial article recovered by full-article retry.")
-            total_words = sum(len(value["text_fa"].split()) for value in normalized.values())
-            sections = {
-                "opening_fa": normalized["opening"]["text_fa"],
-                "world_gameplay_fa": normalized["world_gameplay"]["text_fa"],
-                "friction_fa": normalized["friction"]["text_fa"],
-                "audience_fa": normalized["audience"]["text_fa"],
-                "conclusion_fa": normalized["conclusion"]["text_fa"],
-                "section_supports": {key: value["supports"] for key, value in normalized.items()},
-                "editorial_plan": {key: [item["id"] for item in items] for key, items in plan.items()},
-                "method": "openai_single_pass_grounded_editorial_v33",
-                "word_count": total_words,
+        deterministic = _build_public_article_fallback(facts)
+        for key in missing_keys:
+            best[key] = {
+                "text_fa": deterministic.get(f"{key}_fa", ""),
+                "supports": [item["id"] for item in plan.get(key, [])],
+                "method": "deterministic_section_fallback",
             }
-            # پاسِ ویرایشیِ کوتاه: فقط تکرار، ادعای مطلق، نویسه‌ی خراب و عبارت
-            # کلیِ باقی‌مانده را حذف می‌کند؛ هرگز مقاله را از نو نمی‌نویسد و هرگز
-            # آن را به fallback خشک تبدیل نمی‌کند (رجوع کنید به apply_editorial_trim_pass).
-            return apply_editorial_trim_pass(client, sections, allowed_site_names)
 
-        last_reason = reason or "اعتبارسنجی نامشخص"
-        if attempt == 0:
-            print(f"Single-pass editorial article failed publication quality: {last_reason}. Retrying the whole article once.")
-
-    print(f"Single-pass editorial article could not meet publication quality: {last_reason}. Using deterministic fallback.")
-    return _build_public_article_fallback(facts)
+    total_words = sum(len(value["text_fa"].split()) for value in best.values())
+    all_ai_written = all(value["method"].startswith("openai") for value in best.values())
+    sections = {
+        "opening_fa": best["opening"]["text_fa"],
+        "world_gameplay_fa": best["world_gameplay"]["text_fa"],
+        "friction_fa": best["friction"]["text_fa"],
+        "audience_fa": best["audience"]["text_fa"],
+        "conclusion_fa": best["conclusion"]["text_fa"],
+        "section_supports": {key: value["supports"] for key, value in best.items()},
+        "editorial_plan": {key: [item["id"] for item in items] for key, items in plan.items()},
+        "section_methods": {key: value["method"] for key, value in best.items()},
+        "method": (
+            "openai_single_pass_grounded_editorial_v34"
+            if all_ai_written
+            else "openai_partial_with_deterministic_sections_v34"
+        ),
+        "word_count": total_words,
+    }
+    # پاسِ ویرایشِ نهایی هم می‌تواند کوتاه کند و هم با ارجاع به جزئیاتِ
+    # از-قبل-موجود بهبود دهد؛ هرگز مقاله را از نو نمی‌نویسد و هرگز یک بخشِ خوب
+    # را با متنِ قالب‌محور عوض نمی‌کند (رجوع کنید به apply_editorial_polish_pass).
+    return apply_editorial_polish_pass(client, sections, allowed_site_names)
 
 def run_public_article_regression_checks() -> None:
     assert not _public_section_is_safe(
@@ -5132,25 +5365,42 @@ def run_single_pass_editorial_regression_checks() -> None:
         "audience": {"text_fa": "برای بازیکنی که از آزمون‌وخطا، کشف تدریجی و ساختن مسیر شخصی در دنیایی بزرگ لذت می‌برد، این تجربه می‌تواند جذاب باشد و ساعت‌های زیادی از او بگیرد، بی‌آنکه احساس اتلاف وقت کند. کسانی که ریتم کاملاً روان، مدیریت ساده‌تر منابع و راهنمایی دائمی می‌خواهند، بهتر است با انتظار محتاطانه‌تری وارد آن شوند، چون همین نقطه‌ها می‌توانند به‌مرور خستگی‌شان کنند و انگیزه‌شان را کم کنند.", "supports": [item["id"] for item in plan["audience"]]},
         "conclusion": {"text_fa": "نتیجه، اثری بلندپروازانه است که ارزشش به میزان صبر بازیکن و علاقه‌اش به درگیری با سیستم‌های متعدد بستگی دارد. در بهترین حالت، تجربه‌ای ماندگار می‌سازد که کاوش و کنترل مبارزه محور اصلی آن است؛ در بدترین حالت، مدیریت موجودی و تعادل نامنظم مبارزات، همان بلندپروازی را به مانعی برای لذت بردن از همان کاوش تبدیل می‌کنند.", "supports": [item["id"] for item in plan["conclusion"]]},
     }
-    normalized, reason = _validate_single_pass_editorial(
-        concise_raw, facts=facts, plan=plan, allowed_site_names=set()
-    )
+    def _validate_full_article(raw, plan, allowed_site_names):
+        """
+        معادلِ دقیقِ همان چیزی که _write_public_article_sections واقعاً صدا
+        می‌زند، نه wrapper از رده خارج‌شده‌ای که دیگر در مسیر تولید نیست.
+        """
+        per_section = _validate_single_pass_editorial_per_section(
+            raw, plan=plan, allowed_site_names=allowed_site_names
+        )
+        for key, result in per_section.items():
+            if not result["ok"]:
+                return None, result["reason"]
+        normalized = {
+            key: {"text_fa": result["text_fa"], "supports": result["supports"]}
+            for key, result in per_section.items()
+        }
+        return normalized, None
+
+    normalized, reason = _validate_full_article(concise_raw, plan, set())
     assert normalized is not None, reason
     total_words = sum(len(value["text_fa"].split()) for value in normalized.values())
-    assert 380 <= total_words <= 620, f"fixture total word count out of bounds: {total_words}"
+    # این عدد صرفاً برای مستندسازی است: نمونه‌ی fixture عمداً نزدیک به هدفِ
+    # ۴۵۰ تا ۵۵۰ نوشته شده، اما خودِ validator دیگر با این بازه قبول/رد
+    # نمی‌کند -- فقط سقفِ عقل‌سلیمِ ۱۱۰۰ واژه را نگه می‌دارد (رجوع کنید به
+    # run_length_is_a_goal_not_a_wall_regression_checks برای آزمونِ خودِ این رفتار).
+    assert 300 <= total_words <= 1100, f"fixture total word count unexpectedly out of range: {total_words}"
     assert len(plan["audience"]) == 2 and len(plan["conclusion"]) == 2
     assert all(item["id"] in reporting_ids for item in plan["audience"] + plan["conclusion"])
 
-    # A well-formed article that overshoots the 450-550 target band must still
-    # be rejected by the mechanical gate, not just discouraged by the prompt.
+    # A truly runaway section (not just "over the soft 450-550 goal") must still
+    # be rejected by the per-section ceiling.
     bloated_raw = dict(concise_raw)
     bloated_raw["world_gameplay"] = {
         "text_fa": concise_raw["world_gameplay"]["text_fa"] + (" " + "کلمه " * 400).strip(),
         "supports": concise_raw["world_gameplay"]["supports"],
     }
-    bloated_normalized, bloated_reason = _validate_single_pass_editorial(
-        bloated_raw, facts=facts, plan=plan, allowed_site_names=set()
-    )
+    bloated_normalized, bloated_reason = _validate_full_article(bloated_raw, plan, set())
     assert bloated_normalized is None
     assert bloated_reason and "بلند" in bloated_reason
 
@@ -5177,7 +5427,137 @@ def run_longform_retry_regression_checks() -> None:
     )
 
 
-def run_editorial_trim_pass_regression_checks() -> None:
+def run_length_is_a_goal_not_a_wall_regression_checks() -> None:
+    """
+    این تست دقیقاً همان اصلاحیه را قفل می‌کند: طول در پرامپت هدف است، نه
+    دیوارِ رد کردن. اعتبارسنجی فقط باید متنِ واقعاً ناقص را رد کند، و پیش از
+    تصمیمِ fallback باید یک پاسِ نگارشِ هدفمند امتحان شود.
+    """
+    # ۱) کف هر بخش دقیقاً همان عددهایی است که قرار بود باشد، نه اعداد سخت‌گیرانه‌تر.
+    assert _SINGLE_PASS_SECTION_SPECS["opening"]["min_words"] == 24
+    assert _SINGLE_PASS_SECTION_SPECS["world_gameplay"]["min_words"] == 55
+    assert _SINGLE_PASS_SECTION_SPECS["friction"]["min_words"] == 55
+    assert _SINGLE_PASS_SECTION_SPECS["audience"]["min_words"] == 24
+    assert _SINGLE_PASS_SECTION_SPECS["conclusion"]["min_words"] == 24
+
+    facts = {
+        "game": "Sample Game",
+        "facts": [
+            {"id": "F1", "topic": "world_design", "sentiment": "positive", "text_fa": "دنیای بازی کاوش را تشویق می‌کند.", "site_name": "IGN"},
+            {"id": "F2", "topic": "gameplay", "sentiment": "positive", "text_fa": "کنترل مبارزه روان است.", "site_name": "PC Gamer"},
+            {"id": "F3", "topic": "gameplay", "sentiment": "negative", "text_fa": "مدیریت موجودی دست‌وپاگیر است.", "site_name": "IGN"},
+            {"id": "F4", "topic": "story", "sentiment": "negative", "text_fa": "روایت عمق کافی ندارد.", "site_name": "PC Gamer"},
+            {"id": "F5", "topic": "world_design", "sentiment": "positive", "text_fa": "طراحی محیط حس اکتشاف می‌سازد.", "site_name": "IGN"},
+            {"id": "F6", "topic": "technical", "sentiment": "caution", "text_fa": "افت عملکرد در صحنه‌های شلوغ دیده می‌شود.", "site_name": "PC Gamer"},
+            {"id": "F7", "topic": "gameplay", "sentiment": "positive", "text_fa": "زنجیره کردن حرکات مبارزه حس رضایت‌بخشی دارد.", "site_name": "IGN"},
+            {"id": "F8", "topic": "story", "sentiment": "negative", "text_fa": "برخی مأموریت‌های فرعی تکراری‌اند.", "site_name": "PC Gamer"},
+            {"id": "F9", "topic": "world_design", "sentiment": "positive", "text_fa": "جزئیات محیطی حس کاوش را زنده نگه می‌دارد.", "site_name": "IGN"},
+            {"id": "F10", "topic": "gameplay", "sentiment": "negative", "text_fa": "برخی نبردهای رئیس تعادل مناسبی ندارند.", "site_name": "PC Gamer"},
+        ],
+    }
+    plan = _single_pass_editorial_plan(facts)
+    if plan is None:
+        # این fixture کوچک برای آزمودن plan واقعی کافی نیست؛ فقط رفتار پچ را
+        # با یک plan دستی می‌سنجیم.
+        plan = {
+            "opening": [facts["facts"][0], facts["facts"][2]],
+            "world_gameplay": [facts["facts"][0], facts["facts"][1], facts["facts"][4]],
+            "friction": [facts["facts"][2], facts["facts"][3], facts["facts"][5]],
+            "audience": [facts["facts"][0], facts["facts"][3]],
+            "conclusion": [facts["facts"][0], facts["facts"][3]],
+        }
+
+    # ۲) مقاله‌ای که هر بخشش بین کفِ جدید (۲۴/۵۵/۵۵/۲۴/۲۴) و کفِ قدیمیِ
+    # سخت‌گیرانه‌تر (۳۵/۸۰/۸۰/۴۰/۴۵) است، دیگر رد نمی‌شود.
+    borderline_raw = {
+        "opening": {"text_fa": "بازی در بخشی از تجربه‌اش کاوش را جدی می‌گیرد و بازیکن را درگیر می‌کند، هرچند یک اصطکاک مشخص هم در پس‌زمینه‌اش از ابتدا تا انتهای مسیر باقی می‌ماند و هرگز کاملاً برطرف نمی‌شود."},
+        "world_gameplay": {"text_fa": "کنترل حرکت هنگام مبارزه روان است و واکنش‌ها سریع و قابل پیش‌بینی‌اند، طوری که زنجیره کردن حمله‌های پیاپی حس رضایت‌بخشی می‌سازد و حتی در میانه‌ی درگیری‌های شلوغ هم از دست نمی‌رود. طراحی محیط هم بازیکن را به کاوش گوشه‌های کمتر دیده‌شده‌ی نقشه تشویق می‌کند و همین حس کنجکاوی، انگیزه‌ی ادامه دادن را تا پایان زنده نگه می‌دارد."},
+        "friction": {"text_fa": "مدیریت موجودی بازی هم دست‌وپاگیر است، چون بازیکن را مدام و بدون دلیل روشنی به منوهای فرعی برمی‌گرداند و همین وقفه‌ی مکرر، ریتم اکتشاف را می‌شکند و لذت کاوش را به‌مرور کم می‌کند. روایت هم در بخش‌های میانی عمق کافی ندارد و همین کم‌عمقی آشکار، همراهی احساسی بازیکن با شخصیت‌های اصلی داستان را به‌مرور سست می‌کند."},
+        "audience": {"text_fa": "برای بازیکنی که کاوش تدریجی و آزمون‌وخطا را دوست دارد، این تجربه مناسب و قابل توصیه است. برای کسی که روایت منسجم و ریتم بدون وقفه در اولویت اصلی‌اش قرار دارد، جذابیت کمتری خواهد داشت."},
+        "conclusion": {"text_fa": "ارزش این بازی در نهایت به میزان تحمل بازیکن برای این اصطکاک‌های مشخص، در برابر لذتی که کاوش و کنترل روان مبارزه به او می‌دهند، بستگی پیدا می‌کند."},
+    }
+    for key, value in borderline_raw.items():
+        words = len(value["text_fa"].split())
+        old_strict_min = {"opening": 35, "world_gameplay": 80, "friction": 80, "audience": 40, "conclusion": 45}[key]
+        assert words < old_strict_min, f"fixture for {key} should sit below the old, over-tightened floor to prove the point ({words} words)"
+        assert words >= _SINGLE_PASS_SECTION_SPECS[key]["min_words"]
+
+    def _validate_full_article(raw, plan, allowed_site_names):
+        per_section = _validate_single_pass_editorial_per_section(
+            raw, plan=plan, allowed_site_names=allowed_site_names
+        )
+        for key, result in per_section.items():
+            if not result["ok"]:
+                return None, result["reason"]
+        normalized = {
+            key: {"text_fa": result["text_fa"], "supports": result["supports"]}
+            for key, result in per_section.items()
+        }
+        return normalized, None
+
+    normalized, reason = _validate_full_article(borderline_raw, plan, set())
+    assert normalized is not None, f"a borderline-short-but-not-incomplete article must be accepted, got: {reason}"
+
+    # ۳) و ۴) پیش از تصمیمِ fallback، پاسِ نگارشِ هدفمند باید فقط بخشِ ناقص را
+    # اصلاح کند -- و این باید از خودِ _write_public_article_sections (تابعی
+    # که واقعاً در تولید صدا زده می‌شود) آزموده شود، نه یک wrapper واسطه‌ای که
+    # دیگر در مسیر اصلی نیست.
+    facts["sources"] = [{"site_name": "IGN"}, {"site_name": "PC Gamer"}]
+
+    incomplete_raw = dict(borderline_raw)
+    incomplete_raw["opening"] = {"text_fa": "خیلی کوتاه است."}
+
+    def fake_ask_openai_json_recovers_via_patch(client, prompt, max_tokens=None):
+        if "revising ONLY one section" in prompt:
+            assert "شروع نقد" in prompt
+            return {"text_fa": borderline_raw["opening"]["text_fa"]}
+        return incomplete_raw
+
+    original_ask = globals()["ask_openai_json"]
+    globals()["ask_openai_json"] = fake_ask_openai_json_recovers_via_patch
+    try:
+        recovered_sections = _write_public_article_sections(object(), facts)
+    finally:
+        globals()["ask_openai_json"] = original_ask
+
+    assert recovered_sections["opening_fa"] == borderline_raw["opening"]["text_fa"]
+    # بخش‌های دیگر که از اول درست بودند نباید دست بخورند -- این دقیقاً همان
+    # «حفظِ بهترین خروجیِ قبلی» است که در نسخه‌ی قبلی رعایت نمی‌شد.
+    assert recovered_sections["friction_fa"] == borderline_raw["friction"]["text_fa"]
+    assert recovered_sections["section_methods"]["opening"] == "openai_targeted_fix"
+    assert recovered_sections["section_methods"]["friction"] == "openai_full_pass"
+
+    # ۵) اگر پاسِ هدفمند هم شکست بخورد و تلاشِ کاملِ دوم هم همان بخش را حل
+    # نکند، فقط همان یک بخشِ گیرکرده باید با متنِ قالب‌محور پر شود -- نه این‌که
+    # کل مقاله (شاملِ بخش‌هایی که از اول درست بودند) دور ریخته شود.
+    def fake_ask_openai_json_stuck_opening(client, prompt, max_tokens=None):
+        if "revising ONLY one section" in prompt:
+            raise RuntimeError("simulated persistent API failure for the opening section")
+        return incomplete_raw
+
+    globals()["ask_openai_json"] = fake_ask_openai_json_stuck_opening
+    try:
+        partially_stuck_sections = _write_public_article_sections(object(), facts)
+    finally:
+        globals()["ask_openai_json"] = original_ask
+
+    assert partially_stuck_sections["section_methods"]["opening"] == "deterministic_section_fallback"
+    # بخش‌های دیگر همچنان از تلاشِ اول مدل‌اند، نه از fallbackِ کلِ مقاله.
+    assert partially_stuck_sections["friction_fa"] == borderline_raw["friction"]["text_fa"]
+    assert partially_stuck_sections["section_methods"]["friction"] == "openai_full_pass"
+    assert partially_stuck_sections["method"] == "openai_partial_with_deterministic_sections_v34"
+
+    # ۶) مسیر fallback دیگر واقعیتِ خراب را بدون فیلتر قبول نمی‌کند.
+    broken_facts = [
+        {"id": "B1", "topic": "world_design", "sentiment": "positive", "text_fa": "این متن خراب است \ufffd و نباید وارد شود.", "site_name": "IGN"},
+        {"id": "B2", "topic": "world_design", "sentiment": "positive", "text_fa": "این متن سالم است و باید وارد شود.", "site_name": "PC Gamer"},
+    ]
+    fallback_text = _fallback_text_from_facts(broken_facts, topic={"world_design"}, sentiment={"positive"}, limit=4)
+    assert "\ufffd" not in fallback_text
+    assert "سالم" in fallback_text
+
+
+def run_editorial_polish_pass_regression_checks() -> None:
     original_texts = {
         "opening": "این بازی در بهترین لحظاتش کاوش را جدی می‌گیرد، اما یک ضعف مشخص همیشه در پس‌زمینه باقی می‌ماند.",
         "world_gameplay": "کنترل حرکت هنگام مبارزه روان است و زنجیره کردن حرکات پیاپی حس رضایت‌بخشی می‌سازد.",
@@ -5191,58 +5571,449 @@ def run_editorial_trim_pass_regression_checks() -> None:
         key: {"text_fa": text} for key, text in original_texts.items()
     }
     good_edit["friction"] = {"text_fa": "مدیریت موجودی دست‌وپاگیر است، چون بازیکن را مدام به منوهای فرعی برمی‌گرداند."}
-    is_safe, reason = _trim_pass_is_safe(original_texts, good_edit, set())
+    is_safe, reason = _polish_pass_is_safe(original_texts, good_edit, set())
     assert is_safe, reason
 
-    # 2) An edit that got LONGER instead of shorter must be rejected.
-    longer_edit = dict(good_edit)
-    longer_edit["opening"] = {
-        "text_fa": original_texts["opening"] + " و این موضوع تا انتهای بازی هم با جزئیات بیشتری ادامه پیدا می‌کند و حتی به شکل‌های تازه‌ای هم بروز می‌کند."
+    # 2) An edit that grew far beyond a reasonable improvement (effective rewrite)
+    # must still be rejected, even though modest growth is now allowed.
+    rewrite_edit = dict(good_edit)
+    rewrite_edit["opening"] = {
+        "text_fa": (
+            original_texts["opening"]
+            + " و این موضوع تا انتهای بازی هم با جزئیات بیشتری ادامه پیدا می‌کند و حتی "
+            "به شکل‌های تازه‌ای هم بروز می‌کند و بازیکن باید مدام با آن دست‌وپنجه نرم کند "
+            "و این خودش به بخش بزرگی از هویت کلی تجربه تبدیل می‌شود."
+        )
     }
-    is_safe, reason = _trim_pass_is_safe(original_texts, longer_edit, set())
+    is_safe, reason = _polish_pass_is_safe(original_texts, rewrite_edit, set())
     assert not is_safe and "بلندتر" in reason
 
     # 3) An edit that introduces a brand-new number must be rejected.
     new_number_edit = dict(good_edit)
     new_number_edit["conclusion"] = {"text_fa": "امتیاز این بازی ۹۵ از ۱۰۰ است."}
-    is_safe, reason = _trim_pass_is_safe(original_texts, new_number_edit, set())
+    is_safe, reason = _polish_pass_is_safe(original_texts, new_number_edit, set())
     assert not is_safe and "عدد" in reason
 
     # 4) An edit that introduces a source/site name must be rejected.
     site_name_edit = dict(good_edit)
     site_name_edit["audience"] = {"text_fa": original_texts["audience"] + " به گفته‌ی IGN."}
-    is_safe, reason = _trim_pass_is_safe(original_texts, site_name_edit, {"IGN"})
+    is_safe, reason = _polish_pass_is_safe(original_texts, site_name_edit, {"IGN"})
     assert not is_safe and "منبع" in reason
 
     # 5) Over-trimming (losing more than half the section) must be rejected.
     over_trim_edit = dict(good_edit)
     over_trim_edit["world_gameplay"] = {"text_fa": "کنترل خوب است."}
-    is_safe, reason = _trim_pass_is_safe(original_texts, over_trim_edit, set())
+    is_safe, reason = _polish_pass_is_safe(original_texts, over_trim_edit, set())
     assert not is_safe and "کوتاه" in reason
 
-    # 6) apply_editorial_trim_pass must return sections untouched when client is None.
+    # 6) apply_editorial_polish_pass must return sections untouched when client is None.
     sections = {f"{key}_fa": text for key, text in original_texts.items()}
-    sections["method"] = "openai_single_pass_grounded_editorial_v33"
-    unchanged = apply_editorial_trim_pass(None, sections, set())
+    sections["method"] = "openai_single_pass_grounded_editorial_v34"
+    unchanged = apply_editorial_polish_pass(None, sections, set())
     assert unchanged == sections
+
+    # 7) A generic, ungrounded adjective must be catchable regardless of exact
+    # wording -- synonym-swapping ("high-detail" instead of "rich") must not
+    # dodge the check.
+    assert _editorial_claim_quality_reason("world_gameplay", "این جهان بسیار غنی است.")
+    assert _editorial_claim_quality_reason("world_gameplay", "این جهان بسیار پرجزئیات است.")
+    # اما همان صفت، وقتی جزئیاتِ مشخص همراهش باشد، دیگر مردود نیست.
+    assert _editorial_claim_quality_reason(
+        "world_gameplay",
+        "این جهان پرجزئیات با فرصت‌های فراوان برای کاوش و تعامل همراه است.",
+    ) is None
+
+    # 8) Improving a vague adjective by referencing a detail ALREADY established
+    # elsewhere in the article (here: "کاوش" in world_gameplay) must be accepted --
+    # this is the whole point of upgrading from a trim-only pass to a polish pass.
+    generic_original = dict(original_texts)
+    generic_original["friction"] = "این بخش از بازی نسبتاً پرجزئیات است."
+    improved_edit = {key: {"text_fa": text} for key, text in generic_original.items()}
+    improved_edit["friction"] = {
+        "text_fa": "این بخش از بازی با جزئیاتی از کاوش همراه است."
+    }
+    is_safe, reason = _polish_pass_is_safe(generic_original, improved_edit, set())
+    assert is_safe, reason
+
+    # 9) But inventing a wholly new concrete detail that appears NOWHERE in the
+    # original article (not this section, not any other) must be rejected --
+    # this is the fabrication guardrail that makes "improve" safe to allow.
+    fabricated_edit = {key: {"text_fa": text} for key, text in original_texts.items()}
+    fabricated_edit["friction"] = {
+        "text_fa": "این بخش از بازی با طراحی صداگذاری شخصیت اصلی برجسته می‌شود."
+    }
+    is_safe, reason = _polish_pass_is_safe(original_texts, fabricated_edit, set())
+    assert not is_safe and "تازه" in reason
+
+
+
+_LONGFORM_SECTION_SPECS_V35 = {
+    "opening": {"min_words": 75, "max_words": 180},
+    "world_gameplay": {"min_words": 190, "max_words": 380},
+    "friction": {"min_words": 180, "max_words": 370},
+    "audience": {"min_words": 65, "max_words": 155},
+    "conclusion": {"min_words": 75, "max_words": 170},
+}
+
+
+def _longform_editorial_plan_v35(facts: dict) -> dict[str, list[dict]] | None:
+    all_facts = [
+        item for item in facts.get("facts", [])
+        if isinstance(item, dict) and item.get("id")
+    ]
+    used_ids: set[str] = set()
+
+    def take(*, topics: set[str] | None, sentiments: set[str], count: int) -> list[dict]:
+        picked = _pick_editorial_facts(
+            all_facts,
+            used_ids=used_ids,
+            topics=topics,
+            sentiments=sentiments,
+            count=count,
+        )
+        used_ids.update(item["id"] for item in picked if item.get("id"))
+        return picked
+
+    positive_topics = {"gameplay", "world_design", "visuals", "audio", "story", "value", "general"}
+    negative_topics = {"gameplay", "world_design", "visuals", "audio", "story", "technical", "value", "general"}
+
+    opening_pos = take(topics=positive_topics, sentiments={"positive"}, count=1)
+    opening_neg = take(topics=negative_topics, sentiments={"negative", "caution"}, count=1)
+    strengths = take(topics=positive_topics, sentiments={"positive"}, count=5)
+    weaknesses = take(topics=negative_topics, sentiments={"negative", "caution"}, count=5)
+
+    if len(opening_pos) < 1 or len(opening_neg) < 1 or len(strengths) < 4 or len(weaknesses) < 4:
+        return None
+
+    return {
+        "opening": opening_pos + opening_neg,
+        "world_gameplay": strengths,
+        "friction": weaknesses,
+        "audience": [strengths[0], weaknesses[0]],
+        "conclusion": [opening_pos[0], opening_neg[0]],
+    }
+
+
+def _longform_prompt_v35(facts: dict, plan: dict[str, list[dict]], retry_reason: str = "") -> str:
+    labels = {
+        "opening": "معرفی و تز اصلی",
+        "world_gameplay": "نقاط قوت: گیم‌پلی، جهان و ارائه",
+        "friction": "نقاط ضعف: روایت، سیستم‌ها، فنی و ارزش خرید",
+        "audience": "مخاطب مناسب و تصمیم خرید",
+        "conclusion": "جمع‌بندی نهایی",
+    }
+    jobs = {
+        "opening": "بازی را کوتاه و بی‌طرف معرفی کن و بعد کشش اصلی را در برابر هزینه‌ی اصلی تجربه قرار بده.",
+        "world_gameplay": "کارت‌های مثبت را به چند پاراگراف پیوسته تبدیل کن. هر مشاهده را با اثرش بر کنترل، اکتشاف، ریتم یا لذت بازی توضیح بده.",
+        "friction": "کارت‌های منفی و احتیاطی را تحلیل کن. روشن کن هر ایراد دقیقاً چگونه ریتم، فهم سیستم‌ها، روایت، عملکرد یا ارزش وقت و پول را تضعیف می‌کند.",
+        "audience": "بر اساس معامله‌ی واقعی میان نقاط قوت و ضعف، روشن بگو چه بازیکنی احتمالاً از خرید راضی می‌شود و چه کسی بهتر است بازی را رد کند.",
+        "conclusion": "حکم نهاییِ متعادل و مشخص بده؛ نه تکرار مقدمه و نه تبلیغ. ارزش تجربه و بهای آن را در چند جمله جمع کن.",
+    }
+
+    brief = {}
+    for key, items in plan.items():
+        brief[key] = {
+            "label": labels[key],
+            "job_fa": jobs[key],
+            "evidence_cards": [
+                {
+                    "topic": _PUBLIC_TOPIC_LABELS.get(item.get("topic"), "تصویر کلی"),
+                    "sentiment": item.get("sentiment"),
+                    "approved_claim_fa": item.get("text_fa"),
+                    "context_en": clean_text(str(item.get("evidence_en") or ""))[:420],
+                }
+                for item in items
+            ],
+        }
+
+    retry_note = ""
+    if retry_reason:
+        retry_note = (
+            "\nThe previous draft missed the publication target for this reason: "
+            + retry_reason
+            + "\nRewrite the complete article while preserving factual discipline."
+        )
+
+    return f"""
+You are the senior Persian games editor for Poormaz. Write one complete Persian review
+of "{facts['game']}" based on the locked evidence map below. The article must read like
+an original critical review, not a digest of websites and not a list of pros and cons.
+
+Neutral game introduction that may be used ONLY in opening:
+{facts.get('game_intro_fa') or 'No separate introduction is available; introduce only the game name and platform.'}
+
+Locked editorial map:
+{json.dumps(brief, ensure_ascii=False, indent=2)}
+{retry_note}
+
+Return exactly one JSON object with these five objects:
+{{
+  "opening": {{"text_fa": "..."}},
+  "world_gameplay": {{"text_fa": "..."}},
+  "friction": {{"text_fa": "..."}},
+  "audience": {{"text_fa": "..."}},
+  "conclusion": {{"text_fa": "..."}}
+}}
+
+Editorial rules:
+- Write fluent contemporary Persian in connected paragraphs. No bullets, Markdown, source names or quotations.
+- Use only the approved claims. The English context is for nuance, never for literal translation or extra facts.
+- Cover the available gameplay, world, graphics/presentation, story, technical and value evidence when assigned.
+- Every paragraph needs concrete observation plus consequence. Do not pad with synonyms or generic praise.
+- Do not mention scores, Metacritic, Poormaz, reviewers, sources, evidence or websites inside these sections.
+- Do not invent plot details, mechanics, technical causes, prices, patch promises or comparisons.
+- Avoid marketing language such as «جهان غنی»، «تجربه‌ای شگفت‌انگیز»، «شاهکار»، «بی‌نقص» and «بهترین در تاریخ».
+- Do not tell readers to wait for updates unless an approved card explicitly mentions a specific update.
+- The audience section must provide a practical buy-or-skip judgment.
+
+Length targets:
+- opening: 100–130 Persian words
+- world_gameplay: 250–300 Persian words
+- friction: 240–290 Persian words
+- audience: 90–115 Persian words
+- conclusion: 100–125 Persian words
+- Total article: 800–1000 Persian words. Stay inside this range without filler.
+
+Before returning JSON, silently verify that the total is between 800 and 1000 Persian words,
+that no assigned fact is contradicted, and that each body section contains analysis rather
+than a sequence of paraphrased evidence cards.
+""".strip()
+
+
+def _validate_longform_v35(raw, plan: dict[str, list[dict]], allowed_site_names: set[str]) -> tuple[dict | None, str | None]:
+    if not isinstance(raw, dict):
+        return None, "فرمت JSON مقاله معتبر نیست"
+
+    normalized = {}
+    for key, spec in _LONGFORM_SECTION_SPECS_V35.items():
+        text_fa = _editorial_text_value(raw.get(key))
+        if not _public_section_is_safe(
+            text_fa,
+            min_words=spec["min_words"],
+            max_words=spec["max_words"],
+            allowed_site_names=allowed_site_names,
+        ):
+            words = len(text_fa.split()) if text_fa else 0
+            return None, f"بخش {key} از نظر طول یا ایمنی معتبر نیست ({words} واژه)"
+        reason = _editorial_claim_quality_reason(key, text_fa)
+        if reason:
+            return None, f"بخش {key}: {reason}"
+        normalized[key] = {
+            "text_fa": text_fa,
+            "supports": [item["id"] for item in plan.get(key, []) if item.get("id")],
+        }
+
+    total_words = sum(len(item["text_fa"].split()) for item in normalized.values())
+    normalized["_total_words"] = total_words
+    return normalized, None
+
+
+def _write_public_article_sections_longform_v35(client: OpenAI, facts: dict) -> dict:
+    allowed_site_names = {
+        clean_text(str(source.get("site_name") or ""))
+        for source in facts.get("sources", [])
+        if clean_text(str(source.get("site_name") or ""))
+    }
+    if client is None or len(_fact_map(facts)) < 10:
+        return _build_public_article_fallback(facts)
+
+    plan = _longform_editorial_plan_v35(facts)
+    if plan is None:
+        print("Long-form editorial plan lacks enough diverse verified facts; using safe fallback.")
+        return _build_public_article_fallback(facts)
+
+    candidates = []
+    retry_reason = ""
+    for attempt in range(2):
+        prompt = _longform_prompt_v35(facts, plan, retry_reason=retry_reason)
+        try:
+            raw = ask_openai_json(client, prompt, max_tokens=7000)
+        except Exception as exc:
+            retry_reason = f"OpenAI request failed: {repr(exc)}"
+            print(f"Long-form article attempt {attempt + 1} failed: {repr(exc)}")
+            continue
+
+        normalized, reason = _validate_longform_v35(raw, plan, allowed_site_names)
+        if normalized is None:
+            retry_reason = reason or "اعتبارسنجی نامشخص"
+            print(f"Long-form article attempt {attempt + 1} rejected: {retry_reason}")
+            continue
+
+        total_words = int(normalized.pop("_total_words"))
+        in_target = 800 <= total_words <= 1000
+        candidates.append((in_target, abs(total_words - 900), total_words, normalized, attempt))
+        if in_target:
+            break
+        retry_reason = (
+            f"طول کل {total_words} واژه بود؛ مقاله باید بین 800 و 1000 واژه باشد."
+        )
+        print(f"Long-form article length outside target ({total_words}); retrying once.")
+
+    if not candidates:
+        print("No safe long-form candidate survived; using the older section-preserving writer.")
+        return _write_public_article_sections(client, facts)
+
+    candidates.sort(key=lambda item: (not item[0], item[1], item[4]))
+    in_target, _, total_words, best, attempt = candidates[0]
+    sections = {
+        "opening_fa": best["opening"]["text_fa"],
+        "world_gameplay_fa": best["world_gameplay"]["text_fa"],
+        "friction_fa": best["friction"]["text_fa"],
+        "audience_fa": best["audience"]["text_fa"],
+        "conclusion_fa": best["conclusion"]["text_fa"],
+        "section_supports": {key: value["supports"] for key, value in best.items()},
+        "editorial_plan": {key: [item["id"] for item in items] for key, items in plan.items()},
+        "section_methods": {key: ("openai_full_pass" if attempt == 0 else "openai_full_retry") for key in best},
+        "method": "openai_longform_grounded_editorial_v35",
+        "word_count": total_words,
+        "length_target_met": in_target,
+        "length_target": "800-1000",
+    }
+
+    polished = apply_editorial_polish_pass(client, sections, allowed_site_names)
+    polished_words = int(polished.get("word_count") or total_words)
+    if in_target and not (800 <= polished_words <= 1000):
+        print("Editorial polish moved the article outside 800–1000 words; keeping the approved pre-edit version.")
+        return sections
+    polished["length_target_met"] = 800 <= polished_words <= 1000
+    polished["length_target"] = "800-1000"
+    return polished
+
+
+def _score_number_text(value) -> str:
+    numeric = float(value)
+    return str(int(numeric)) if numeric.is_integer() else f"{numeric:.1f}"
+
+
+def _build_poormaz_scorecard_html(assessment: dict) -> str:
+    """
+    کارت گرافیکی نهایی نقد را بدون JavaScript می‌سازد تا مستقیماً داخل HTML
+    وردپرس قرار بگیرد. مقدار دایره و نوارها از قبل در خود HTML رندر می‌شود؛
+    بنابراین حذف شدن script توسط وردپرس، کارت را از کار نمی‌اندازد.
+    """
+    scorecard = assessment.get("scorecard", []) or []
+    overall = assessment.get("overall_score_10")
+    if overall is None or not scorecard:
+        return ""
+
+    overall = max(0.0, min(10.0, float(overall)))
+
+    if overall >= 9.0:
+        verdict_fa, tier_color = "شاهکار", "#e7b24e"
+    elif overall >= 8.0:
+        verdict_fa, tier_color = "ارزش تجربه", "#f0637e"
+    elif overall >= 7.0:
+        verdict_fa, tier_color = "انتخاب خوب", "#d22b4b"
+    elif overall >= 5.5:
+        verdict_fa, tier_color = "متوسط", "#c9974a"
+    else:
+        verdict_fa, tier_color = "پیشنهاد نمی‌شود", "#948da3"
+
+    circumference = 339.292
+    ring_offset = circumference * (1.0 - overall / 10.0)
+    overall_text = escape(_score_number_text(overall))
+
+    rows_html: list[str] = []
+    for row in scorecard:
+        label = escape(clean_text(str(row.get("label_fa") or "بخش")))
+        score = max(0.0, min(10.0, float(row.get("score_10") or 0)))
+        score_text = escape(_score_number_text(score))
+        width = score * 10.0
+        rows_html.append(
+            '<div class="pmz-aspect-row">'
+            '<div class="pmz-aspect-top">'
+            f'<span class="pmz-aspect-label">{label}</span>'
+            f'<span class="pmz-aspect-value">{score_text}<small>/10</small></span>'
+            '</div>'
+            '<div class="pmz-bar-track">'
+            f'<div class="pmz-bar-fill" style="width:{width:.1f}%"></div>'
+            '</div>'
+            '</div>'
+        )
+
+    # تمام کارت عمداً در یک خط برگردانده می‌شود تا مبدل Markdown داخلی آن را
+    # به‌عنوان یک بلوک HTML خام و امن مستقیماً وارد محتوای وردپرس کند.
+    css = (
+        '<style>'
+        '.pmz-score-widget{--ink900:#131019;--ink800:#1d1824;--ink700:#272030;'
+        '--crimson:#d22b4b;--crimsonBright:#f0637e;--mist:#948da3;--paper:#f6f2ec;'
+        'box-sizing:border-box;max-width:820px;margin:38px auto 8px;padding:40px 44px;'
+        'background:linear-gradient(160deg,var(--ink800),var(--ink900) 72%);'
+        'border:1px solid var(--ink700);border-radius:18px;color:var(--paper);'
+        'display:flex;flex-direction:row;align-items:center;gap:42px;position:relative;'
+        'overflow:hidden;direction:rtl;font-family:Vazirmatn,Tahoma,Arial,sans-serif;'
+        'box-shadow:0 18px 55px rgba(0,0,0,.30)}'
+        '.pmz-score-widget,.pmz-score-widget *{box-sizing:border-box}'
+        '.pmz-score-widget:before{content:"";position:absolute;top:-65%;right:-18%;width:58%;height:230%;'
+        'background:radial-gradient(circle,rgba(210,43,75,.16),transparent 70%);pointer-events:none}'
+        '.pmz-verdict{flex:0 0 190px;width:190px;display:flex;flex-direction:column;align-items:center;'
+        'text-align:center;position:relative;z-index:1}'
+        '.pmz-eyebrow{font-size:12px;font-weight:800;letter-spacing:.04em;color:var(--mist);margin-bottom:14px}'
+        '.pmz-ring-wrap{position:relative;width:148px;height:148px}'
+        '.pmz-ring-wrap svg{width:100%;height:100%;transform:rotate(-90deg)}'
+        '.pmz-ring-track{fill:none;stroke:var(--ink700);stroke-width:7}'
+        '.pmz-ring-fill{fill:none;stroke:var(--pmz-tier-color);stroke-width:7;stroke-linecap:round}'
+        '.pmz-ring-number{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column}'
+        '.pmz-big-score{font-family:Arial Black,Impact,Tahoma,sans-serif;font-weight:900;font-size:45px;line-height:1;'
+        'font-variant-numeric:tabular-nums;color:var(--paper);direction:ltr}'
+        '.pmz-big-score small{font-size:14px;font-weight:700;color:var(--mist);margin-left:2px}'
+        '.pmz-verdict-word{margin-top:15px;font-weight:900;font-size:18px;color:var(--pmz-tier-color)}'
+        '.pmz-divider{flex:0 0 1px;align-self:stretch;background:linear-gradient(var(--ink700),rgba(255,255,255,.02),var(--ink700));z-index:1}'
+        '.pmz-aspects{flex:1 1 auto;display:flex;flex-direction:column;gap:15px;position:relative;z-index:1;min-width:0}'
+        '.pmz-aspect-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;gap:14px}'
+        '.pmz-aspect-label{font-size:13px;font-weight:800;color:#c8c3d0;text-align:right}'
+        '.pmz-aspect-value{font-family:Arial Black,Tahoma,sans-serif;font-size:16px;font-weight:900;'
+        'font-variant-numeric:tabular-nums;color:var(--paper);direction:ltr;white-space:nowrap}'
+        '.pmz-aspect-value small{color:var(--mist);font-size:11px;font-weight:700;margin-left:2px}'
+        '.pmz-bar-track{position:relative;height:10px;border-radius:3px;background-color:var(--ink700);'
+        'background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(10% - 2px),'
+        'var(--ink900) calc(10% - 2px),var(--ink900) 10%);overflow:hidden;direction:ltr}'
+        '.pmz-bar-fill{position:absolute;inset:0 auto 0 0;border-radius:3px;'
+        'background:linear-gradient(90deg,var(--crimson),var(--crimsonBright))}'
+        '@media(max-width:640px){.pmz-score-widget{flex-direction:column;padding:30px 24px;gap:26px}'
+        '.pmz-verdict{width:100%;flex-basis:auto}.pmz-divider{width:100%;height:1px;align-self:auto;flex-basis:1px}'
+        '.pmz-aspects{width:100%}}'
+        '</style>'
+    )
+
+    return (
+        f'<div data-poormaz-scorecard="1" class="pmz-score-widget" dir="rtl" '
+        f'style="--pmz-tier-color:{tier_color}">'
+        + css
+        + '<div class="pmz-verdict">'
+        '<div class="pmz-eyebrow">نظر نهایی Poormaz</div>'
+        '<div class="pmz-ring-wrap">'
+        '<svg viewBox="0 0 120 120" role="img" aria-label="امتیاز نهایی">'
+        '<circle class="pmz-ring-track" cx="60" cy="60" r="54"></circle>'
+        f'<circle class="pmz-ring-fill" cx="60" cy="60" r="54" stroke-dasharray="{circumference:.3f}" '
+        f'stroke-dashoffset="{ring_offset:.3f}"></circle>'
+        '</svg>'
+        '<div class="pmz-ring-number">'
+        f'<div class="pmz-big-score">{overall_text}<small>/10</small></div>'
+        '</div></div>'
+        f'<div class="pmz-verdict-word">{escape(verdict_fa)}</div>'
+        '</div>'
+        '<div class="pmz-divider"></div>'
+        '<div class="pmz-aspects">'
+        + ''.join(rows_html)
+        + '</div></div>'
+    )
 
 
 def build_article_preview(client: OpenAI, dossier: dict) -> dict:
-    """
-    خروجی عمومی: یک نقد بلند و طبیعی، یک باکس کوتاهِ امتیاز کلی و منابع در
-    انتهای متن. کارت‌های جزء و گزارش‌های داخلی عمداً وارد WordPress نمی‌شوند.
-    """
+    """نقد ۸۰۰ تا ۱۰۰۰ کلمه‌ای، کارت امتیاز HTML و منابع را می‌سازد."""
     facts = _public_article_fact_pack(dossier)
-    sections = _write_public_article_sections(client, facts)
+    sections = _write_public_article_sections_longform_v35(client, facts)
 
     game = facts["game"]
     overall_score = facts["poormaz_score"]
     metascore = facts["metascore"]
     critic_count = facts["critic_count"]
     platform = facts["platform"]
+    assessment = dossier.get("poormaz_assessment", {}) or {}
 
     title_fa = f"نقد و بررسی {game} | جمع‌بندی Poormaz"
-    excerpt_fa = f"جمع‌بندی Poormaz از نقاط قوت و ضعف {game} بر اساس نقدهای حرفه‌ای."
+    excerpt_fa = f"نقد کامل فارسی {game} بر پایه‌ی جمع‌بندی نقدهای حرفه‌ای."
 
     glance_lines = []
     if overall_score is not None:
@@ -5265,47 +6036,41 @@ def build_article_preview(client: OpenAI, dossier: dict) -> dict:
         seen_sources.add(key)
         score_label = _source_score_label(source)
         source_lines.append(f"- [{site_name}]({url}) | نمره: {score_label}")
-        source_links.append(
-            {
-                "site_name": site_name,
-                "title": clean_text(str(source.get("title") or "نقد بازی")),
-                "url": url,
-                "score": score_label,
-            }
-        )
+        source_links.append({
+            "site_name": site_name,
+            "title": clean_text(str(source.get("title") or "نقد بازی")),
+            "url": url,
+            "score": score_label,
+        })
 
-    markdown = [
-        f"# {title_fa}",
-        "",
-        f"> {excerpt_fa}",
-    ]
+    scorecard_html = _build_poormaz_scorecard_html(assessment)
+    markdown = [f"# {title_fa}", "", f"> {excerpt_fa}"]
 
     if glance_lines:
         markdown.extend(["", "## در یک نگاه", *glance_lines])
 
     markdown.extend(["", f"## {game} در عمل", sections["opening_fa"]])
-    markdown.extend(["", "## جهان بازی و گیم‌پلی", sections["world_gameplay_fa"]])
-    markdown.extend(["", "## اصطکاک‌هایی که نمی‌شود نادیده گرفت", sections["friction_fa"]])
+    markdown.extend(["", "## جهان، گیم‌پلی و ارائه", sections["world_gameplay_fa"]])
+    markdown.extend(["", "## ضعف‌ها و اصطکاک‌هایی که باقی می‌مانند", sections["friction_fa"]])
     markdown.extend(["", "## مناسب چه کسی است؟", sections["audience_fa"]])
-
-    conclusion = sections["conclusion_fa"]
-    if overall_score is not None:
-        conclusion += f" امتیاز Poormaz برای {game} {_format_score_10(overall_score)} است."
-    if metascore is not None:
-        conclusion += f" نمره‌ی متاکریتیک بازی نیز {metascore}/100 است."
-    markdown.extend(["", "## جمع‌بندی Poormaz", conclusion])
+    markdown.extend(["", "## جمع‌بندی Poormaz", sections["conclusion_fa"]])
     markdown.extend(["", "## منابع بررسی‌شده", *source_lines])
+    if scorecard_html:
+        markdown.extend(["", scorecard_html])
 
     return {
-        "status": "preview_single_pass_editorial_v33",
+        "status": "preview_longform_editorial_v36",
         "wordpress_post_created": False,
         "title_fa": title_fa,
         "excerpt_fa": excerpt_fa,
         "markdown": "\n".join(markdown).strip() + "\n",
+        "scorecard_html": scorecard_html,
         "source_links": source_links,
         "review_note_fa": "این متن فقط پیش‌نمایش است و هنوز در وردپرس ساخته یا منتشر نشده است.",
-        "writing_mode": sections.get("method", "deterministic_editorial_fallback_v26"),
+        "writing_mode": sections.get("method", "deterministic_editorial_fallback_v27"),
         "word_count": sections.get("word_count"),
+        "length_target": sections.get("length_target", "800-1000"),
+        "length_target_met": sections.get("length_target_met", False),
         "section_supports": sections.get("section_supports", {}),
     }
 
@@ -5429,6 +6194,11 @@ def _markdown_to_wp_html(markdown: str) -> str:
         stripped = line.strip()
         if not stripped:
             flush_all()
+            continue
+
+        if stripped.startswith('<div data-poormaz-scorecard="1"') and stripped.endswith('</div>'):
+            flush_all()
+            html_lines.append(stripped)
             continue
 
         if stripped.startswith("|") and stripped.endswith("|"):
@@ -5634,11 +6404,77 @@ def create_wordpress_review_draft(dossier: dict) -> dict:
 def run_wordpress_draft_regression_checks() -> None:
     assert _draft_slug("Crimson Desert", "PC") == "review-crimson-desert-pc"
     assert "poormaz-review-v1" in _review_draft_key("Crimson Desert", "PC")
-    sample = "# Title\n\n- **Bold** [Source](https://example.com/)"
+    sample_card = '<div data-poormaz-scorecard="1" dir="rtl"><strong>Score</strong></div>'
+    sample = "# Title\n\n- **Bold** [Source](https://example.com/)\n\n" + sample_card
     html = _markdown_to_wp_html(sample)
     assert "<h2>Title</h2>" in html
     assert "<strong>Bold</strong>" in html
     assert 'href="https://example.com/"' in html
+    assert sample_card in html
+
+
+def run_poormaz_v36_regression_checks() -> None:
+    dossier = {
+        "metacritic": {"metascore_100": 88},
+        "review_sources": [
+            {
+                "review_score_10": 8.0,
+                "runtime_quality_audit": {"status": "acceptable"},
+                "positives": [], "negatives": [], "technical_notes": [],
+            },
+            {
+                "review_score_10": 9.5,
+                "runtime_quality_audit": {"status": "needs_review"},
+                "positives": [], "negatives": [], "technical_notes": [],
+            },
+        ],
+    }
+    score = calculate_overall_score(dossier)
+    assert score["overall_score_10"] == 8.5
+    assert score["selected_review_scores"] == [8.0]
+
+    rows = [
+        {
+            "key": key,
+            "label_fa": SCORECARD_CATEGORY_LABELS[key],
+            "score_10": 8.5,
+            "_raw_score_10": 8.5,
+            "_direction_value": 0.0,
+            "evidence_count": 0,
+        }
+        for key in SCORECARD_CATEGORY_ORDER
+    ]
+    balanced = _balance_scorecard_to_overall(rows, 8.5)
+    assert len(balanced) == 6
+    assert sum(row["score_10"] for row in balanced) / 6 == 8.5
+    assert all((row["score_10"] * 2).is_integer() for row in balanced)
+
+    sample_assessment = {
+        "overall_score_10": 8.5,
+        "scorecard": [
+            {"label_fa": SCORECARD_CATEGORY_LABELS[key], "score_10": 8.5}
+            for key in SCORECARD_CATEGORY_ORDER
+        ],
+    }
+    card = _build_poormaz_scorecard_html(sample_assessment)
+    assert 'data-poormaz-scorecard="1"' in card
+    assert "نظر نهایی Poormaz" in card
+    assert "pmz-ring-fill" in card
+    assert "stroke-dashoffset" in card
+    assert card.count("pmz-aspect-row") >= 6
+    assert "<script" not in card.casefold(), "کارت وردپرس نباید به JavaScript وابسته باشد"
+    rendered_card = _markdown_to_wp_html("## منابع بررسی‌شده\n\n- Source\n\n" + card)
+    assert rendered_card.rstrip().endswith(card), "کارت باید آخر HTML مقاله باقی بماند"
+    assert _longform_prompt_v35(
+        {
+            "game": "Sample Game",
+            "game_intro_fa": "یک معرفی کوتاه.",
+        },
+        {
+            key: [{"topic": "gameplay", "sentiment": "positive", "text_fa": "کنترل روان است.", "evidence_en": "Controls are responsive."}]
+            for key in ("opening", "world_gameplay", "friction", "audience", "conclusion")
+        },
+    ).find("800–1000") != -1
 
 def save_dossier(game: str, dossier: dict) -> str:
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -6254,6 +7090,8 @@ def main():
     print("=== Poormaz Review Bot: Verified Dossier Builder ===")
     run_rule_based_regression_checks()
     print("Rule-based regression checks: passed")
+    run_wccftech_score_extraction_regression_checks()
+    print("Wccftech score extraction regression checks: passed")
     run_evidence_cache_regression_checks()
     print("Evidence cache regression checks: passed")
     run_wordpress_draft_regression_checks()
@@ -6268,8 +7106,12 @@ def main():
     print("Long-form retry regression checks: passed")
     run_single_pass_editorial_regression_checks()
     print("Single-pass editorial regression checks: passed")
-    run_editorial_trim_pass_regression_checks()
-    print("Editorial trim pass regression checks: passed")
+    run_length_is_a_goal_not_a_wall_regression_checks()
+    print("Length-is-a-goal-not-a-wall regression checks: passed")
+    run_editorial_polish_pass_regression_checks()
+    print("Editorial polish pass regression checks: passed")
+    run_poormaz_v36_regression_checks()
+    print("Poormaz v36 score, long-form, and graphical HTML regression checks: passed")
 
     if not OPENAI_API_KEY:
         fail("OPENAI_API_KEY is missing.")
