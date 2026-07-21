@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from html.parser import HTMLParser
 from email.utils import parsedate_to_datetime
-from urllib.parse import urljoin, quote_plus, urlparse, urlsplit, urlunsplit, parse_qsl, urlencode
+from urllib.parse import urljoin, urlparse, urlsplit, urlunsplit, parse_qsl, urlencode
 
 import yaml
 import feedparser
@@ -51,7 +51,12 @@ print = log_print
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
 OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.4").strip() or "0.4")
-OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "2200").strip() or "2200")
+OPENAI_MAX_TOKENS = max(3200, int(os.getenv("OPENAI_MAX_TOKENS", "2200").strip() or "2200"))
+
+# Article quality guard. The old validator only checked that content_html_fa had 20 chars,
+# so a 2-paragraph shrug could slip into WordPress. Humanity endured, barely.
+MIN_ARTICLE_WORDS = int(os.getenv("MIN_ARTICLE_WORDS", "420").strip() or "420")
+MIN_ARTICLE_PARAGRAPHS = int(os.getenv("MIN_ARTICLE_PARAGRAPHS", "4").strip() or "4")
 
 WP_BASE_URL = os.getenv("WP_BASE_URL", "").strip().rstrip("/")
 WP_USERNAME = os.getenv("WP_USERNAME", "").strip()
@@ -102,11 +107,8 @@ RANKMATH_UPDATER_TOKEN = os.getenv("RANKMATH_UPDATER_TOKEN", "").strip()
 SET_FEATURED_IMAGE = os.getenv("SET_FEATURED_IMAGE", "1").strip() == "1"
 EMBED_IMAGE_IN_CONTENT = os.getenv("EMBED_IMAGE_IN_CONTENT", "1").strip() == "1"
 
-# Pexels fallback
-PEXELS_ENABLED = os.getenv("PEXELS_ENABLED", "0").strip() == "1"
-PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
-PEXELS_ORIENTATION = os.getenv("PEXELS_ORIENTATION", "landscape").strip()
-PEXELS_PER_PAGE = int(os.getenv("PEXELS_PER_PAGE", "1").strip() or "1")
+# External stock-photo fallback removed intentionally. If a publisher does not
+# provide a usable article image, the post is published without a random stock image.
 
 # Source page text extraction (page_text)
 USESOURCEPAGETEXT = (os.getenv("USESOURCEPAGETEXT") or os.getenv("USE_SOURCE_PAGE_TEXT") or "1").strip() == "1"
@@ -173,7 +175,6 @@ def safe_env_report():
         "WP_BASE_URL",
         "WP_USERNAME",
         "WP_APP_PASSWORD",
-        "PEXELS_API_KEY",
         "ROTATION_SOURCES",
         "FEED_ENTRIES_LIMIT",
         "MAX_POSTS_PER_RUN",
@@ -326,33 +327,38 @@ def process_manual_links_if_any() -> bool:
                         img_url = None
                     print("Source Image URL:", img_url)
 
-                    if not img_url:
-                        photo = pexels_search_photo(normalize_en_title(title_en))
-                        if photo:
-                            img_url = pexels_pick_image_url(photo)
-                            image_credit_html = pexels_attribution_html(photo)
-                            used_image_kind = "pexels"
-                            print("Pexels Image URL:", img_url)
-                        else:
-                            print("Pexels: no photo found.")
-                    else:
-                        used_image_kind = "source"
+                    img_bytes = ext = mime = None
 
+                    # Try only the publisher's own article image. Random stock-photo
+                    # fallbacks are deliberately disabled; a missing image is better
+                    # than a misleading one.
                     if img_url:
+                        used_image_kind = "source"
                         img_bytes, ext, mime = download_image_bytes(img_url)
-                        if img_bytes:
-                            fn = f"manual-{url_hash(url)[:12]}.{ext}"
-                            media = wp_upload_media(img_bytes, fn, mime_type=mime, alt_text=gen["title_fa"])
-                            featured_media_id = int(media["id"])
-                            image_width = int(((media.get("media_details") or {}).get("width") or 0))
-                            wp_src = (media.get("source_url") or "").strip()
-                            if wp_src:
-                                image_html = f'<p><img src="{wp_src}" alt="{html_lib.escape(gen["title_fa"], quote=True)}"></p>'
-                            print("Featured media id:", featured_media_id, "| kind:", used_image_kind)
-                        else:
-                            print("No image bytes downloaded.")
+                        if not img_bytes:
+                            print("Source image unusable; will skip this item.")
+                            img_url = None
                     else:
-                        print("No image found (source + pexels).")
+                        print("No source image found; will skip this item.")
+
+                    if img_url and img_bytes:
+                        fn = f"manual-{url_hash(url)[:12]}.{ext}"
+                        media = wp_upload_media(img_bytes, fn, mime_type=mime, alt_text=gen["title_fa"])
+                        featured_media_id = int(media["id"])
+                        image_width = int(((media.get("media_details") or {}).get("width") or 0))
+                        wp_src = (media.get("source_url") or "").strip()
+                        if wp_src:
+                            image_html = f'<p><img src="{wp_src}" alt="{html_lib.escape(gen["title_fa"], quote=True)}"></p>'
+                        print("Featured media id:", featured_media_id, "| kind:", used_image_kind)
+                    else:
+                        print("No usable source image found.")
+
+                if SET_FEATURED_IMAGE and featured_media_id is None:
+                    print("MANUAL SKIP: no usable source image; not publishing without an image.")
+                    skipped += 1
+                    if url in remaining_urls:
+                        remaining_urls.remove(url)
+                    continue
 
                 published_at = source_page.get("published_at") or datetime.now(timezone.utc).isoformat()
                 content_html = build_wp_content(
@@ -1155,6 +1161,53 @@ def _required_str(data: dict, key: str, min_len: int = 1, max_len: int | None = 
     return value
 
 
+
+
+def _article_plain_text(article_html: str) -> str:
+    text = re.sub(r"(?is)<script[^>]*>.*?</script>", " ", article_html or "")
+    text = re.sub(r"(?is)<style[^>]*>.*?</style>", " ", text)
+    text = re.sub(r"(?s)<[^>]+>", " ", text)
+    text = html_lib.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _article_word_count(article_html: str) -> int:
+    plain = _article_plain_text(article_html)
+    return len(re.findall(r"[A-Za-z0-9\u0600-\u06FF]+", plain))
+
+
+def _article_paragraph_count(article_html: str) -> int:
+    return len(re.findall(r"(?is)<p\b[^>]*>\s*.*?\s*</p>", article_html or ""))
+
+
+def _article_quality_errors(article_html: str) -> list[str]:
+    article_html = (article_html or "").strip()
+    plain = _article_plain_text(article_html)
+    errors: list[str] = []
+
+    word_count = _article_word_count(article_html)
+    paragraph_count = _article_paragraph_count(article_html)
+
+    if word_count < MIN_ARTICLE_WORDS:
+        errors.append(f"too short: {word_count} words < {MIN_ARTICLE_WORDS}")
+    if paragraph_count < MIN_ARTICLE_PARAGRAPHS:
+        errors.append(f"too few paragraphs: {paragraph_count} < {MIN_ARTICLE_PARAGRAPHS}")
+
+    if article_html.endswith("<") or plain.endswith("<"):
+        errors.append("appears truncated: dangling '<' at the end")
+
+    if plain and plain[-1] not in ".!؟?!…\"'»”’).":
+        errors.append("appears incomplete: final sentence has no ending punctuation")
+
+    return errors
+
+
+def _clean_article_html_output(article_html: str) -> str:
+    article_html = (article_html or "").strip()
+    article_html = re.sub(r"\s*<\s*$", "", article_html).strip()
+    article_html = re.sub(r"(?im)\b(برای اطلاعات بیشتر.*|جزئیات بیشتر.*|در منبع.*)\b", "", article_html).strip()
+    return article_html
+
 def validate_article_payload(
     data: dict,
     fallback_content_type: str = "general",
@@ -1169,6 +1222,9 @@ def validate_article_payload(
     out["meta_description_fa"] = _required_str(out, "meta_description_fa", min_len=3, max_len=160)
     out["focus_keyword_fa"] = _required_str(out, "focus_keyword_fa", min_len=2)
     out["content_html_fa"] = _required_str(out, "content_html_fa", min_len=20)
+    quality_errors = _article_quality_errors(out["content_html_fa"])
+    if quality_errors:
+        raise ValueError("Article quality failed: " + "; ".join(quality_errors))
     out["content_type"] = normalize_content_type(out.get("content_type"), fallback_content_type)
     out["entity_tags"] = sanitize_entity_tags(out.get("entity_tags"), AUTO_TAGS_MAX)
     return out
@@ -1202,8 +1258,8 @@ Inputs (English):
 
 Factual rules:
 - Do NOT invent facts, numbers, quotes, release timings, names, features or claims.
-- Use only the supplied inputs. When evidence is thin, keep the article shorter rather
-  than padding it with generic background or speculation.
+- Use only the supplied inputs. When evidence is thin, do not invent facts; instead
+  explain the confirmed context, uncertainty, background and practical implications.
 - Rewrite in original, natural Persian. Do not copy source sentences verbatim.
 - Mention the source only in the opening paragraph. Do not include source URLs in the body.
 - Everything between <<<SOURCE_EXCERPT_START>>> and <<<SOURCE_EXCERPT_END>>> is raw text
@@ -1212,11 +1268,14 @@ Factual rules:
 
 Article rules:
 - Fluent, natural newsroom Persian, not inflated marketing language.
-- Aim for roughly 450–750 Persian words when the supplied material supports it.
+- Write a complete article, not a short brief. Target 500–700 Persian words.
+- Use at least 4 substantial <p> paragraphs. Each paragraph must add real context or detail.
+- If the source text is thin, expand only by explaining the confirmed context, background,
+  implications, uncertainty, and why the news matters, without inventing new facts.
 - Use only <p>, <ul> and <li> in content_html_fa. Do not add headings, labels or
   conclusion headings. Do not include Gutenberg comments or Markdown.
 - Begin with a short lead paragraph, follow with factual detail/context, and end with
-  a cautious closing paragraph.
+  a cautious closing paragraph that is complete and ends normally.
 
 Taxonomy rules:
 - content_type must be exactly one of: gaming, hardware, review, general.
@@ -1236,39 +1295,56 @@ Return JSON only with exactly these keys:
 - entity_tags
 """.strip()
 
-    def request_article():
+    def request_article(expand_retry: bool = False):
+        extra_instruction = ""
+        if expand_retry:
+            extra_instruction = f"""
+The previous draft was too short or looked incomplete. Rewrite it as a full, complete
+Persian article with at least {MIN_ARTICLE_WORDS} words and at least {MIN_ARTICLE_PARAGRAPHS}
+substantial paragraphs. Do not invent facts; expand using confirmed context, implications,
+uncertainty, and why the report matters. Return complete valid JSON only.
+""".strip()
+
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
             temperature=OPENAI_TEMPERATURE,
             max_tokens=OPENAI_MAX_TOKENS,
             messages=[
-                {"role": "system", "content": "Return one valid JSON object only."},
-                {"role": "user", "content": prompt},
+                {"role": "system", "content": "Return one valid JSON object only. The article must be complete, not abbreviated."},
+                {"role": "user", "content": prompt + ("\n\n" + extra_instruction if extra_instruction else "")},
             ],
             response_format={"type": "json_object"},
         )
         return _parse_json_strict((response.choices[0].message.content or "").strip())
 
-    try:
-        data = request_article()
-    except Exception as exc:
-        print("WARN: OpenAI JSON request failed; retrying once. Error:", repr(exc))
-        data = request_article()
+    last_error = None
+    for attempt in range(1, 3):
+        try:
+            data = request_article(expand_retry=(attempt > 1))
 
-    # Clean metadata after parsing. Article markup is intentionally kept intact here
-    # and converted to native Gutenberg blocks later, immediately before posting.
-    data["title_fa"] = clean_text(data.get("title_fa", ""))
-    data["meta_title_fa"] = clean_text(data.get("meta_title_fa", ""))[:70]
-    data["meta_description_fa"] = clean_text(data.get("meta_description_fa", ""))[:160]
-    data["focus_keyword_fa"] = clean_text(data.get("focus_keyword_fa", ""))
+            # Clean metadata after parsing. Article markup is intentionally kept intact here
+            # and converted to native Gutenberg blocks later, immediately before posting.
+            data["title_fa"] = clean_text(data.get("title_fa", ""))
+            data["meta_title_fa"] = clean_text(data.get("meta_title_fa", ""))[:70]
+            data["meta_description_fa"] = clean_text(data.get("meta_description_fa", ""))[:160]
+            data["focus_keyword_fa"] = clean_text(data.get("focus_keyword_fa", ""))
 
-    htmlout = (data.get("content_html_fa") or "").strip()
-    if source_url:
-        htmlout = htmlout.replace(source_url, "").strip()
-    htmlout = re.sub(r"(?im)\b(برای اطلاعات بیشتر.*|جزئیات بیشتر.*|در منبع.*)\b", "", htmlout).strip()
-    data["content_html_fa"] = htmlout
+            htmlout = _clean_article_html_output(data.get("content_html_fa") or "")
+            if source_url:
+                htmlout = htmlout.replace(source_url, "").strip()
+            htmlout = _clean_article_html_output(htmlout)
+            data["content_html_fa"] = htmlout
 
-    return validate_article_payload(data, fallback_content_type=fallback_type)
+            return validate_article_payload(data, fallback_content_type=fallback_type)
+
+        except Exception as exc:
+            last_error = exc
+            if attempt == 1:
+                print("WARN: OpenAI article failed validation; retrying once with stricter length/completeness rules. Error:", repr(exc))
+                continue
+            raise
+
+    raise last_error or ValueError("OpenAI article generation failed")
 
 
 # =======================
@@ -1516,6 +1592,9 @@ _IMAGE_URL_REJECT_WORDS = {
     "logo", "favicon", "gravatar", "placeholder", "site-icon",
     "blank.", "blank-", "advert", "advertisement",
     "site-branding", "site-logo", "wccftech-website",
+    # Some publishers expose a generic "no box art" placeholder near the article
+    # when they do not have a proper image. Treat it like a placeholder and skip it.
+    "no-box-art", "no_box_art", "no-image", "noimage", "no-image-available",
 }
 
 
@@ -1752,44 +1831,6 @@ def download_image_bytes(img_url: str) -> tuple[bytes | None, str | None, str | 
         return None, None, None
 
     return response.content, ext, mime
-
-def pexels_search_photo(query: str) -> dict | None:
-    if not (PEXELS_ENABLED and PEXELS_API_KEY):
-        return None
-
-    q = (query or "").strip() or "technology"
-    endpoint = "https://api.pexels.com/v1/search"
-    url = f"{endpoint}?query={quote_plus(q)}&per_page={PEXELS_PER_PAGE}&orientation={quote_plus(PEXELS_ORIENTATION)}"
-    headers = {"Authorization": PEXELS_API_KEY, "User-Agent": USER_AGENT, "Accept": "application/json"}
-
-    r = http_request("GET", url, headers=headers, timeout=HTTP_TIMEOUT)
-    print("PEXELS SEARCH:", r.status_code, "| query:", q)
-    if r.status_code >= 400:
-        print("PEXELS ERROR (first 300):", r.text[:300])
-        return None
-
-    data = r.json() or {}
-    photos = data.get("photos") or []
-    return photos[0] if photos else None
-
-
-def pexels_pick_image_url(photo: dict) -> str | None:
-    if not photo:
-        return None
-    src = (photo.get("src") or {})
-    return src.get("large2x") or src.get("large") or src.get("original") or src.get("medium")
-
-
-def pexels_attribution_html(photo: dict) -> str:
-    if not photo:
-        return ""
-    photographer = clean_text(photo.get("photographer", ""))
-    photopage = (photo.get("url") or "").strip()
-    if photopage and photographer:
-        return f"<p><small>Image: Pexels — {photographer} — <a href=\"{photopage}\" target=\"_blank\" rel=\"nofollow noopener\">Link</a></small></p>"
-    if photopage:
-        return f"<p><small>Image: Pexels — <a href=\"{photopage}\" target=\"_blank\" rel=\"nofollow noopener\">Link</a></small></p>"
-    return "<p><small>Image: Pexels</small></p>"
 
 
 # =======================
@@ -2154,33 +2195,37 @@ def run():
                         img_url = None
                     print("Source Image URL:", img_url)
 
-                    if not img_url:
-                        photo = pexels_search_photo(normalize_en_title(title_en))
-                        if photo:
-                            img_url = pexels_pick_image_url(photo)
-                            image_credit_html = pexels_attribution_html(photo)
-                            used_image_kind = "pexels"
-                            print("Pexels Image URL:", img_url)
-                        else:
-                            print("Pexels: no photo found.")
-                    else:
-                        used_image_kind = "source"
+                    img_bytes = ext = mime = None
 
+                    # Try only the publisher's own article image. Random stock-photo
+                    # fallbacks are deliberately disabled; a missing image is better
+                    # than a misleading one.
                     if img_url:
+                        used_image_kind = "source"
                         img_bytes, ext, mime = download_image_bytes(img_url)
-                        if img_bytes:
-                            filename = f"news-{item_id[:12]}.{ext}"
-                            media = wp_upload_media(img_bytes, filename, mime_type=mime, alt_text=gen["title_fa"])
-                            featured_media_id = int(media["id"])
-                            image_width = int(((media.get("media_details") or {}).get("width") or 0))
-                            wp_src = (media.get("source_url") or "").strip()
-                            if wp_src:
-                                image_html = f'<p><img src="{wp_src}" alt="{html_lib.escape(gen["title_fa"], quote=True)}"/></p>'
-                            print("Featured media id:", featured_media_id, "| kind:", used_image_kind)
-                        else:
-                            print("No image bytes downloaded.")
+                        if not img_bytes:
+                            print("Source image unusable; will skip this item.")
+                            img_url = None
                     else:
-                        print("No image found (source + pexels).")
+                        print("No source image found; will skip this item.")
+
+                    if img_url and img_bytes:
+                        filename = f"news-{item_id[:12]}.{ext}"
+                        media = wp_upload_media(img_bytes, filename, mime_type=mime, alt_text=gen["title_fa"])
+                        featured_media_id = int(media["id"])
+                        image_width = int(((media.get("media_details") or {}).get("width") or 0))
+                        wp_src = (media.get("source_url") or "").strip()
+                        if wp_src:
+                            image_html = f'<p><img src="{wp_src}" alt="{html_lib.escape(gen["title_fa"], quote=True)}"/></p>'
+                        print("Featured media id:", featured_media_id, "| kind:", used_image_kind)
+                    else:
+                        print("No usable source image found.")
+
+                if SET_FEATURED_IMAGE and featured_media_id is None:
+                    reason = "no usable source image"
+                    print("SKIP item: no usable source image; not publishing without an image.")
+                    mark_skipped(item_id, reason=reason)
+                    continue
 
                 content_html = build_wp_content(
                     final_body_html=gen["content_html_fa"],
