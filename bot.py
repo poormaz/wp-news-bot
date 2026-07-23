@@ -2097,12 +2097,12 @@ def run():
     try:
         wp_check_me()
     except requests.RequestException as exc:
-        # This check failing doesn't necessarily mean bad credentials — it's often just
-        # a transient hiccup at the hosting/CDN layer (see wp_check_me). A genuine
-        # credentials/URL problem will surface the moment we make a real WP call below,
-        # and is already handled per-item without crashing the whole job. No need to
-        # throw away an entire run over a health check.
-        logger.warning("WP connectivity check failed after retries, continuing anyway: %r", exc)
+        logger.warning(
+            "WP connectivity check failed. Host/WAF is probably blocking this runner. "
+            "Stopping before spending OpenAI or touching RSS items: %r",
+            exc,
+        )
+        return
 
     if process_manual_links_if_any():
         return
