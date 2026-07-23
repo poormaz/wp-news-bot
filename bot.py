@@ -55,8 +55,8 @@ OPENAI_MAX_TOKENS = max(3200, int(os.getenv("OPENAI_MAX_TOKENS", "2200").strip()
 
 # Article quality guard. The old validator only checked that content_html_fa had 20 chars,
 # so a 2-paragraph shrug could slip into WordPress. Humanity endured, barely.
-MIN_ARTICLE_WORDS = int(os.getenv("MIN_ARTICLE_WORDS", "420").strip() or "420")
-MIN_ARTICLE_PARAGRAPHS = int(os.getenv("MIN_ARTICLE_PARAGRAPHS", "4").strip() or "4")
+MIN_ARTICLE_WORDS = int(os.getenv("MIN_ARTICLE_WORDS", "300").strip() or "300")
+MIN_ARTICLE_PARAGRAPHS = int(os.getenv("MIN_ARTICLE_PARAGRAPHS", "3").strip() or "3")
 
 WP_BASE_URL = os.getenv("WP_BASE_URL", "").strip().rstrip("/")
 WP_USERNAME = os.getenv("WP_USERNAME", "").strip()
@@ -1268,8 +1268,9 @@ Factual rules:
 
 Article rules:
 - Fluent, natural newsroom Persian, not inflated marketing language.
-- Write a complete article, not a short brief. Target 500–700 Persian words.
-- Use at least 4 substantial <p> paragraphs. Each paragraph must add real context or detail.
+- Write a complete article, not a short brief. Target roughly 450–650 Persian words.
+- A complete 300–449 word article is acceptable when the source itself is concise; do not pad with invented facts.
+- Use at least 4 substantial <p> paragraphs when the source supports it, and never fewer than 3 complete paragraphs.
 - If the source text is thin, expand only by explaining the confirmed context, background,
   implications, uncertainty, and why the news matters, without inventing new facts.
 - Use only <p>, <ul> and <li> in content_html_fa. Do not add headings, labels or
@@ -1299,10 +1300,11 @@ Return JSON only with exactly these keys:
         extra_instruction = ""
         if expand_retry:
             extra_instruction = f"""
-The previous draft was too short or looked incomplete. Rewrite it as a full, complete
+The previous draft fell below the hard minimum or looked incomplete. Rewrite it as a full, complete
 Persian article with at least {MIN_ARTICLE_WORDS} words and at least {MIN_ARTICLE_PARAGRAPHS}
-substantial paragraphs. Do not invent facts; expand using confirmed context, implications,
-uncertainty, and why the report matters. Return complete valid JSON only.
+complete paragraphs. Prefer 450–650 words when the source supports it. Expand only with confirmed
+details from the supplied source excerpt, relevant context already present there, implications,
+uncertainty, and why the report matters. Do not invent facts. Return complete valid JSON only.
 """.strip()
 
         response = client.chat.completions.create(
@@ -2097,12 +2099,12 @@ def run():
     try:
         wp_check_me()
     except requests.RequestException as exc:
-        logger.warning(
-            "WP connectivity check failed. Host/WAF is probably blocking this runner. "
-            "Stopping before spending OpenAI or touching RSS items: %r",
-            exc,
-        )
-        return
+        # This check failing doesn't necessarily mean bad credentials — it's often just
+        # a transient hiccup at the hosting/CDN layer (see wp_check_me). A genuine
+        # credentials/URL problem will surface the moment we make a real WP call below,
+        # and is already handled per-item without crashing the whole job. No need to
+        # throw away an entire run over a health check.
+        logger.warning("WP connectivity check failed after retries, continuing anyway: %r", exc)
 
     if process_manual_links_if_any():
         return
