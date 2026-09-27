@@ -10,6 +10,7 @@ import html as html_lib
 import logging
 import sys
 import struct
+import unicodedata
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from html.parser import HTMLParser
@@ -57,6 +58,10 @@ OPENAI_MAX_TOKENS = max(3200, int(os.getenv("OPENAI_MAX_TOKENS", "2200").strip()
 # so a 2-paragraph shrug could slip into WordPress. Humanity endured, barely.
 MIN_ARTICLE_WORDS = int(os.getenv("MIN_ARTICLE_WORDS", "300").strip() or "300")
 MIN_ARTICLE_PARAGRAPHS = int(os.getenv("MIN_ARTICLE_PARAGRAPHS", "3").strip() or "3")
+# Legacy workflow variables from the old bot. They are intentionally NOT used as an
+# alias: an old SEO_MIN_WORDS value would silently raise the minimum again. Only a
+# warning is logged at startup (see safe_env_report) so the mismatch is visible.
+LEGACY_IGNORED_ENV = ("SEO_MIN_WORDS", "SEO_REJECT_SHORT_POSTS")
 
 WP_BASE_URL = os.getenv("WP_BASE_URL", "").strip().rstrip("/")
 WP_USERNAME = os.getenv("WP_USERNAME", "").strip()
@@ -95,9 +100,24 @@ CAT_REVIEWS = int(os.getenv("CAT_REVIEWS", "0").strip() or "0")
 WP_CATEGORY_ID_DEFAULT = int(os.getenv("WP_CATEGORY_ID", "0").strip() or "0")
 
 # WordPress taxonomy (native tags + more reliable category routing)
-AUTO_TAGS_ENABLED = os.getenv("AUTO_TAGS_ENABLED", "1").strip() == "1"
+# The GitHub workflow historically passes WP_TAGS_ENABLED / WP_TAGS_MAX, so accept
+# both names instead of silently ignoring the repository variables.
+AUTO_TAGS_ENABLED = (os.getenv("AUTO_TAGS_ENABLED") or os.getenv("WP_TAGS_ENABLED") or "1").strip() == "1"
 AUTO_TAGS_CREATE_MISSING = os.getenv("AUTO_TAGS_CREATE_MISSING", "1").strip() == "1"
-AUTO_TAGS_MAX = max(0, min(5, int(os.getenv("AUTO_TAGS_MAX", "3").strip() or "3")))
+AUTO_TAGS_MAX = max(0, min(5, int((os.getenv("AUTO_TAGS_MAX") or os.getenv("WP_TAGS_MAX") or "3").strip() or "3")))
+
+# SEO
+# English (Latin) post slugs built from the English source headline, instead of
+# WordPress percent-encoding the Persian title into a 200-character URL.
+SEO_USE_LATIN_SLUG = (os.getenv("SEO_USE_LATIN_SLUG") or "1").strip() == "1"
+SEO_SLUG_MAX_WORDS = int((os.getenv("SEO_SLUG_MAX_WORDS") or "7").strip() or "7")
+# "Related posts" block with links to existing posts on this site.
+SEO_INTERNAL_LINKS_ENABLED = (os.getenv("SEO_INTERNAL_LINKS_ENABLED") or "1").strip() == "1"
+SEO_INTERNAL_LINKS_MAX = max(0, min(4, int((os.getenv("SEO_INTERNAL_LINKS_MAX") or "4").strip() or "4")))
+SEO_INTERNAL_LINKS_SEARCH_PER_PAGE = int((os.getenv("SEO_INTERNAL_LINKS_SEARCH_PER_PAGE") or "8").strip() or "8")
+# Hand-maintained map: entity tag -> permanent Persian subtitle/localization page.
+# Missing or invalid file = feature quietly off. URLs are never guessed.
+LOCALIZATION_PAGES_FILE = (os.getenv("LOCALIZATION_PAGES_FILE") or "localization_pages.yaml").strip()
 
 # RankMath updater (optional)
 RANKMATH_UPDATER_URL = os.getenv("RANKMATH_UPDATER_URL", "").strip()
@@ -186,11 +206,32 @@ def safe_env_report():
         "AUTO_TAGS_ENABLED",
         "AUTO_TAGS_CREATE_MISSING",
         "AUTO_TAGS_MAX",
+        "SEO_USE_LATIN_SLUG",
+        "SEO_INTERNAL_LINKS_ENABLED",
+        "SEO_INTERNAL_LINKS_MAX",
+        "MIN_ARTICLE_WORDS",
+        "MIN_ARTICLE_PARAGRAPHS",
     ]
+    # AUTO_TAGS_* may legitimately be empty when the workflow sets WP_TAGS_* instead.
+    tag_aliases = {"AUTO_TAGS_ENABLED": "WP_TAGS_ENABLED", "AUTO_TAGS_MAX": "WP_TAGS_MAX"}
     print("ENV CHECK (safe):")
     for k in keys:
         v = os.getenv(k, "")
+        alias = tag_aliases.get(k)
+        if alias and not v.strip():
+            if os.getenv(alias, "").strip():
+                print(f"- {k}: not set (using {alias}={os.getenv(alias, '').strip()})")
+            else:
+                print(f"- {k}: not set (default)")
+            continue
         print(f"- {k}: {'OK' if v else 'MISSING'} (len={len(v)})")
+    print(f"- Effective tags enabled: {AUTO_TAGS_ENABLED}")
+    print(f"- Effective tags max: {AUTO_TAGS_MAX}")
+    print(f"- Effective tags create missing: {AUTO_TAGS_CREATE_MISSING}")
+    print(f"- effective article minimum: {MIN_ARTICLE_WORDS} words / {MIN_ARTICLE_PARAGRAPHS} paragraphs")
+    for k in LEGACY_IGNORED_ENV:
+        if os.getenv(k, "").strip():
+            print(f"- WARNING: {k} is set but ignored; use MIN_ARTICLE_WORDS / MIN_ARTICLE_PARAGRAPHS instead")
 
 
 def clean_text(s: str) -> str:
@@ -198,6 +239,169 @@ def clean_text(s: str) -> str:
     s = re.sub(r"<[^>]+>", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
+
+
+# Filler words that add length to a URL without adding search value.
+SLUG_STOP_WORDS = {
+    "a", "an", "the", "of", "and", "or", "for", "in", "on", "at", "to", "from", "by",
+    "with", "as", "is", "are", "was", "were", "be", "been", "it", "its", "this", "that",
+    "these", "those", "has", "have", "had", "will", "just", "now", "finally", "here",
+    "heres", "you", "your", "we", "our", "they", "their", "can", "could", "may", "might",
+    "gets", "get", "reportedly", "officially", "new", "latest", "more", "than", "into",
+    "about", "after", "before", "over", "up", "out", "all", "some", "very", "really",
+}
+
+
+def make_latin_slug(text: str, max_words: int = SEO_SLUG_MAX_WORDS, max_len: int = 75) -> str:
+    """
+    Short English slug from the English source headline, e.g.
+    "Ghost of Yōtei Is Finally Coming to PC This Year" -> "ghost-yotei-coming-pc".
+    Numbers are kept (sequels, years, RTX 5090). Returns "" if nothing usable is left.
+    """
+    base = unicodedata.normalize("NFKD", clean_text(html_lib.unescape(text or "")))
+    base = base.encode("ascii", "ignore").decode("ascii").lower()
+    base = re.sub(r"['’`]", "", base)          # "Assassin's" -> "assassins"
+    base = re.sub(r"[^a-z0-9]+", " ", base)
+    # Time filler that says nothing about the story ("... coming to PC this year").
+    base = re.sub(r"\b(?:later |earlier )?this (?:year|month|week)\b", " ", base)
+    words = [w for w in base.split() if w not in SLUG_STOP_WORDS]
+    if not words:
+        return ""
+    slug = "-".join(words[:max(1, max_words)])
+    if len(slug) > max_len:
+        slug = slug[:max_len].rsplit("-", 1)[0] or slug[:max_len]
+    return slug.strip("-")
+
+
+# Latin letters with no Unicode decomposition (NFKD leaves them intact).
+_LATIN_FOLD_EXTRA = {"ø": "o", "æ": "ae", "œ": "oe", "ł": "l", "đ": "d", "ð": "d", "þ": "th", "ı": "i"}
+
+
+def _fold_latin_diacritics(value: str) -> str:
+    """
+    Strip accents from Latin letters only (Yōtei -> yotei, Pokémon -> pokemon).
+    Non-Latin characters are left untouched, so Persian letters such as آ / أ / ۀ keep
+    their marks instead of being decomposed into a different letter.
+    """
+    out = []
+    for ch in value:
+        if ch in _LATIN_FOLD_EXTRA:
+            out.append(_LATIN_FOLD_EXTRA[ch])
+        elif ord(ch) > 127 and "LATIN" in unicodedata.name(ch, ""):
+            out.append("".join(c for c in unicodedata.normalize("NFKD", ch) if not unicodedata.combining(c)))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def localization_key(value: str) -> str:
+    """Loose match key for game names: case, accents, ™/®, apostrophes and punctuation ignored."""
+    # Drop ™/®/© before NFKC, which would otherwise expand ™ into the letters "TM".
+    value = re.sub(r"[\u2122\u00ae\u00a9]", "", html_lib.unescape(value or ""))
+    value = unicodedata.normalize("NFKC", value).casefold()
+    value = _fold_latin_diacritics(value)
+    value = re.sub(r"[\u2122\u00ae\u00a9'\u2018\u2019`´]", "", value)
+    value = re.sub(r"[^0-9a-z\u0600-\u06ff]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _site_host(url: str) -> str:
+    host = (urlsplit((url or "").strip()).hostname or "").lower().rstrip(".")
+    return host[4:] if host.startswith("www.") else host
+
+
+def is_internal_site_url(url: str) -> bool:
+    """True only when url is on the same site as WP_BASE_URL (www. ignored)."""
+    site = _site_host(WP_BASE_URL)
+    return bool(site) and _site_host(url) == site
+
+
+_LOCALIZATION_INDEX: dict[str, dict] | None = None
+
+
+def load_localization_pages() -> dict[str, dict]:
+    """
+    Read LOCALIZATION_PAGES_FILE once and return {match_key: {"name", "url", "anchor"}}.
+    A missing, empty or malformed file only logs a message and disables the feature.
+    """
+    global _LOCALIZATION_INDEX
+    if _LOCALIZATION_INDEX is not None:
+        return _LOCALIZATION_INDEX
+    _LOCALIZATION_INDEX = {}
+
+    path = LOCALIZATION_PAGES_FILE
+    if not path or not os.path.exists(path):
+        print("SEO localization map not found:", path or "(unset)", "- localization links disabled")
+        return _LOCALIZATION_INDEX
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        print("SEO localization map unreadable:", path, repr(exc), "- localization links disabled")
+        return _LOCALIZATION_INDEX
+
+    entries = data.get("localizations") if isinstance(data, dict) else None
+    if not isinstance(entries, dict):
+        print("SEO localization map has no 'localizations:' mapping - localization links disabled")
+        return _LOCALIZATION_INDEX
+
+    for name, cfg in entries.items():
+        name = clean_text(str(name or ""))
+        if not name or not isinstance(cfg, dict):
+            continue
+        url = str(cfg.get("url") or "").strip()
+        if not url.lower().startswith(("http://", "https://")):
+            print("SEO localization map: skipping", repr(name), "(missing/invalid url)")
+            continue
+        if not is_internal_site_url(url):
+            print("WARNING: SEO localization map: skipping", repr(name),
+                  "- url is not on", WP_BASE_URL or "(WP_BASE_URL unset)", ":", url)
+            continue
+        anchor = clean_text(str(cfg.get("anchor") or "")) or f"دانلود زیرنویس فارسی {name}"
+        entry = {"name": name, "url": url, "anchor": anchor}
+        aliases = cfg.get("aliases") or []
+        if isinstance(aliases, str):
+            aliases = [aliases]
+        for label in [name, *[str(a) for a in aliases if a]]:
+            key = localization_key(label)
+            if key and key not in _LOCALIZATION_INDEX:
+                _LOCALIZATION_INDEX[key] = entry
+
+    games = len({id(e) for e in _LOCALIZATION_INDEX.values()})
+    print("SEO localization map loaded:", games, "game(s),", len(_LOCALIZATION_INDEX), "name(s)/alias(es)")
+    return _LOCALIZATION_INDEX
+
+
+def find_localization_page(entity_tags: object) -> dict | None:
+    """First entity tag (in the model's order) that has a mapped localization page."""
+    if not isinstance(entity_tags, list):
+        return None
+    index = load_localization_pages()
+    if not index:
+        return None
+    for tag in entity_tags:
+        entry = index.get(localization_key(str(tag or "")))
+        if entry:
+            return entry
+    return None
+
+
+def _url_identity(url: str) -> str:
+    """Compare URLs ignoring scheme, www., query/fragment and trailing slash."""
+    parts = urlsplit((url or "").strip())
+    host = parts.netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return f"{host}{parts.path.rstrip('/')}".lower()
+
+
+def make_image_filename(post_slug: str, fallback: str, ext: str | None) -> str:
+    """Descriptive media filename (helps Google Images) with a short unique suffix."""
+    ext = (ext or "jpg").lstrip(".")
+    suffix = fallback.rsplit("-", 1)[-1][:6]
+    if post_slug:
+        return f"{post_slug[:60].rstrip('-')}-{suffix}.{ext}"
+    return f"{fallback}.{ext}"
 
 def read_manual_links() -> list[str]:
     if not os.path.exists(MANUAL_LINKS_FILE):
@@ -312,6 +516,14 @@ def process_manual_links_if_any() -> bool:
                     page_text=page_text,
                 )
                 tag_ids = resolve_wp_tag_ids(gen.get("entity_tags", []))
+                post_slug = make_latin_slug(title_en) if SEO_USE_LATIN_SLUG else ""
+                localization = find_localization_page(gen.get("entity_tags", []))
+                related_links = wp_search_related_posts(
+                    tag_ids,
+                    title_en,
+                    exclude_urls=[localization["url"]] if localization else None,
+                )
+                seo_image_filename = ""
                 print("Picked category type:", gen.get("content_type"), "| categories:", categories, "| entity tags:", gen.get("entity_tags", []))
 
                 featured_media_id = None
@@ -342,7 +554,7 @@ def process_manual_links_if_any() -> bool:
                         print("No source image found; will skip this item.")
 
                     if img_url and img_bytes:
-                        fn = f"manual-{url_hash(url)[:12]}.{ext}"
+                        fn = seo_image_filename = make_image_filename(post_slug, f"manual-{url_hash(url)[:12]}", ext)
                         media = wp_upload_media(img_bytes, fn, mime_type=mime, alt_text=gen["title_fa"])
                         featured_media_id = int(media["id"])
                         image_width = int(((media.get("media_details") or {}).get("width") or 0))
@@ -371,6 +583,8 @@ def process_manual_links_if_any() -> bool:
                     featured_media_id=featured_media_id,
                     image_alt=gen["title_fa"],
                     image_width=image_width,
+                    related_links=related_links,
+                    localization=localization,
                 )
                 post_id = create_wp_post(
                     title=gen["title_fa"],
@@ -378,7 +592,9 @@ def process_manual_links_if_any() -> bool:
                     categories=categories,
                     featured_media_id=featured_media_id,
                     tag_ids=tag_ids,
+                    slug=post_slug,
                 )
+                log_seo_summary(post_id, post_slug, gen.get("entity_tags", []), localization, related_links, seo_image_filename)
 
                 push_rankmath_meta_wp(
                     post_id=post_id,
@@ -1286,6 +1502,17 @@ Taxonomy rules:
   News, Review, Trailer, Update, PC, Steam, PlayStation, Xbox or Nintendo.
 - Do not create a tag from a guess, a sentence fragment, or a translated Persian title.
 
+SEO rules:
+- When the story is about a specific, identifiable game, franchise or hardware product,
+  keep its official English name (as written in entity_tags) inside title_fa and
+  meta_title_fa. Do not translate or transliterate it. Examples:
+  "تاریخ انتشار Ghost of Yotei برای PC", "آپدیت جدید Crimson Desert منتشر شد".
+- If the story is not about one specific product or game, write a normal Persian title;
+  do not force an English name into it.
+- focus_keyword_fa is a natural 2–6 word search phrase a Persian gamer would type,
+  usually mixed Persian/English, e.g. "Ghost of Yotei نسخه PC", "RTX 5090 قیمت".
+  Never distort title_fa or the article just to repeat the focus keyword.
+
 Return JSON only with exactly these keys:
 - title_fa
 - meta_title_fa (max 70 chars)
@@ -1509,9 +1736,13 @@ def create_wp_post(
     categories: list[int],
     featured_media_id: int | None = None,
     tag_ids: list[int] | None = None,
+    slug: str = "",
 ) -> int:
     endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/posts"
     payload = {"title": title, "content": content_html, "status": WP_POST_STATUS}
+    if slug:
+        # WordPress appends -2, -3 ... on its own if the slug is already taken.
+        payload["slug"] = slug
     if categories:
         payload["categories"] = categories
     if tag_ids:
@@ -1568,6 +1799,76 @@ def wp_search_similar_posts(title_en: str) -> tuple[bool, str]:
     if best >= DEDUP_SIM_THRESHOLD:
         return True, f"wp-sim={best:.3f} title={best_title[:80]}"
     return False, ""
+
+def wp_search_related_posts(
+    tag_ids: list[int] | None,
+    title_en: str,
+    limit: int | None = None,
+    exclude_urls: list[str] | None = None,
+) -> list[dict]:
+    """
+    Existing published posts to link to from the new post. Posts sharing an entity tag
+    (same game/product) come first because they are the most relevant; a keyword
+    search on the English headline fills the rest. Failures are non-fatal.
+    """
+    if not SEO_INTERNAL_LINKS_ENABLED:
+        return []
+    limit = int(limit or SEO_INTERNAL_LINKS_MAX)
+    if limit <= 0:
+        return []
+
+    endpoint = f"{WP_BASE_URL}/wp-json/wp/v2/posts"
+    per_page = str(max(limit, SEO_INTERNAL_LINKS_SEARCH_PER_PAGE))
+    lookups = []
+    if tag_ids:
+        lookups.append(("tags", {"tags": ",".join(str(t) for t in tag_ids)}))
+    q = basic_keywords_for_wp_search(title_en, max_words=4)
+    if q:
+        lookups.append(("search", {"search": q}))
+
+    excluded = {_url_identity(u) for u in (exclude_urls or []) if u}
+    found: list[dict] = []
+    seen: set[int] = set()
+    for label, params in lookups:
+        try:
+            response = http_request(
+                "GET",
+                endpoint,
+                headers=wp_request_headers(),
+                params={**params, "per_page": per_page, "status": "publish", "_fields": "id,link,title"},
+                timeout=HTTP_TIMEOUT,
+            )
+            print("WP RELATED", label, ":", response.status_code)
+            if response.status_code >= 400:
+                continue
+            for post in response.json() or []:
+                pid = int(post.get("id") or 0)
+                link = (post.get("link") or "").strip()
+                title = clean_text(html_lib.unescape(((post.get("title") or {}).get("rendered") or "")))
+                if not (pid and link and title) or pid in seen:
+                    continue
+                if not link.startswith(WP_BASE_URL):
+                    continue
+                if _url_identity(link) in excluded:
+                    continue
+                seen.add(pid)
+                found.append({"id": pid, "title": title, "link": link})
+                if len(found) >= limit:
+                    return found
+        except (requests.RequestException, ValueError) as exc:
+            print("WP RELATED", label, "failed:", repr(exc))
+    return found
+
+
+def log_seo_summary(post_id: int, slug: str, entity_tags: object, localization: dict | None,
+                    related_links: list[dict] | None, image_filename: str) -> None:
+    print("SEO post id:", post_id)
+    print("SEO slug:", slug or "(WordPress default)")
+    print("SEO entity tags:", ", ".join(str(t) for t in (entity_tags or [])) or "none")
+    print("SEO localization page:", (localization or {}).get("url") or "none")
+    print("SEO related posts:", len(related_links or []))
+    print("SEO image filename:", image_filename or "none")
+
 
 def push_rankmath_meta_wp(post_id: int, meta_title: str, meta_desc: str, focus_kw: str):
     endpoint = f"{WP_BASE_URL}/wp-json/rankmath/v1/updateMeta"
@@ -2025,6 +2326,52 @@ def image_src_from_html(image_html: str) -> str:
     return html_lib.unescape(match.group(1).strip()) if match else ""
 
 
+def build_localization_block(localization: dict | None) -> str:
+    """
+    One natural Persian sentence linking to the game's permanent localization page.
+    Normal followed internal link, same tab (no nofollow, no target=_blank).
+    """
+    if not localization:
+        return ""
+    url = html_lib.escape((localization.get("url") or "").strip(), quote=True)
+    anchor = html_lib.escape(clean_text(localization.get("anchor", "")))
+    if not (url and anchor):
+        return ""
+    return gutenberg_paragraph_block(
+        "اگر قصد تجربه بازی با متن فارسی را دارید، می‌توانید از صفحه "
+        f'«<a href="{url}">{anchor}</a>» استفاده کنید.'
+    )
+
+
+def build_related_links_blocks(related_links: list[dict]) -> str:
+    """
+    Native heading + list blocks for internal links. Built here directly rather than via
+    sanitize_inline_html(), which (correctly, for model output) forces nofollow and
+    target=_blank on every link — both wrong for links to our own posts.
+    """
+    items = []
+    for item in related_links[:SEO_INTERNAL_LINKS_MAX]:
+        title = html_lib.escape(clean_text(item.get("title", "")))
+        link = html_lib.escape((item.get("link") or "").strip(), quote=True)
+        if title and link:
+            items.append(
+                "<!-- wp:list-item -->\n"
+                f'<li><a href="{link}">{title}</a></li>\n'
+                "<!-- /wp:list-item -->"
+            )
+    if not items:
+        return ""
+    return (
+        '<!-- wp:heading {"level":3} -->\n'
+        '<h3 class="wp-block-heading">مطالب مرتبط</h3>\n'
+        "<!-- /wp:heading -->\n\n"
+        "<!-- wp:list -->\n"
+        '<ul class="wp-block-list">\n'
+        + "\n".join(items)
+        + "\n</ul>\n<!-- /wp:list -->"
+    )
+
+
 def build_wp_content(
     final_body_html: str,
     source_name: str,
@@ -2035,6 +2382,8 @@ def build_wp_content(
     featured_media_id: int | None = None,
     image_alt: str = "",
     image_width: int = 0,
+    related_links: list[dict] | None = None,
+    localization: dict | None = None,
 ) -> str:
     nice_date = format_rss_date(published_at) if (published_at or "").strip() else ""
 
@@ -2058,6 +2407,15 @@ def build_wp_content(
     body_blocks = html_to_gutenberg_blocks(final_body_html)
     if body_blocks:
         blocks.append(body_blocks)
+
+    # Order after the body: localization page (priority) -> related posts -> source footer.
+    localization_block = build_localization_block(localization)
+    if localization_block:
+        blocks.append(localization_block)
+
+    related_block = build_related_links_blocks(related_links or [])
+    if related_block:
+        blocks.append(related_block)
 
     source_name_safe = html_lib.escape(clean_text(source_name))
     source_url_safe = html_lib.escape((source_url or "").strip(), quote=True)
@@ -2178,6 +2536,14 @@ def run():
                     page_text=page_text,
                 )
                 tag_ids = resolve_wp_tag_ids(gen.get("entity_tags", []))
+                post_slug = make_latin_slug(title_en) if SEO_USE_LATIN_SLUG else ""
+                localization = find_localization_page(gen.get("entity_tags", []))
+                related_links = wp_search_related_posts(
+                    tag_ids,
+                    title_en,
+                    exclude_urls=[localization["url"]] if localization else None,
+                )
+                seo_image_filename = ""
                 print(
                     "Picked category type:", gen.get("content_type"),
                     "| categories:", categories,
@@ -2212,7 +2578,7 @@ def run():
                         print("No source image found; will skip this item.")
 
                     if img_url and img_bytes:
-                        filename = f"news-{item_id[:12]}.{ext}"
+                        filename = seo_image_filename = make_image_filename(post_slug, f"news-{item_id[:12]}", ext)
                         media = wp_upload_media(img_bytes, filename, mime_type=mime, alt_text=gen["title_fa"])
                         featured_media_id = int(media["id"])
                         image_width = int(((media.get("media_details") or {}).get("width") or 0))
@@ -2239,6 +2605,8 @@ def run():
                     featured_media_id=featured_media_id,
                     image_alt=gen["title_fa"],
                     image_width=image_width,
+                    related_links=related_links,
+                    localization=localization,
                 )
 
                 post_id = create_wp_post(
@@ -2247,7 +2615,9 @@ def run():
                     categories=categories,
                     featured_media_id=featured_media_id,
                     tag_ids=tag_ids,
+                    slug=post_slug,
                 )
+                log_seo_summary(post_id, post_slug, gen.get("entity_tags", []), localization, related_links, seo_image_filename)
 
                 push_rankmath_meta_wp(
                     post_id=post_id,
