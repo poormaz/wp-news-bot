@@ -16,14 +16,21 @@ localizations:
   "Ghost Recon Wildlands":
     aliases:
       - "Tom Clancy's Ghost Recon Wildlands"
+      - "Tom Clancy’s Ghost Recon Wildlands"
       - "Ghost Recon: Wildlands"
+      - "Ghost Recon Wildlands"
     url: "https://poormaz.com/ghost-recon-wildlands-persian-subtitles/"
     anchor: "دانلود زیرنویس فارسی Ghost Recon Wildlands"
 
   "007 First Light":
+    aliases:
+      - "007: First Light"
+      - "007 First Light"
     url: "https://poormaz.com/007-first-light-persian-subtitles/"
     anchor: "دانلود زیرنویس فارسی 007 First Light"
 
   "Crimson Desert":
+    aliases:
+      - "Crimson Desert"
     url: "https://poormaz.com/crimson-desert-persian-subtitles/"
-    anchor: "دانلود فارسی ساز Crimson Desert"
+    anchor: "دانلود فارسی‌ساز Crimson Desert"
