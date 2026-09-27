@@ -1,0 +1,29 @@
+# Permanent Persian subtitle / localization pages on Poormaz.
+# The bot links to one of these ONLY when an article's entity tag matches a name
+# or alias below. It never guesses URLs; a game that is not listed gets no link.
+#
+# - The key is the official English name (as the bot's entity tags use it).
+# - aliases: optional other spellings. Matching ignores case, ™/®, apostrophes
+#   and punctuation, so "Ghost Recon: Wildlands" == "ghost recon wildlands".
+# - anchor: optional. Default is "دانلود زیرنویس فارسی <name>".
+# - url: must be on the same site as WP_BASE_URL (www. optional). A URL on any
+#   other domain is skipped with a WARNING in the log.
+# - Matching also ignores accents: "Ghost of Yōtei" == "Ghost of Yotei".
+#
+# Replace the example URLs with your real page URLs before relying on them.
+
+localizations:
+  "Ghost Recon Wildlands":
+    aliases:
+      - "Tom Clancy's Ghost Recon Wildlands"
+      - "Ghost Recon: Wildlands"
+    url: "https://poormaz.com/ghost-recon-wildlands-persian-subtitles/"
+    anchor: "دانلود زیرنویس فارسی Ghost Recon Wildlands"
+
+  "007 First Light":
+    url: "https://poormaz.com/007-first-light-persian-subtitles/"
+    anchor: "دانلود زیرنویس فارسی 007 First Light"
+
+  "Crimson Desert":
+    url: "https://poormaz.com/crimson-desert-persian-subtitles/"
+    anchor: "دانلود فارسی ساز Crimson Desert"
