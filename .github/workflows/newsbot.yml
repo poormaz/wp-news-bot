@@ -72,8 +72,10 @@ jobs:
           SEO_INTERNAL_LINKS_ENABLED: ${{ vars.SEO_INTERNAL_LINKS_ENABLED }}
           SEO_INTERNAL_LINKS_MAX: ${{ vars.SEO_INTERNAL_LINKS_MAX }}
           SEO_INTERNAL_LINKS_SEARCH_PER_PAGE: ${{ vars.SEO_INTERNAL_LINKS_SEARCH_PER_PAGE }}
-          SEO_MIN_WORDS: ${{ vars.SEO_MIN_WORDS }}
-          SEO_REJECT_SHORT_POSTS: ${{ vars.SEO_REJECT_SHORT_POSTS }}
+          # Article length guard (bot defaults: 300 words / 3 paragraphs when unset).
+          # Replaces the old SEO_MIN_WORDS / SEO_REJECT_SHORT_POSTS, which bot.py never read.
+          MIN_ARTICLE_WORDS: ${{ vars.MIN_ARTICLE_WORDS }}
+          MIN_ARTICLE_PARAGRAPHS: ${{ vars.MIN_ARTICLE_PARAGRAPHS }}
           SEO_USE_LATIN_SLUG: ${{ vars.SEO_USE_LATIN_SLUG }}
 
 
@@ -97,12 +99,6 @@ jobs:
           # Images
           SET_FEATURED_IMAGE: "1"
           EMBED_IMAGE_IN_CONTENT: "1"
-
-          # Pexels
-          PEXELS_ENABLED: "0"
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          PEXELS_ORIENTATION: "landscape"
-          PEXELS_PER_PAGE: "1"
 
           # DEDUP (fuzzy)
           DEDUP_WINDOW_HOURS: "48"
