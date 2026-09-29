@@ -3,7 +3,7 @@ name: wp-news-bot
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */2 * * *'
+    - cron: '17 */2 * * *'
 
 concurrency:
   group: wp-news-bot
