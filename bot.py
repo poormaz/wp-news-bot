@@ -50,7 +50,7 @@ print = log_print
 # ENV
 # =======================
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-6-luna").strip()
 OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.4").strip() or "0.4")
 OPENAI_MAX_TOKENS = max(3200, int(os.getenv("OPENAI_MAX_TOKENS", "2200").strip() or "2200"))
 
