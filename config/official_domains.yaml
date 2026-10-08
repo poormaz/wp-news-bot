@@ -1,0 +1,77 @@
+# Domains treated as OFFICIAL sources (developer, publisher, platform holder, hardware maker).
+# A link from a news article to one of these domains is followed (at most
+# NEWSBOT_MAX_OFFICIAL_FETCHES per story) so facts can be confirmed at the source.
+# Subdomains match automatically (news.xbox.com matches xbox.com).
+official:
+  - store.steampowered.com
+  - steamcommunity.com
+  - playstation.com
+  - blog.playstation.com
+  - xbox.com
+  - news.xbox.com
+  - nintendo.com
+  - nintendo.co.jp
+  - ea.com
+  - ubisoft.com
+  - bethesda.net
+  - blizzard.com
+  - rockstargames.com
+  - capcom.com
+  - capcom-games.com
+  - square-enix.com
+  - square-enix-games.com
+  - bandainamcoent.com
+  - sega.com
+  - atlus.com
+  - konami.com
+  - koeitecmo.com
+  - fromsoftware.jp
+  - cdprojekt.com
+  - cdprojektred.com
+  - cyberpunk.net
+  - thewitcher.com
+  - valvesoftware.com
+  - epicgames.com
+  - riotgames.com
+  - leagueoflegends.com
+  - playvalorant.com
+  - bungie.net
+  - activision.com
+  - callofduty.com
+  - larian.com
+  - remedygames.com
+  - paradoxinteractive.com
+  - pearlabyss.com
+  - crimsondesert.com
+  - krafton.com
+  - hoyoverse.com
+  - nexon.com
+  - 2k.com
+  - take2games.com
+  - warnerbrosgames.com
+  - devolverdigital.com
+  - focus-entmt.com
+  - thqnordic.com
+  - ioi.dk
+  - techland.net
+  - frontier.co.uk
+  - frontierstore.net
+  - kojimaproductions.jp
+  - insomniac.games
+  - naughtydog.com
+  - santamonicastudio.com
+  - suckerpunch.com
+  - guerrilla-games.com
+  - minecraft.net
+  - nvidia.com
+  - amd.com
+  - intel.com
+  - qualcomm.com
+  - gog.com
+
+# Wire services that publish verified corporate press releases.
+press_wires:
+  - businesswire.com
+  - prnewswire.com
+  - globenewswire.com
+  - gamespress.com

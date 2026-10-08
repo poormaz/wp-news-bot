@@ -1,0 +1,269 @@
+# Known entities for cheap, rule-based extraction before any model call.
+# The pipeline also learns canonical game names from verified fact sheets
+# (stored in the state DB), so this list only needs stable, common names.
+#
+# Matching ignores case, accents, ™/®, apostrophes, punctuation and a leading "The".
+# Add aliases for abbreviations ("GTA 6") that rule-based matching cannot infer.
+
+platforms:
+  PC: [pc, windows pc, windows]
+  PlayStation 5: [ps5, playstation 5, ps5 pro, playstation 5 pro]
+  PlayStation 4: [ps4, playstation 4]
+  PlayStation VR2: [ps vr2, psvr2, playstation vr2]
+  "Xbox Series X|S": [xbox series x, xbox series s, xbox series x s, xbox series x and s, series x, xsx]
+  Xbox One: [xbox one]
+  Nintendo Switch 2: [switch 2, nintendo switch 2]
+  Nintendo Switch: [switch, nintendo switch]
+  Steam Deck: [steam deck, steam deck oled]
+  Steam Machine: [steam machine]
+  ROG Ally: [rog ally, rog xbox ally, xbox ally]
+  iOS: [ios, iphone, ipad]
+  Android: [android]
+  macOS: [macos, mac]
+  Linux: [linux]
+  Meta Quest: [meta quest, quest 3, quest 3s]
+  Game Pass: [game pass, xbox game pass, pc game pass]
+  PlayStation Plus: [playstation plus, ps plus]
+  Steam: [steam]
+  Epic Games Store: [epic games store, egs]
+
+companies:
+  - Nintendo
+  - Sony Interactive Entertainment
+  - Sony
+  - PlayStation Studios
+  - Microsoft
+  - Xbox Game Studios
+  - Bethesda
+  - Bethesda Softworks
+  - Ubisoft
+  - Electronic Arts
+  - EA
+  - Activision
+  - Blizzard Entertainment
+  - Blizzard
+  - Take-Two Interactive
+  - Rockstar Games
+  - 2K
+  - Capcom
+  - Square Enix
+  - Bandai Namco
+  - Sega
+  - Atlus
+  - Konami
+  - Koei Tecmo
+  - FromSoftware
+  - CD Projekt Red
+  - CD Projekt
+  - Valve
+  - Epic Games
+  - Riot Games
+  - Bungie
+  - Naughty Dog
+  - Insomniac Games
+  - Santa Monica Studio
+  - Guerrilla Games
+  - Sucker Punch Productions
+  - Remedy Entertainment
+  - Larian Studios
+  - Paradox Interactive
+  - Embracer Group
+  - Warner Bros. Games
+  - Devolver Digital
+  - Pearl Abyss
+  - Krafton
+  - NetEase
+  - Tencent
+  - HoYoverse
+  - miHoYo
+  - Nexon
+  - NCSoft
+  - Level-5
+  - PlatinumGames
+  - Kojima Productions
+  - IO Interactive
+  - Frontier Developments
+  - Focus Entertainment
+  - THQ Nordic
+  - Deep Silver
+  - People Can Fly
+  - Techland
+  - 11 bit studios
+  - Obsidian Entertainment
+  - Playground Games
+  - id Software
+  - MachineGames
+  - Arkane
+  - Respawn Entertainment
+  - BioWare
+  - DICE
+  - Infinity Ward
+  - Treyarch
+  - Sledgehammer Games
+  - Hideo Kojima
+  - Nvidia
+  - AMD
+  - Intel
+  - Qualcomm
+  - Asus
+  - MSI
+  - Razer
+  - Logitech
+  - Samsung
+  - Apple
+  - Google
+  - Netflix
+  - Amazon Games
+
+franchises:
+  Call of Duty: [cod]
+  Grand Theft Auto: [gta]
+  Assassin's Creed: []
+  Battlefield: []
+  Final Fantasy: [ff]
+  Resident Evil: []
+  The Elder Scrolls: [elder scrolls]
+  Fallout: []
+  The Witcher: [witcher]
+  Pokemon: [pokémon]
+  The Legend of Zelda: [zelda]
+  Mario: [super mario]
+  Halo: []
+  Gears of War: [gears]
+  Forza: []
+  God of War: []
+  Monster Hunter: []
+  Street Fighter: []
+  Tekken: []
+  Mortal Kombat: []
+  Metal Gear: [metal gear solid]
+  Silent Hill: []
+  Diablo: []
+  Overwatch: []
+  World of Warcraft: [wow]
+  Destiny: []
+  Elden Ring: []
+  Dark Souls: []
+  Cyberpunk: []
+  Far Cry: []
+  Ghost Recon: []
+  Rainbow Six: []
+  Tomb Raider: []
+  Hitman: []
+  Persona: []
+  Yakuza: [like a dragon]
+  Kingdom Hearts: []
+  Dragon Quest: []
+  Dragon's Dogma: []
+  Borderlands: []
+  BioShock: []
+  Mass Effect: []
+  Dragon Age: []
+  Star Wars: []
+  Marvel's Spider-Man: [spider-man, spider man]
+
+games:
+  Grand Theft Auto VI: [gta 6, gta vi, gta6]
+  Grand Theft Auto V: [gta 5, gta v, gta5]
+  Red Dead Redemption 2: [rdr2, rdr 2]
+  The Last of Us Part II: [tlou 2, the last of us part 2, last of us part 2]
+  Baldur's Gate 3: [bg3, baldurs gate 3]
+  The Elder Scrolls VI: [tes 6, elder scrolls 6, the elder scrolls 6]
+  "The Elder Scrolls IV: Oblivion Remastered": [oblivion remastered]
+  Final Fantasy VII Remake: [ff7 remake, ffvii remake]
+  Final Fantasy VII Rebirth: [ff7 rebirth, ffvii rebirth]
+  Counter-Strike 2: [cs2, counter strike 2]
+  League of Legends: [lol]
+  Fortnite: []
+  Minecraft: []
+  Valorant: []
+  Apex Legends: []
+  Marvel Rivals: []
+  Genshin Impact: []
+  Ghost of Yotei: [ghost of yōtei]
+  "Death Stranding 2: On the Beach": [death stranding 2]
+  Crimson Desert: []
+  "Hollow Knight: Silksong": [silksong]
+  "Black Myth: Wukong": [black myth wukong]
+  Cyberpunk 2077: []
+  Elden Ring Nightreign: [nightreign]
+  Monster Hunter Wilds: []
+  "007 First Light": ["007: First Light"]
+  Ghost Recon Wildlands: ["Tom Clancy's Ghost Recon Wildlands", "Ghost Recon: Wildlands"]
+  Dragon's Dogma 2: [dragons dogma 2]
+
+# Shows and trade events: useful context, never the topic of a story by themselves.
+events:
+  Gamescom: [gamescom opening night live, onl]
+  CES: []
+  Computex: []
+  Summer Game Fest: [sgf]
+  The Game Awards: [tga, game awards]
+  Tokyo Game Show: [tgs]
+  State of Play: []
+  Nintendo Direct: []
+  Xbox Games Showcase: [xbox showcase]
+  PlayStation Showcase: []
+  PC Gaming Show: []
+  Ubisoft Forward: []
+  PAX: [pax east, pax west]
+  BitSummit: []
+  EVO: []
+
+# Regex patterns for hardware product names (case-insensitive).
+hardware_patterns:
+  - '\b(?:geforce\s+)?rtx\s?\d{4}(?:\s?ti)?(?:\s?super)?\b'
+  - '\b(?:radeon\s+)?rx\s?\d{4}(?:\s?xtx?|\s?gre)?\b'
+  - '\bryzen\s+(?:ai\s+)?\d\s+\d{3,4}x?3?d?\b'
+  - '\bcore\s+ultra\s+\d\s+\d{3}[a-z]{0,2}\b'
+  - '\b(?:intel\s+)?arc\s+[ab]\d{3}\b'
+  - '\bsnapdragon\s+[0-9a-z ]{2,12}\b'
+  - '\bdlss\s?\d(?:\.\d)?\b'
+  - '\bfsr\s?\d(?:\.\d)?\b'
+
+# Words that never make a game title on their own when found by headline heuristics.
+generic_phrases:
+  - another
+  - more
+  - all
+  - every
+  - some
+  - its
+  - their
+  - your
+  - new
+  - big
+  - huge
+  - first
+  - latest
+  - next
+  - this
+  - these
+  - those
+  - why
+  - how
+  - what
+  - when
+  - where
+  - here
+  - players
+  - fans
+  - gamers
+  - developers
+  - studio
+  - report
+  - rumor
+  - video
+  - game
+  - games
+  - gaming
+  - update
+  - trailer
+  - review
+  - deal
+  - deals
+  - sale
+  - week
+  - today
+  - tomorrow
+  - year

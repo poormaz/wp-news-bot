@@ -1,12 +1,55 @@
+# News sources for Poormaz News Bot.
+#
+# Required per source: name, feed. Optional (News Bot 2.0):
+#   type:      official | publication          (official = developer/publisher/platform holder)
+#   authority: high | medium | low             (a single-source story needs NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY,
+#                                               default high, unless confirmed officially or corroborated)
+#   role:      primary | corroboration         (corroboration sources help verify and cluster stories
+#                                               but never start a story on their own)
+#   enabled:   true | false
+#   images:    none | press_kit                (press_kit = images are official press material that may be
+#                                               used as featured images; NEVER set this for publications)
+#
+# Add or remove a source by editing this list; no code change is needed.
+# Bot v1 (legacy/bot_v1.py) reads only name/feed and ignores the other keys.
+
 sources:
+  # Existing approved feeds (unchanged URLs)
   - name: Gamingbolt
     feed: "https://gamingbolt.com/feed/"
+    type: publication
+    authority: medium
   - name: DSOGaming
     feed: "https://www.dsogaming.com/feed/"
+    type: publication
+    authority: medium
   - name: Wccftech
     feed: "https://wccftech.com/feed/"
+    type: publication
+    authority: medium
   - name: PC Gamer
     feed: "https://www.pcgamer.com/rss/"
+    type: publication
+    authority: high
 
+  # Official first-party sources (primary announcements)
+  - name: PlayStation Blog
+    feed: "https://blog.playstation.com/feed/"
+    type: official
+    authority: high
+  - name: Xbox Wire
+    feed: "https://news.xbox.com/en-us/feed/"
+    type: official
+    authority: high
 
-
+  # Secondary reporting used for corroboration and clustering only
+  - name: IGN
+    feed: "https://feeds.ign.com/ign/all"
+    type: publication
+    authority: high
+    role: corroboration
+  - name: GameSpot
+    feed: "https://www.gamespot.com/feeds/news/"
+    type: publication
+    authority: high
+    role: corroboration

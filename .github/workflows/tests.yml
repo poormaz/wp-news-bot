@@ -1,0 +1,56 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "reviews/cache/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            constraints.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Syntax check (all Python, including legacy and review bots)
+        run: python -m compileall -q bot.py newsbot legacy reviews tests
+
+      - name: Validate workflows (actionlint)
+        run: actionlint -color .github/workflows/*.yml
+
+      - name: Validate configuration
+        run: |
+          python bot.py --validate-config --mode dry-run --offline
+          python -c "import yaml,glob; [yaml.safe_load(open(p, encoding='utf-8')) for p in glob.glob('config/*.yaml') + ['sources.yaml', 'localization_pages.yaml']]; print('YAML ok')"
+
+      - name: Unit and integration tests
+        run: python -m pytest -q
