@@ -1,0 +1,31 @@
+# Controlled editorial overrides for News Bot 2.0.
+#
+# Overrides can make the bot consider or skip stories. They can NEVER bypass fact
+# verification: quotes must still be found in the sources, numbers and names must still
+# be supported, rumors must still be framed as rumors, and the model fact check still runs.
+# Entity names are matched loosely (case, accents, punctuation ignored).
+
+overrides:
+  # Article URLs to evaluate on the next run even if they are not in a feed
+  # (same effect as manual_links.txt). Each URL is processed once.
+  force_include_urls: []
+
+  # Never publish stories about these games/companies/products.
+  block_entities: []
+
+  # Regular expressions; matching article URLs or headlines are ignored.
+  block_url_patterns: []
+  block_title_patterns:
+    - '\bwordle\b'
+    - '\bconnections (?:hints|answers)\b'
+
+  # For these entities a single medium-authority source is enough
+  # (default requires an official source, independent corroboration or a high-authority outlet).
+  allow_single_source_entities: []
+
+  # Rumors about these entities may be published with one origin
+  # (they must still be framed as unconfirmed in the title and text).
+  allow_rumor_entities: []
+
+  # Ranking boost for games Poormaz cares about most (localization pages get a boost automatically).
+  priority_entities: []

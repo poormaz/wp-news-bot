@@ -1,7 +1,30 @@
 name: wp-news-bot
 
+# Poormaz News Bot. Runs every two hours at minute 17 (UTC) and publishes at most one post per run.
+#
+# Engine and mode are chosen by workflow inputs (manual runs) or repository variables (scheduled runs):
+#   NEWSBOT_ENGINE: v2 (default) | legacy   -> legacy = previous bot, unchanged (instant rollback)
+#   NEWSBOT_MODE:   publish (default on main) | draft | dry-run
+# Runs from any branch other than main can never publish (publish is downgraded to dry-run).
+# See docs/OPERATIONS.md and docs/ROLLBACK.md.
+
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "default = NEWSBOT_MODE variable (publish on main). dry-run: no WordPress writes. draft: at most one WordPress DRAFT (canary). samples/check: read-only."
+        type: choice
+        options: [default, dry-run, draft, publish, samples, check]
+        default: default
+      engine:
+        description: "default = NEWSBOT_ENGINE variable (v2). legacy = previous bot (rollback)."
+        type: choice
+        options: [default, v2, legacy]
+        default: default
+      samples:
+        description: "Number of editorial samples to generate in samples mode"
+        type: string
+        default: "4"
   schedule:
     - cron: '17 */2 * * *'
 
@@ -9,10 +32,15 @@ concurrency:
   group: wp-news-bot
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    env:
+      PYTHONUNBUFFERED: "1"
 
     steps:
       - name: Checkout
@@ -22,40 +50,128 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            constraints.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          for attempt in 1 2 3; do
+            pip install -r requirements.txt -c constraints.txt && exit 0
+            echo "pip install failed (attempt $attempt); retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          exit 1
 
-      - name: Cache bot database (news_cache.db)
-        uses: actions/cache@v5
+      - name: Resolve engine and mode
+        id: plan
+        env:
+          INPUT_MODE: ${{ inputs.mode || 'default' }}
+          INPUT_ENGINE: ${{ inputs.engine || 'default' }}
+          VAR_MODE: ${{ vars.NEWSBOT_MODE }}
+          VAR_ENGINE: ${{ vars.NEWSBOT_ENGINE }}
+          REF: ${{ github.ref }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          engine="$INPUT_ENGINE"
+          if [ "$engine" = "default" ]; then engine="${VAR_ENGINE:-v2}"; fi
+          mode="$INPUT_MODE"
+          if [ "$mode" = "default" ]; then mode="${VAR_MODE:-publish}"; fi
+          case "$engine" in v2|legacy) ;; *) echo "::error::Invalid engine '$engine'"; exit 1 ;; esac
+          case "$mode" in dry-run|draft|publish|samples|check) ;; *) echo "::error::Invalid mode '$mode'"; exit 1 ;; esac
+          if [ "$REF" != "refs/heads/main" ]; then
+            if [ "$engine" = "legacy" ]; then
+              echo "::error::The legacy engine publishes directly and may only run on main."
+              exit 1
+            fi
+            if [ "$mode" = "publish" ]; then
+              echo "::warning::publish is only allowed on main; running dry-run instead."
+              mode="dry-run"
+            fi
+          fi
+          echo "engine=$engine" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Plan"
+            echo "- engine: \`$engine\`"
+            echo "- mode: \`$mode\`"
+            echo "- ref: \`$REF\` (event: $EVENT)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Restore bot v1 database (news_cache.db)
+        uses: actions/cache/restore@v5
         with:
           path: news_cache.db
-          key: wp-news-bot-db-${{ github.run_id }}
+          key: wp-news-bot-db-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             wp-news-bot-db-
 
-      - name: WP probe (GET only)
+      - name: Restore News Bot 2.0 state
+        if: steps.plan.outputs.engine == 'v2'
+        uses: actions/cache/restore@v5
+        with:
+          path: newsbot_state.db
+          key: newsbot-v2-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            newsbot-v2-state-
+
+      - name: WordPress connectivity (status codes only)
         env:
+          WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$WP_BASE_URL/wp-json/" || true)
+          echo "GET /wp-json/ -> HTTP ${code:-000}"
+
+      - name: Run News Bot 2.0
+        if: steps.plan.outputs.engine == 'v2'
+        timeout-minutes: 18
+        env:
+          RUN_MODE: ${{ steps.plan.outputs.mode }}
+          SAMPLES: ${{ inputs.samples || '4' }}
+
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-6-luna' }}
+          OPENAI_FALLBACK_MODEL: ${{ vars.OPENAI_FALLBACK_MODEL }}
+
           WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          WP_TAGS_ENABLED: ${{ vars.WP_TAGS_ENABLED }}
+          WP_TAGS_MAX: ${{ vars.WP_TAGS_MAX }}
+          SEO_INTERNAL_LINKS_ENABLED: ${{ vars.SEO_INTERNAL_LINKS_ENABLED }}
+          SEO_INTERNAL_LINKS_MAX: ${{ vars.SEO_INTERNAL_LINKS_MAX }}
+
+          CAT_ALL: "2"
+          CAT_GAMING: "18"
+          CAT_HARDWARE: "19"
+          MAX_POSTS_PER_RUN: "1"
+          FEED_ENTRIES_LIMIT: "15"
+
+          NEWSBOT_MAX_RUN_COST_USD: ${{ vars.NEWSBOT_MAX_RUN_COST_USD || '0.10' }}
+          NEWSBOT_MAX_DAILY_COST_USD: ${{ vars.NEWSBOT_MAX_DAILY_COST_USD || '1.00' }}
+          NEWSBOT_MAX_LLM_REQUESTS: ${{ vars.NEWSBOT_MAX_LLM_REQUESTS || '16' }}
+          NEWSBOT_REASONING_EFFORT: ${{ vars.NEWSBOT_REASONING_EFFORT || 'low' }}
+          NEWSBOT_COMPOSE_REASONING_EFFORT: ${{ vars.NEWSBOT_COMPOSE_REASONING_EFFORT || 'medium' }}
+          NEWSBOT_RUMOR_POLICY: ${{ vars.NEWSBOT_RUMOR_POLICY || 'corroborated' }}
+          NEWSBOT_IMAGE_POLICY: ${{ vars.NEWSBOT_IMAGE_POLICY || 'safe' }}
+          NEWSBOT_FALLBACK_MEDIA_ID: ${{ vars.NEWSBOT_FALLBACK_MEDIA_ID }}
+          NEWSBOT_TAG_CREATE_POLICY: ${{ vars.NEWSBOT_TAG_CREATE_POLICY || 'covered' }}
+          NEWSBOT_LLM_FACTCHECK: ${{ vars.NEWSBOT_LLM_FACTCHECK || '1' }}
+          NEWSBOT_TRIAGE_LLM: ${{ vars.NEWSBOT_TRIAGE_LLM || '1' }}
         run: |
-          set -e
-          UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+          case "$RUN_MODE" in
+            check)   python -u bot.py --check ;;
+            samples) python -u bot.py --samples "$SAMPLES" --compare-legacy ;;
+            *)       NEWSBOT_MODE="$RUN_MODE" python -u bot.py --mode "$RUN_MODE" ;;
+          esac
 
-          echo "=== 1) GET /wp-json/ (no auth) ==="
-          curl -i --max-time 20 -A "$UA" -H "Accept: application/json" \
-            "$WP_BASE_URL/wp-json/" | head -n 40
-
-          echo
-          echo "=== 2) GET users/me (with Basic Auth) ==="
-          curl -i --max-time 20 -A "$UA" -H "Accept: application/json" \
-            -u "$WP_USERNAME:$WP_APP_PASSWORD" \
-            "$WP_BASE_URL/wp-json/wp/v2/users/me" | head -n 60
-
-      - name: Run bot
+      # Previous bot, unchanged, with its original configuration. Selected only by
+      # NEWSBOT_ENGINE=legacy (or the engine input) for rollback.
+      - name: Run legacy bot (rollback engine)
+        if: steps.plan.outputs.engine == 'legacy'
+        timeout-minutes: 18
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: gpt-4o-mini
@@ -65,48 +181,55 @@ jobs:
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
           WP_TAGS_ENABLED: ${{ vars.WP_TAGS_ENABLED }}
           WP_TAGS_MAX: ${{ vars.WP_TAGS_MAX }}
-          
+
           RANKMATH_UPDATER_URL: ${{ secrets.RANKMATH_UPDATER_URL }}
           RANKMATH_UPDATER_TOKEN: ${{ secrets.RANKMATH_UPDATER_TOKEN }}
 
           SEO_INTERNAL_LINKS_ENABLED: ${{ vars.SEO_INTERNAL_LINKS_ENABLED }}
           SEO_INTERNAL_LINKS_MAX: ${{ vars.SEO_INTERNAL_LINKS_MAX }}
           SEO_INTERNAL_LINKS_SEARCH_PER_PAGE: ${{ vars.SEO_INTERNAL_LINKS_SEARCH_PER_PAGE }}
-          # Article length guard (bot defaults: 300 words / 3 paragraphs when unset).
-          # Replaces the old SEO_MIN_WORDS / SEO_REJECT_SHORT_POSTS, which bot.py never read.
           MIN_ARTICLE_WORDS: ${{ vars.MIN_ARTICLE_WORDS }}
           MIN_ARTICLE_PARAGRAPHS: ${{ vars.MIN_ARTICLE_PARAGRAPHS }}
           SEO_USE_LATIN_SLUG: ${{ vars.SEO_USE_LATIN_SLUG }}
 
-
-          # Categories
           CAT_ALL: "2"
           CAT_GAMING: "18"
           CAT_HARDWARE: "19"
           CAT_REVIEWS: "3"
 
-          # Posting
           WP_POST_STATUS: publish
           MAX_POSTS_PER_RUN: "1"
           LANG: "fa"
-
-          # RSS newest N per source
           FEED_ENTRIES_LIMIT: "10"
-
-          # Rotation (اگر خالی کنی، از ترتیب sources.yaml می‌چرخه)
           ROTATION_SOURCES: "Gamingbolt,DSOGaming,Wccftech,PC Gamer"
-
-          # Images
           SET_FEATURED_IMAGE: "1"
           EMBED_IMAGE_IN_CONTENT: "1"
-
-          # DEDUP (fuzzy)
           DEDUP_WINDOW_HOURS: "48"
           DEDUP_SIM_THRESHOLD: "0.83"
           DEDUP_WP_CHECK: "1"
           DEDUP_WP_SEARCH_PER_PAGE: "10"
           DEDUP_MIN_TOKENS: "5"
+        run: python -u legacy/bot_v1.py
 
-          PYTHONUNBUFFERED: "1"
-        run: |
-          python -u bot.py
+      - name: Save News Bot 2.0 state
+        if: always() && steps.plan.outputs.engine == 'v2' && hashFiles('newsbot_state.db') != ''
+        uses: actions/cache/save@v5
+        with:
+          path: newsbot_state.db
+          key: newsbot-v2-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Save bot v1 database
+        if: always() && hashFiles('news_cache.db') != ''
+        uses: actions/cache/save@v5
+        with:
+          path: news_cache.db
+          key: wp-news-bot-db-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload run report
+        if: always() && steps.plan.outputs.engine == 'v2'
+        uses: actions/upload-artifact@v4
+        with:
+          name: newsbot-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/
+          retention-days: 14
+          if-no-files-found: ignore
