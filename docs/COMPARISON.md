@@ -95,7 +95,7 @@ for v1. v2 spends more per run but less per *useful* article, and publishes fewe
 
 | Step | Status |
 |---|---|
-| Unit + mocked integration tests (204) | passing locally (Python 3.11, same dependency versions as CI) |
+| Unit + mocked integration tests (206) | passing locally (Python 3.11, same dependency versions as CI) |
 | ruff, compileall, actionlint, config validation | passing locally |
 | `tests` workflow on the pull request | runs automatically on GitHub |
 | `check` / `samples` / `dry-run` / `draft` workflow runs | **blocked**: dispatching workflows returned `403 Resource not accessible by integration` (the GitHub App lacks Actions write permission). Run them from the Actions tab as described in `docs/OPERATIONS.md`. |
