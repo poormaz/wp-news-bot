@@ -76,7 +76,12 @@ independent origins (configurable) and must be framed as rumors in title and tex
 * WordPress writes are never auto-retried (a retried POST can duplicate a post).
 * A `publications` row (`creating` → `draft_created` → `published`) is written around each
   WordPress write; an interrupted run is resolved next time by searching for the story marker
-  and adopting the existing post.
+  and adopting the existing post. A draft left by an interrupted **publish**-mode run is
+  re-verified and published as the next run's single post (only if it never failed
+  verification and the story is still fresh); canary drafts and drafts that failed
+  verification stay drafts for an editor.
+* After any WordPress post write whose outcome is uncertain (timeout, 5xx), the run stops
+  processing further stories and exits with code 3, so one run can never create two posts.
 * State lives in `newsbot_state.db` (Actions cache, saved even when the job fails). A missing or
   corrupt DB is rebuilt; WordPress fingerprints prevent duplicates in the meantime.
 * Items bot v1 already handled are imported once from `news_cache.db`, and v2 writes its

@@ -93,6 +93,9 @@ class Pipeline:
         self.ledger: Ledger | None = None
         self.llm: LLMClient | None = None
         self.posts_made = 0
+        # Set as soon as a WordPress post write is attempted. A write that fails with a timeout or 5xx
+        # may still have been applied, so no other story may reach WordPress in the same run.
+        self.wp_write_attempted = False
 
     # ------------------------------------------------------------------
     def run(self) -> RunReport:
@@ -240,6 +243,8 @@ class Pipeline:
                 story.score += 5.0
         eligible.sort(key=lambda st: st.score, reverse=True)
         shortlist = eligible[: max(s.max_candidates_per_run * 3, 6)]
+        if not self.samples and (self.posts_made >= s.max_posts_per_run or self.wp_write_attempted):
+            shortlist = []  # this run's single post was already used (resumed publication): no model spend
         if s.triage_llm and self.llm.available and len(shortlist) > 1:
             try:
                 verdicts = triage(shortlist, self.llm, s)
@@ -263,7 +268,7 @@ class Pipeline:
 
         # 5-12. Per-story processing ---------------------------------------------
         for story in candidates:
-            if not self.samples and self.posts_made >= s.max_posts_per_run:
+            if not self.samples and (self.posts_made >= s.max_posts_per_run or self.wp_write_attempted):
                 break
             if not self.llm.available:
                 self._record(story, "skipped", [f"model unavailable: {self.llm.disabled_reason}"])
@@ -282,6 +287,10 @@ class Pipeline:
                 break
             if outcome in ("published", "drafted", "dry_run_pass") and not self.samples:
                 self.posts_made += 1
+            if self.wp_write_attempted and outcome not in ("published", "drafted"):
+                self.report.warnings.append("stopped after a WordPress write with an uncertain result; "
+                                            "the next run adopts or resumes the post instead of creating another")
+                break
 
         self.report.counts["published"] = sum(1 for p in self.report.published if p.get("status") == "publish")
         self.report.counts["drafted"] = sum(1 for p in self.report.published if p.get("status") == "draft")
@@ -352,6 +361,9 @@ class Pipeline:
             except WordPressError:
                 continue
             if found:
+                if found["status"] not in ("publish", "future") and self._can_resume(pub):
+                    self._resume_publication(pub, found)
+                    continue
                 status = "published" if found["status"] in ("publish", "future") else "drafted"
                 self.store.update_publication(pub["story_id"], status=status, wp_post_id=found["id"],
                                               wp_link=found["link"])
@@ -359,6 +371,57 @@ class Pipeline:
                 log.warning("Adopted post %s left by an interrupted run for story %s", found["id"], pub["story_id"])
             else:
                 self.store.update_publication(pub["story_id"], status="abandoned", error="no post found")
+
+    def _can_resume(self, pub: dict) -> bool:
+        """Resume only drafts of an interrupted publish-mode run that never failed verification and are fresh."""
+        created = parse_iso(pub.get("created_at"))
+        return (self.s.mode == "publish" and pub.get("mode") == "publish" and not pub.get("error")
+                and not self.wp_write_attempted and self.posts_made < self.s.max_posts_per_run
+                and created is not None
+                and utcnow() - created <= timedelta(hours=self.s.max_story_age_hours))
+
+    def _resume_publication(self, pub: dict, found: dict) -> None:
+        story_id = pub["story_id"]
+        self.wp_write_attempted = True
+        try:
+            post = self.wp.get_post(found["id"])
+            problems = verify_saved_post(post, story_id, [])
+            if not post.get("categories"):
+                problems.append("saved post has no category")
+            if problems:
+                self.store.update_publication(story_id, status="drafted", wp_post_id=found["id"],
+                                              error="; ".join(problems))
+                self.store.update_story(story_id, status="drafted", wp_post_id=found["id"])
+                self.report.errors.append(f"interrupted draft {found['id']} failed verification and stays a draft: "
+                                          f"{problems}")
+                self.report.exit_code = 3
+                return
+            published = self.wp.update_post(found["id"], {"status": "publish"})
+        except WordPressError as exc:
+            self.report.errors.append(f"WordPress: resuming draft {found['id']} failed: {exc}")
+            self.report.exit_code = 3
+            return
+        status = published.get("status", "publish")
+        link = published.get("link", found.get("link", ""))
+        final = "published" if status in ("publish", "future") else "drafted"
+        self.store.update_publication(story_id, status=final, wp_post_id=found["id"], wp_link=link)
+        self.store.update_story(story_id, status=final, wp_post_id=found["id"], wp_link=link,
+                                published_at=iso(utcnow()))
+        if self.s.legacy_sync and final == "published":
+            legacy_sync(self.s.legacy_db, self.store.items_for_story(story_id), "posted", found["id"])
+        title = (post.get("title") or {})
+        entry = {"story_id": story_id, "post_id": found["id"], "status": status, "link": link,
+                 "title": title.get("raw") or title.get("rendered", ""), "slug": post.get("slug", ""),
+                 "resumed": True}
+        self.report.published.append(entry)
+        self.report.stories.append({"story_id": story_id, "headline": entry["title"], "outlets": [], "items": [],
+                                    "event_type": "", "kind": "", "score": 0, "score_reasons": [],
+                                    "decision": final, "development": False,
+                                    "reasons": [f"resumed draft {found['id']} left by an interrupted run"],
+                                    "wp": entry})
+        self.store.record_decision(self.s.run_id, story_id, final, ["resumed interrupted publication"])
+        self.posts_made += 1
+        log.warning("Resumed interrupted publication: post %s is now %s", found["id"], status)
 
     # -- dedup / eligibility ----------------------------------------------------------
     def _eligibility(self, story: Story) -> str:
@@ -500,7 +563,8 @@ class Pipeline:
             return self._publish(story, sheet, research, article, localization, record, cost_before)
         except (LLMTransient, LLMBadOutput, WordPressError) as exc:
             transient = isinstance(exc, LLMTransient) or getattr(exc, "transient", False)
-            if isinstance(exc, WordPressError) and not exc.transient:
+            if isinstance(exc, WordPressError):
+                # Retryable or not, a failed WordPress operation must turn the job red (exit 3).
                 self.report.errors.append(f"WordPress: {exc}")
                 self.report.exit_code = 3
             return self._fail(story, record, f"{type(exc).__name__}: {exc}", transient=transient or
@@ -631,6 +695,7 @@ class Pipeline:
             return "skipped"
 
         self.store.begin_publication(story.story_id, s.run_id, slug, s.mode)
+        self.wp_write_attempted = True
         media_id = image.media_id
         if image.upload:
             content, ext, mime = image.upload

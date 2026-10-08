@@ -112,6 +112,7 @@ def test_wordpress_create_failure_is_recorded_and_retryable(repo):
     assert report.published == [] and fake_wp.posts == {}
     story = next(s for s in report.stories if "Ironvale" in s["headline"])
     assert story["decision"] == "transient"
+    assert report.exit_code == 3                                # failed production write turns the job red
     import sqlite3
     conn = sqlite3.connect(repo / "newsbot_state.db")
     status, retry_at = conn.execute("SELECT status, next_retry_at FROM stories WHERE story_id=?",
@@ -276,3 +277,72 @@ def test_all_feeds_down_is_reported_as_failure(repo):
     pipeline, _, fake_wp, ai = build(repo, "publish", web=web)
     report = pipeline.run()
     assert report.exit_code == 3 and fake_wp.posts == {} and ai.calls == []
+
+
+def test_ambiguous_write_stops_the_run(repo):
+    """A WordPress write that fails after it may have been applied must not be followed by another story."""
+    import requests
+    pipeline, web, fake_wp, ai = build(repo, "publish")
+
+    @web.handler
+    def timeout_on_create(request):
+        if request.method == "POST" and request.url.endswith("/wp-json/wp/v2/posts"):
+            raise requests.ReadTimeout("read timed out")
+        return None
+    web.handlers.insert(0, web.handlers.pop())                  # before the fake WordPress handler
+    report = pipeline.run()
+    creates = [w for w in web.writes() if w.endswith("/wp-json/wp/v2/posts")]
+    assert len(creates) == 1
+    assert ai.schema_calls().count("fact_sheet") == 1           # the next candidate is not processed
+    assert report.exit_code == 3
+    assert any("uncertain result" in w for w in report.warnings)
+
+
+def _interrupted_publish(repo):
+    """Run 1 creates the draft but the publish step fails with a 5xx."""
+    pipeline, web, fake_wp, _ = build(repo, "publish")
+    fake_wp.fail_publish = (502, {"code": "bad_gateway"}, {})
+    report = pipeline.run()
+    assert report.exit_code == 3 and report.published == []
+    assert [p["status"] for p in fake_wp.posts.values()] == ["draft"]
+    fake_wp.fail_publish = None
+    return pipeline, web, fake_wp
+
+
+def test_interrupted_publish_draft_is_resumed_next_run(repo):
+    pipeline, web, fake_wp = _interrupted_publish(repo)
+    again, _, _, ai = build(repo, "publish", web=web)
+    again.wp = pipeline.wp
+    report = again.run()
+    assert [p["status"] for p in fake_wp.posts.values()] == ["publish"]       # same post, now public
+    assert len(fake_wp.posts) == 1 and report.published[0]["resumed"] is True
+    assert ai.calls == []                                                     # no model spend at all
+    assert report.exit_code == 0
+
+
+def test_resume_respects_canary_mode_and_failed_verification(repo):
+    pipeline, web, fake_wp = _interrupted_publish(repo)
+    canary, _, _, _ = build(repo, "draft", web=web)
+    canary.wp = WordPressClientFor(pipeline, "draft")
+    canary.run()
+    assert [p["status"] for p in fake_wp.posts.values()] == ["draft"]         # draft mode never publishes
+
+    from conftest import write_repo
+    write_repo(repo / "second")
+    pipeline2, web2, fake_wp2 = _interrupted_publish(repo / "second")
+    import sqlite3
+    conn = sqlite3.connect(repo / "second" / "newsbot_state.db")
+    conn.execute("UPDATE publications SET status='draft_created', error='categories mismatch'")
+    conn.commit()
+    conn.close()
+    again, _, _, _ = build(repo / "second", "publish", web=web2)
+    again.wp = pipeline2.wp
+    again.run()
+    assert [p["status"] for p in fake_wp2.posts.values()] == ["draft"]        # failed verification stays a draft
+
+
+def WordPressClientFor(pipeline, mode):
+    from newsbot.wordpress import WordPressClient
+    wp = pipeline.wp
+    return WordPressClient(wp.base_url, "bot", "abcd efgh ijkl mnop", mode, wp.user_agent, session=wp.session,
+                           sleep=lambda s: None)

@@ -174,6 +174,10 @@ class StateStore:
         return self.conn.execute("SELECT 1 FROM articles WHERE url_identity=? LIMIT 1", (url_identity,)).fetchone() \
             is not None
 
+    def items_for_story(self, story_id: str) -> list[FeedItem]:
+        rows = self.conn.execute("SELECT * FROM articles WHERE story_id=?", (story_id,)).fetchall()
+        return [self._row_to_item(r) for r in rows]
+
     def set_item_status(self, item_id: str, status: str, reason: str = "", story_id: str | None = None) -> None:
         if story_id is None:
             self.conn.execute("UPDATE articles SET status=?, prefilter_reason=? WHERE item_id=?", (status, reason, item_id))
