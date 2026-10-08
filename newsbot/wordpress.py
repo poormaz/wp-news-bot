@@ -98,7 +98,7 @@ class WordPressClient:
 
     def recent_posts(self, count: int = 40) -> list[dict]:
         """Recent posts incl. drafts/scheduled (when authenticated) for duplicate protection."""
-        fields = "id,date_gmt,status,slug,link,title,content"
+        fields = "id,date_gmt,status,slug,link,title,content,categories"
         params = {"per_page": str(min(100, count)), "orderby": "date", "order": "desc", "_fields": fields}
         if self.authenticated:
             params.update({"status": "publish,future,draft,pending,private", "context": "edit"})
@@ -116,6 +116,7 @@ class WordPressClient:
                 "link": post.get("link", ""),
                 "title": clean_text(html_lib.unescape(title.get("raw") or title.get("rendered") or "")),
                 "content": raw,
+                "categories": [int(c) for c in post.get("categories") or []],
             })
         return posts
 

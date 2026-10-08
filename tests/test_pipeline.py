@@ -208,3 +208,71 @@ def test_reports_are_written_without_secrets(repo):
     summary = (repo / "out" / "run-summary.md").read_text(encoding="utf-8")
     assert "sk-test" not in text and "abcd efgh" not in text
     assert "gpt-6-luna" in summary and "Estimated cost" in summary
+
+
+def _existing(post_id, title, days_ago, categories=(2, 18), status="publish", content="<p>متن قدیمی</p>"):
+    from datetime import timedelta
+
+    from conftest import NOW
+    return {"id": post_id, "title": title, "content": content, "status": status, "slug": f"p{post_id}",
+            "link": f"https://poormaz.test/p{post_id}/", "categories": list(categories),
+            "date_gmt": (NOW - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%S")}
+
+
+def test_review_drafts_do_not_block_news(repo):
+    review = _existing(500, "نقد و بررسی Ironvale Chronicles", 1, categories=(3,), status="draft")
+    pipeline, _, fake_wp, _ = build(repo, "publish", wp_existing=[review], cat_reviews=3)
+    report = pipeline.run()
+    assert len(report.published) == 1
+
+
+def test_same_event_recent_post_is_a_duplicate(repo):
+    earlier = _existing(501, "تاریخ انتشار Ironvale Chronicles اعلام شد", 3,
+                        content="<p>Ironvale Chronicles روز ۱۹ مارس ۲۰۲۷ منتشر می‌شود.</p>")
+    pipeline, _, fake_wp, ai = build(repo, "publish", wp_existing=[earlier])
+    report = pipeline.run()
+    assert report.published == [] and "article" not in ai.schema_calls()
+    assert any("already covers" in r for s in report.stories for r in s["reasons"])
+
+
+def test_genuine_development_is_not_suppressed(repo):
+    # Earlier post announced the game without a date; the new story adds the date.
+    earlier = _existing(503, "تاریخ انتشار Ironvale Chronicles به زودی اعلام می‌شود", 3,
+                        content="<p>سازنده گفته تاریخ انتشار به زودی اعلام می‌شود.</p>")
+    pipeline, _, fake_wp, ai = build(repo, "publish", wp_existing=[earlier])
+    report = pipeline.run()
+    assert len(report.published) == 1
+    story = next(s for s in report.stories if s["decision"] == "published")
+    assert story["development"] is True
+    compose_input = next(c["input"] for c in ai.calls if c["text"]["format"]["name"] == "article")
+    assert "earlier_coverage" in compose_input           # earlier Poormaz post offered as a link
+
+
+def test_compatible_event_days_later_is_not_suppressed(repo):
+    trailer = _existing(502, "تریلر جدید Ironvale Chronicles منتشر شد", 5)
+    pipeline, _, fake_wp, _ = build(repo, "publish", wp_existing=[trailer])
+    assert len(pipeline.run().published) == 1
+
+
+def test_triage_rejection_is_not_repeated(repo):
+    def triage_no(kw):
+        import re
+        return {"stories": [{"id": sid, "is_news": False, "kind": "opinion", "significance": "low",
+                             "relevance": "low", "reason": "column"}
+                            for sid in re.findall(r'"id": "([0-9a-f]{16})"', kw["input"])]}
+    ai = FakeOpenAI({"triage": triage_no})
+    pipeline, web, _, _ = build(repo, "dry-run", openai_client=ai)
+    pipeline.run()
+    assert ai.schema_calls() == ["triage"]
+    again, _, _, _ = build(repo, "dry-run", web=web, openai_client=ai)
+    again.run()
+    assert ai.schema_calls() == ["triage"]          # no second triage for unchanged stories
+
+
+def test_all_feeds_down_is_reported_as_failure(repo):
+    from conftest import FakeWeb
+    web = FakeWeb()
+    web.handler(lambda r: (503, "down", {}) if r.url.endswith(("/feed", "/rss")) else None)
+    pipeline, _, fake_wp, ai = build(repo, "publish", web=web)
+    report = pipeline.run()
+    assert report.exit_code == 3 and fake_wp.posts == {} and ai.calls == []

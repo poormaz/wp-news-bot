@@ -121,11 +121,13 @@ class LinkBuilder:
         self.wp = wp
         self.store = store
 
-    def validate(self, url: str) -> bool:
+    def validate(self, url: str, must_mention: str = "") -> bool:
+        """200 without redirect; optionally the page must mention a name (guards against wrong mappings)."""
         if not self.settings.validate_links:
             return True
+        cache_key = url + (f"#mentions={entity_key(must_mention)}" if must_mention else "")
         if self.store is not None:
-            cached = self.store.get_url_check(url)
+            cached = self.store.get_url_check(cache_key)
             if cached is not None:
                 return bool(cached["ok"])
         result = self.http.get(url, allow_redirects=False)
@@ -133,8 +135,11 @@ class LinkBuilder:
         if not ok:
             log.warning("Internal link rejected (%s %s%s): %s", result.status, result.classification,
                         f" -> {result.final_url}" if result.final_url and result.final_url != url else "", url)
+        elif must_mention and entity_key(must_mention) not in entity_key(clean_text(result.text[:200000])):
+            ok = False
+            log.warning("Internal link rejected: page does not mention %r: %s", must_mention, url)
         if self.store is not None:
-            self.store.put_url_check(url, result.status, result.final_url, ok)
+            self.store.put_url_check(cache_key, result.status, result.final_url, ok)
         return ok
 
     def candidates(self, story: Story, localization: dict | None, exclude_urls: list[str] | None = None
@@ -151,7 +156,7 @@ class LinkBuilder:
                 return
             if self.settings.wp_base_url and site_host(url) != site_host(self.settings.wp_base_url):
                 return
-            if not self.validate(url):
+            if not self.validate(url, must_mention=entity if kind == "localization" else ""):
                 return
             seen.add(ident)
             out.append(LinkCandidate(id=f"L{len(out) + 1}", url=url, title=title, kind=kind, entity=entity,

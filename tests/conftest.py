@@ -280,7 +280,8 @@ def standard_web(web: FakeWeb, injection: bool = False) -> None:
             "<html><body><article><p>Bethesda released Starfield patch 1.9 today with new ship parts and fixes for "
             "several quests that could not be completed.</p><p>The update is available on PC and Xbox Series X|S.</p>"
             "<p>Patch notes list more than forty fixes across the game.</p></article></body></html>")
-    web.add(f"{SITE}/ironvale-chronicles-persian-subtitles", "<html><body><h1>زیرنویس فارسی</h1></body></html>")
+    web.add(f"{SITE}/ironvale-chronicles-persian-subtitles",
+            "<html><body><h1>دانلود زیرنویس فارسی Ironvale Chronicles</h1></body></html>")
 
 
 def write_repo(tmp: Path, extra_sources: str = "") -> Path:

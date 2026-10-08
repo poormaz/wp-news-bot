@@ -106,3 +106,14 @@ def test_published_story_wins_when_cluster_merges_two_ids(extractor):
     stored = [{"story_id": "aaaa", "status": "rejected"}, {"story_id": "bbbb", "status": "published"}]
     stories = assign_story_ids(Clusterer().cluster(items), {"i1": "aaaa", "i2": "bbbb"}, stored)
     assert stories[0].story_id == "bbbb"
+
+
+def test_new_event_days_later_is_a_new_story(extractor):
+    from newsbot.cluster import stored_story_similarity
+    stored = {"story_id": "old", "primary_entity": "crimson desert", "entity_keys_json": '["crimson desert"]',
+              "title_tokens_json": '["crimson", "desert", "launch", "march"]', "event_type": "release_date",
+              "last_seen_at": (NOW - timedelta(days=6)).isoformat()}
+    patch = [make(extractor, 9, "Wccftech", "Crimson Desert Patch 1.03 Fixes Performance Issues")]
+    assert stored_story_similarity(patch, stored) == 0.0
+    echo = [make(extractor, 10, "IGN", "Crimson Desert Launches March 19")]
+    assert stored_story_similarity(echo, stored) >= 0.55

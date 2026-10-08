@@ -132,6 +132,7 @@ class Settings:
     cat_gaming: int = 0
     cat_hardware: int = 0
     cat_default: int = 0
+    cat_reviews: int = 0
     tags_enabled: bool = True
     tags_max: int = 2
     tag_create_policy: str = "covered"
@@ -303,6 +304,7 @@ def load_settings(mode: str | None = None, repo_root: Path | None = None) -> Set
     s.cat_gaming = env_int("CAT_GAMING", 0, 0)
     s.cat_hardware = env_int("CAT_HARDWARE", 0, 0)
     s.cat_default = env_int("WP_CATEGORY_ID", 0, 0)
+    s.cat_reviews = env_int("CAT_REVIEWS", 0, 0)
     s.tags_enabled = _first_env("WP_TAGS_ENABLED", "AUTO_TAGS_ENABLED", default="1") == "1"
     s.tags_max = max(0, min(3, int(_first_env("WP_TAGS_MAX", "AUTO_TAGS_MAX", default="2") or 2)))
     s.tag_create_policy = env_choice("NEWSBOT_TAG_CREATE_POLICY", "covered", ("never", "covered", "always"))

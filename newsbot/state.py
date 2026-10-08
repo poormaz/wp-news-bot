@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS manual_urls (url_identity TEXT PRIMARY KEY, url TEXT,
     detail TEXT, processed_at TEXT);
 CREATE TABLE IF NOT EXISTS wp_recent (post_id INTEGER PRIMARY KEY, link TEXT, title TEXT, date TEXT,
     status TEXT, story_id TEXT, source_urls_json TEXT, entity_keys_json TEXT, event_type TEXT,
-    numbers_json TEXT, fetched_at TEXT);
+    numbers_json TEXT, fetched_at TEXT, categories_json TEXT DEFAULT '[]');
 """
 
 LEGACY_DDL = """
@@ -114,6 +114,9 @@ class StateStore:
         columns = {row[1] for row in self.conn.execute("PRAGMA table_info(articles)").fetchall()}
         if "content_html" not in columns:
             self.conn.execute("ALTER TABLE articles ADD COLUMN content_html TEXT DEFAULT ''")
+        columns = {row[1] for row in self.conn.execute("PRAGMA table_info(wp_recent)").fetchall()}
+        if "categories_json" not in columns:
+            self.conn.execute("ALTER TABLE wp_recent ADD COLUMN categories_json TEXT DEFAULT '[]'")
 
     def prune(self, content_hours: int = 96, keep_days: int = 60) -> None:
         """Drop feed bodies outside the clustering window and forget very old rows."""
@@ -372,11 +375,12 @@ class StateStore:
         now = iso(utcnow())
         for post in posts:
             self.conn.execute(
-                "INSERT OR REPLACE INTO wp_recent VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT OR REPLACE INTO wp_recent(post_id, link, title, date, status, story_id, source_urls_json, "
+                "entity_keys_json, event_type, numbers_json, fetched_at, categories_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (post["id"], post.get("link", ""), post.get("title", ""), post.get("date", ""), post.get("status", ""),
                  post.get("story_id", ""), json.dumps(post.get("source_urls", [])),
                  json.dumps(sorted(post.get("entity_keys", []))), post.get("event_type", "other"),
-                 json.dumps(post.get("numbers", [])), now))
+                 json.dumps(post.get("numbers", [])), now, json.dumps(post.get("categories", []))))
         self.conn.commit()
 
     def wp_recent(self, days: int = 30) -> list[dict]:
@@ -388,6 +392,7 @@ class StateStore:
             d["source_urls"] = json.loads(d.pop("source_urls_json") or "[]")
             d["entity_keys"] = set(json.loads(d.pop("entity_keys_json") or "[]"))
             d["numbers"] = json.loads(d.pop("numbers_json") or "[]")
+            d["categories"] = json.loads(d.pop("categories_json", None) or "[]")
             out.append(d)
         return out
 

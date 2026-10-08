@@ -48,7 +48,8 @@ HEADLINE_MARKERS = {
     "return", "back", "still", "already", "again", "soon", "next", "week", "month", "year", "today",
     "tomorrow", "official", "big", "huge", "massive", "major", "minor", "latest", "upcoming",
     "planned", "plans", "wants", "needs", "admits", "hints", "hint", "shares", "share",
-    "season", "seasons", "chapter", "episode", "episodes",
+    "season", "seasons", "chapter", "episode", "episodes", "port", "ports", "unofficial", "fan",
+    "mod", "mods", "native", "remaster", "remastered",
 }
 
 PREPOSITIONS = {"for", "in", "on", "to", "with", "from", "at", "about", "into", "over"}
@@ -302,7 +303,7 @@ KIND_PATTERNS: list[tuple[str, re.Pattern]] = [
                           r"\bpreview\b|\bimpressions\b|\bi played\b|\bwe played\b|\bi tried\b|\btested:)", re.I)),
     ("list", re.compile(r"(^\s*(?:the )?\d+\s+(?:best|games|things|reasons|ways|biggest|most)\b|\btop \d+\b|"
                         r"\branked\b|\bbest (?:\w+ )?games\b|\bgames like\b|\bevery\b.+\branked\b)", re.I)),
-    ("opinion", re.compile(r"(\bi think\b|\bi love\b|\bi hate\b|\bi'm\b|\bi've\b|\bi was\b|\bwe need\b|"
+    ("opinion", re.compile(r"(^\s*my\b|\bi think\b|\bi love\b|\bi hate\b|\bi'm\b|\bi've\b|\bi was\b|\bwe need\b|"
                            r"\bopinion\b|\beditorial\b|\bunpopular\b|\bhot take\b|\bshould you\b|\bis it worth\b|"
                            r"\bmy favorite\b|\bmy favourite\b)", re.I)),
     ("other", re.compile(r"\b(quiz|poll|podcast|livestream|watch live|newsletter|crossword|giveaway)\b", re.I)),

@@ -146,6 +146,7 @@ jobs:
           CAT_ALL: "2"
           CAT_GAMING: "18"
           CAT_HARDWARE: "19"
+          CAT_REVIEWS: "3"
           MAX_POSTS_PER_RUN: "1"
           FEED_ENTRIES_LIMIT: "15"
 

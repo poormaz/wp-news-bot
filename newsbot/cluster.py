@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from .entities import events_compatible
 from .models import FeedItem, Story
@@ -112,6 +112,16 @@ class Clusterer:
         return [[v.item for v in members] for members in clusters]
 
 
+def _parse_time(value) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 def summarize_cluster(items: list[FeedItem]) -> tuple[str, str, str, str]:
     """(primary_key, primary_display, event_type, kind) for a cluster."""
     votes: Counter = Counter()
@@ -151,6 +161,10 @@ def stored_story_similarity(items: list[FeedItem], stored: dict) -> float:
         return 0.0
     tok = jaccard(set(story_title_tokens(items)), stored_tokens)
     compatible = events_compatible(event, stored.get("event_type") or "other")
+    last_seen = _parse_time(stored.get("last_seen_at"))
+    newest = max(i.published_at for i in items)
+    if event != stored.get("event_type") and last_seen and (newest - last_seen) > timedelta(hours=72):
+        return 0.0  # a different kind of event days later is a new story, not more coverage
     ev = 1.0 if event == stored.get("event_type") else (0.6 if compatible else 0.0)
     score = 0.5 * ent + 0.3 * tok + 0.2 * ev
     return score if compatible else score * 0.6

@@ -176,6 +176,9 @@ class Pipeline:
             items, health = fetch_feed(source, self.http, extractor, s.feed_entries_limit, now)
             self.report.feeds.append(asdict(health))
             all_items.extend(items)
+        if sources and not any(f["ok"] for f in self.report.feeds):
+            self.report.errors.append("all feeds unavailable (network or upstream outage)")
+            self.report.exit_code = 3
         manual = self._manual_items(extractor, sources)
         new_items = [i for i in all_items if not self.store.item_known(i.url_identity)]
         reasons: dict[str, int] = {}
@@ -245,6 +248,10 @@ class Pipeline:
                     if apply_triage(story, verdicts.get(story.story_id)) or story.manual:
                         kept.append(story)
                     else:
+                        # Persist: re-triaged only when new outlets cover the story.
+                        self.store.update_story(story.story_id, status="rejected",
+                                                last_reasons_json=json.dumps(story.score_reasons[-1:]),
+                                                source_count_at_decision=len(story.outlets))
                         self._record(story, "rejected", story.score_reasons[-1:], decision_reason="triage")
                 shortlist = sorted(kept, key=lambda st: st.score, reverse=True)
             except (LLMError, BudgetExceeded) as exc:
@@ -323,6 +330,7 @@ class Pipeline:
                 "status": post["status"], "story_id": fp["story_id"], "source_urls": fp["source_urls"],
                 "entity_keys": latin_entity_keys(post["title"], self.gazetteer),
                 "event_type": classify_persian_event(post["title"]), "numbers": fp["numbers"],
+                "categories": post.get("categories", []),
             })
             if fp["story_id"]:
                 stored = self.store.get_story(fp["story_id"])
@@ -404,8 +412,14 @@ class Pipeline:
             date = parse_iso(post.get("date"))
             if date and date < cutoff:
                 continue
-            if story.primary_entity and story.primary_entity in post["entity_keys"] and \
-                    events_compatible(story.event_type, post.get("event_type") or "other"):
+            if self.s.cat_reviews and self.s.cat_reviews in (post.get("categories") or []):
+                continue  # review-bot posts/drafts are not news coverage
+            post_event = post.get("event_type") or "other"
+            # Same event: duplicate within the whole dedup window. Merely compatible or unknown
+            # events (e.g. a trailer after a release-date post): only within 48 hours.
+            recent = bool(date) and abs((story.first_published - date).total_seconds()) <= 48 * 3600
+            related = post_event == story.event_type or (recent and events_compatible(story.event_type, post_event))
+            if story.primary_entity and story.primary_entity in post["entity_keys"] and related:
                 hours = (story.first_published - date).total_seconds() / 3600 if date else 0
                 new_numbers = {n for i in story.items for n in extract_numbers(i.title)} - set(post["numbers"])
                 if hours > 6 and new_numbers - {"1", "2", "3", "4", "5"}:

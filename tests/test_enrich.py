@@ -63,7 +63,7 @@ def test_find_localization_uses_entities(tmp_path):
 
 def test_link_validation_rejects_redirects_404_and_offsite(repo):
     web = FakeWeb()
-    web.add(f"{SITE}/ok/", "<html>ok</html>")
+    web.add(f"{SITE}/ok/", "<html><h1>زیرنویس فارسی Ironvale Chronicles</h1></html>")
     web.add(f"{SITE}/moved/", "", status=301, headers={"Location": f"{SITE}/new/"})
     web.add(f"{SITE}/gone/", "", status=404)
     s, http, wp = clients(repo, web)
@@ -81,6 +81,17 @@ def test_link_validation_rejects_redirects_404_and_offsite(repo):
     assert [c.url for c in cands] == [f"{SITE}/ok/"]       # offsite parent link dropped
 
 
+def test_localization_page_must_mention_the_game(repo):
+    web = FakeWeb()
+    web.add(f"{SITE}/right/", "<html><title>دانلود زیرنویس فارسی Ironvale Chronicles</title></html>")
+    web.add(f"{SITE}/wrong/", "<html><title>دانلود زیرنویس فارسی Another Game</title></html>")
+    s, http, wp = clients(repo, web)
+    builder = LinkBuilder(s, http, None, StateStore(":memory:"))
+    right = builder.candidates(story(), {"url": f"{SITE}/right/", "name": "Ironvale Chronicles"})
+    wrong = builder.candidates(story(), {"url": f"{SITE}/wrong/", "name": "Ironvale Chronicles"})
+    assert [c.url for c in right] == [f"{SITE}/right/"] and wrong == []
+
+
 def test_related_coverage_requires_entity_match_and_no_duplicates(repo):
     web = FakeWeb()
     FakeWordPress(web, existing_posts=[
@@ -92,7 +103,7 @@ def test_related_coverage_requires_entity_match_and_no_duplicates(repo):
          "link": f"{SITE}/c/"},
     ])
     web.add(f"{SITE}/a/", "ok")
-    web.add(f"{SITE}/loc/", "ok")
+    web.add(f"{SITE}/loc/", "<h1>زیرنویس فارسی Ironvale Chronicles</h1>")
     s, http, wp = clients(repo, web)
     cands = LinkBuilder(s, http, wp, None).candidates(story(), {"url": f"{SITE}/loc/", "name": "Ironvale Chronicles"},
                                                       exclude_urls=[f"{SITE}/self/"])
