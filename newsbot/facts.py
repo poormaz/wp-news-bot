@@ -19,7 +19,7 @@ from .llm import LLMClient
 from .models import Claim, FactSheet, SourceDoc, Story
 from .prompts import EXTRACT_SYSTEM, FACTS_SCHEMA, PROMPT_VERSION, build_extract_input
 from .research import ResearchResult
-from .textutil import collapse_ws, entity_key, extract_numbers, fold_latin, sha256
+from .textutil import collapse_ws, entity_key, extract_numbers, fold_latin, headline_tokens, sha256
 
 log = logging.getLogger("newsbot.facts")
 
@@ -130,11 +130,47 @@ def parse_fact_sheet(raw: dict) -> FactSheet:
     )
 
 
+# Words that do not say what a claim is about ("the Steam listing lists ...").
+_SUPPORT_STOP = {"steam", "listing", "list", "listed", "lists", "store", "page", "official", "game", "gam",
+                 "name", "names", "named", "state", "stat", "says", "will", "now", "has", "ha"}
+# Claims whose value IS the fact: a listing line "Platforms: Windows" or "Developer: X" states it.
+_VALUE_IS_THE_FACT = {"platform", "business", "people", "price", "version", "release_date", "release_window"}
+
+
+def name_words(names) -> set[str]:
+    """Headline tokens of entity names (games, companies, platforms, products)."""
+    out: set[str] = set()
+    for name in names or []:
+        out |= set(headline_tokens(str(name)))
+    return out
+
+
+def quote_supports_claim(claim: Claim, quote: str, names: set[str] | None = None) -> bool:
+    """Does the quoted text itself state this claim?
+
+    A specific value (date, price, version, number) found in the quote is enough. Otherwise -
+    no value, or only a name such as "Steam" - the quote must also share what the claim says
+    happened ("wishlist", "trailer"); names of the game or its developer do not count, so a
+    listing line that merely names them confirms nothing else.
+    """
+    if claim.value and not value_in_text(claim.value, quote):
+        return False
+    if claim.value and (extract_numbers(claim.value) or claim.category in _VALUE_IS_THE_FACT):
+        return True
+    wanted = set(headline_tokens(claim.text_en)) - _SUPPORT_STOP - set(headline_tokens(claim.subject)) - (names or set())
+    if not wanted:
+        return bool(claim.value)
+    found = wanted & set(headline_tokens(quote))
+    # With its (textual) value in the quote, one shared word suffices; without a value, two are needed.
+    return len(found) >= (1 if claim.value else min(2, len(wanted)))
+
+
 def verify_fact_sheet(sheet: FactSheet, docs: list[SourceDoc]) -> FactSheet:
     by_id = {d.doc_id: d for d in docs}
     texts = {d.doc_id: f"{d.title}\n{d.text}" for d in docs}
     tokens = {k: _tokens(v) for k, v in texts.items()}
     _apply_origin_hints(sheet, docs)
+    names = name_words(v for values in (sheet.entities or {}).values() for v in (values or []))
 
     for claim in sheet.claims:
         verified: list[str] = []
@@ -144,12 +180,20 @@ def verify_fact_sheet(sheet: FactSheet, docs: list[SourceDoc]) -> FactSheet:
             if sid not in by_id:
                 claim.problems.append(f"cites unknown source {sid}")
                 continue
-            if quote_in_text(sup["quote"], texts[sid], tokens[sid]):
-                if sid not in verified:
-                    verified.append(sid)
-                    quote_of[sid] = sup["quote"]
-            else:
+            if not quote_in_text(sup["quote"], texts[sid], tokens[sid]):
                 claim.problems.append(f"quote not found in {sid}")
+                continue
+            if by_id[sid].is_official and not quote_supports_claim(claim, sup["quote"], names):
+                # An official page (e.g. a Steam listing) confirms only what its quoted text states: a quote
+                # that merely names the game cannot make an unrelated claim "official".
+                claim.problems.append(
+                    f"value {claim.value!r} not present in the quote from official {sid}"
+                    if claim.value and not value_in_text(claim.value, sup["quote"])
+                    else f"quote from official {sid} does not state this claim")
+                continue
+            if sid not in verified:
+                verified.append(sid)
+                quote_of[sid] = sup["quote"]
         if claim.value and verified:
             kept = [sid for sid in verified if value_in_text(claim.value, texts[sid])]
             if not kept:

@@ -79,6 +79,19 @@ for v1. v2 spends more per run but less per *useful* article, and publishes fewe
 | Pre-orders quoted from the PlayStation Store stayed "reported" | a claim stated verbatim (unhedged) by an official page is "confirmed" | `test_facts.py::test_reported_claim_stated_by_an_official_page_becomes_confirmed` |
 | All four samples `media_id = 0` | validated, rotated Poormaz-owned fallback artwork (`NEWSBOT_FALLBACK_MEDIA_IDS`); check-mode image audit | `test_images.py`, `test_checks.py` |
 
+### Live samples run 38232433566 (after the fixes above)
+
+GPT-6 Luna, ≈ $0.00927. Two articles passed after one corrective revision each, and three
+stories were rejected: one by triage, two for single-source reliability. Three remaining
+defects were found and fixed:
+
+| Defect (live evidence) | Fix | Regression test |
+|---|---|---|
+| Squadron 42 passed `sources.reliability` because one core claim (Q2 2027, on Steam) was official. The trailer and wishlist core claims came from Gamingbolt only. | reliability is decided per core claim; rumor origins too | `test_live_regressions_38232433566.py` (real fact sheet; authoritative single source, threshold and override still pass) |
+| Risk: a Steam listing line that only names the game could make an unrelated claim "official" | an official quote must contain the claim's value, or the words for what happened | `test_steam_listing_confirms_only_what_it_states` |
+| Source title "… Receives New Gameplay Trailer …" became "… Receives New Game …" | UI strings must start at a word boundary or a glued join ("6Add"); headline-like phrases ("Login", "Watch the Trailer") are no longer stripped | `test_gameplay_trailer_title_is_not_cut` |
+| God of War 3 port tagged "Claude Opus 5.5" (existing tag 788) | a tag must be the main subject or named in the title, lead or a core claim | `test_tangential_entity_is_not_tagged`, `test_published_post_skips_tangential_existing_tag` |
+
 ## 5. Open weaknesses
 
 1. **Live validation partly done** — the samples run confirmed GPT-6 Luna works with this key
@@ -112,9 +125,10 @@ for v1. v2 spends more per run but less per *useful* article, and publishes fewe
 
 | Step | Status |
 |---|---|
-| Unit + mocked integration tests (258, incl. regressions built from the live samples) | passing locally (Python 3.11, same dependency versions as CI) |
+| Unit + mocked integration tests (270, incl. regressions built from both live samples runs) | passing locally (Python 3.11, same dependency versions as CI) |
 | ruff, compileall, actionlint, config validation | passing locally |
 | `tests` workflow on the pull request | runs automatically on GitHub |
 | `samples` workflow run | run 37851559690 by the owner (before these fixes): succeeded; revealed the defects in §4 |
-| `samples` (repeat) / `dry-run` / `draft` workflow runs | pending — to be started by the owner from the Actions tab (the development session cannot dispatch workflows: `403 Resource not accessible by integration`) |
+| `samples` run 38232433566 (repeat, head 4d0df62) | succeeded: 2 articles passed after revision, 3 stories rejected; revealed the defects in "Live samples run 38232433566" above |
+| `dry-run` / `draft` workflow runs | pending — to be started by the owner from the Actions tab (the development session cannot dispatch workflows: `403 Resource not accessible by integration`) |
 | Live feeds, poormaz.com, OpenAI from the development container | **blocked** by the container's network policy |

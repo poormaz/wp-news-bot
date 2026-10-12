@@ -29,8 +29,9 @@ def raw(claims, contradictions=None, sources=None):
             "open_questions": [], "injection_detected": False}
 
 
-def c(cid, value, status, quote_by_source, category="release_date", importance="core", subject="Ironvale Chronicles"):
-    return {"id": cid, "text_en": f"claim {cid}", "category": category, "subject": subject, "value": value,
+def c(cid, value, status, quote_by_source, category="release_date", importance="core", subject="Ironvale Chronicles",
+      text=""):
+    return {"id": cid, "text_en": text or f"claim {cid}", "category": category, "subject": subject, "value": value,
             "status": status, "confidence": "high", "importance": importance,
             "support": [{"source_id": s, "quote": q} for s, q in quote_by_source.items()]}
 
@@ -148,18 +149,21 @@ def test_reported_claim_stated_by_an_official_page_becomes_confirmed():
                       origin_group=4)
     outlet = SourceDoc("S2", "https://a.example/x", "Outlet A", "publication", "medium", "Ironvale",
                        "Ironvale Chronicles is available to pre-order on the PlayStation Store now.", origin_group=2)
+    preorder = "Ironvale Chronicles is available to pre-order on the PlayStation Store."
     sheet = verify_fact_sheet(parse_fact_sheet(raw([
         c("C1", "", "reported", {"S2": "Ironvale Chronicles is available to pre-order on the PlayStation Store",
-                                 "S4": "Pre-order now and get the Founders Pack"}, category="availability"),
+                                 "S4": "Pre-order now and get the Founders Pack"}, category="availability", text=preorder),
         c("C2", "", "reported", {"S2": "Ironvale Chronicles is available to pre-order on the PlayStation Store"},
-          category="availability"),
-        c("C3", "", "reported", {"S1": "Northlight Forge today announced that Ironvale Chronicles will launch"}),
+          category="availability", text=preorder),
+        c("C3", "", "reported", {"S1": "Northlight Forge today announced that Ironvale Chronicles will launch"},
+          text="Northlight Forge announced that Ironvale Chronicles will launch on March 19, 2027."),
     ])), [OFFICIAL, store, outlet])
     assert sheet.claim("C1").status == "confirmed" and sheet.claim("C1").verification == "official"
     assert sheet.claim("C2").status == "reported"            # an outlet alone does not confirm
     assert sheet.claim("C3").status == "confirmed"
     hedged = verify_fact_sheet(parse_fact_sheet(raw([
-        c("C1", "", "reported", {"S4": "A Founders Pack may be offered to early buyers"}, category="availability"),
+        c("C1", "", "reported", {"S4": "A Founders Pack may be offered to early buyers"}, category="availability",
+          text="A Founders Pack may be offered to early buyers."),
     ])), [SourceDoc("S4", "https://store.playstation.com/x", "PlayStation Store", "official", "high", "t",
                     "Ironvale Chronicles store page. A Founders Pack may be offered to early buyers.", origin_group=4)])
     assert hedged.claim("C1").status == "reported"            # hedged official wording is not confirmation

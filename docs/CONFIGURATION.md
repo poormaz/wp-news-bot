@@ -47,8 +47,8 @@ variables → Actions). Validate with `python bot.py --validate-config --mode <m
 | `NEWSBOT_MIN_VERIFIED_CLAIMS` | `3` | minimum verified claims to write an article |
 | `NEWSBOT_MIN_WORDS` / `NEWSBOT_MAX_WORDS` | `130` / `900` | there is **no word quota**: `NEWSBOT_MIN_WORDS` is only a soft target (warning `length.target`); only articles under 60 words (truncated output) are rejected. The ceiling is `min(NEWSBOT_MAX_WORDS, 120 + 75 × verified claims)` |
 | `NEWSBOT_WORDS_PER_CLAIM` | `75` | words allowed per verified claim (anti-padding) |
-| `NEWSBOT_ALLOW_SINGLE_SOURCE` | `1` | allow one non-official source if authority suffices |
-| `NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY` | `high` | `high` / `medium` / `low` (see `sources.yaml`) |
+| `NEWSBOT_ALLOW_SINGLE_SOURCE` | `1` | allow a core claim backed by one non-official source if its authority suffices (checked per core claim) |
+| `NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY` | `high` | `high` / `medium` / `low` (see `sources.yaml`); applies to each single-source core claim |
 | `NEWSBOT_RUMOR_POLICY` | `corroborated` | `reject` or require ≥ 2 independent origins |
 | `NEWSBOT_TRIAGE_LLM` | `1` | batched headline triage before research |
 | `NEWSBOT_LLM_FACTCHECK` | `1` | model fact check after rule checks. **Required in `draft`/`publish`** (validation fails otherwise): an article reaches WordPress only after the checker returns verdict `pass` with no high/medium issue |

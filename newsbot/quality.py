@@ -12,7 +12,7 @@ from datetime import timedelta
 
 from .config import Settings
 from .facts import story_status
-from .models import AUTHORITY_RANK, CheckResult, FactSheet, GateDecision, Story, utcnow
+from .models import AUTHORITY_RANK, CheckResult, Claim, FactSheet, GateDecision, Story, utcnow
 from .research import ResearchResult
 from .textutil import entity_key
 
@@ -36,6 +36,23 @@ def overrides_for(story: Story, settings: Settings) -> dict:
     }
 
 
+def claim_reliability(claim: Claim, by_id: dict, allow_single_source: bool, needed: int) -> tuple[bool, str]:
+    """Is this one claim reliably sourced? (ok, short explanation)."""
+    if claim.verification == "official":
+        names = sorted({by_id[s].outlet for s in claim.verified_sources if s in by_id and by_id[s].is_official})
+        return True, f"official ({', '.join(names)})"
+    if claim.verification == "corroborated":
+        return True, f"corroborated by {claim.independent_groups} independent origins"
+    if claim.verification == "single_source":
+        docs = [by_id[s] for s in claim.verified_sources if s in by_id]
+        best = max((AUTHORITY_RANK.get(d.authority, 1) for d in docs), default=0)
+        outlets = ", ".join(d.outlet for d in docs) or "?"
+        if allow_single_source and best >= needed:
+            return True, f"single source with sufficient authority ({outlets})"
+        return False, f"only {outlets} (authority {best} < required {needed})"
+    return False, "no verified support"
+
+
 def source_checks(story: Story, sheet: FactSheet, research: ResearchResult, settings: Settings,
                   duplicate_reason: str = "") -> list[CheckResult]:
     checks: list[CheckResult] = []
@@ -52,22 +69,20 @@ def source_checks(story: Story, sheet: FactSheet, research: ResearchResult, sett
                     "the core news could not be verified in the sources" if not core else f"{len(core)} core claim(s)"))
 
     # Reliability ------------------------------------------------------------------
-    levels = {c.verification for c in core}
+    # Every core claim must stand on its own sources: an official page confirming one detail (a Steam
+    # release window) says nothing about another core claim (a trailer only one outlet reported).
     by_id = {d.doc_id: d for d in research.docs}
-    if "official" in levels:
-        add(CheckResult("sources.reliability", True, True, "core news confirmed by an official source"))
-    elif "corroborated" in levels:
-        add(CheckResult("sources.reliability", True, True, "core news corroborated by independent sources"))
-    elif "single_source" in levels:
-        best = max((AUTHORITY_RANK.get(by_id[s].authority, 1) for c in core for s in c.verified_sources
-                    if s in by_id), default=0)
-        needed = AUTHORITY_RANK.get("medium" if ov["single_source_ok"] else settings.single_source_min_authority, 3)
-        ok = settings.allow_single_source and best >= needed
-        add(CheckResult("sources.reliability", ok, True,
-                        "single source with sufficient authority" if ok else
-                        f"only one non-official source (authority {best} < required {needed})"))
-    else:
+    needed = AUTHORITY_RANK.get("medium" if ov["single_source_ok"] else settings.single_source_min_authority, 3)
+    assessed = [(c, *claim_reliability(c, by_id, settings.allow_single_source, needed)) for c in core]
+    weak = [(c, why) for c, ok, why in assessed if not ok]
+    if not core:
         add(CheckResult("sources.reliability", False, True, "no verified support for the core news"))
+    elif weak:
+        add(CheckResult("sources.reliability", False, True,
+                        "core claim(s) not reliably sourced: " + "; ".join(f"{c.id} {why}" for c, why in weak)[:400]))
+    else:
+        add(CheckResult("sources.reliability", True, True,
+                        "every core claim is reliably sourced: " + "; ".join(f"{c.id} {why}" for c, _, why in assessed)[:400]))
 
     # Contradictions -----------------------------------------------------------------
     core_ids = {c.id for c in core}
@@ -81,11 +96,16 @@ def source_checks(story: Story, sheet: FactSheet, research: ResearchResult, sett
         if settings.rumor_policy == "reject" and not (ov["rumor_ok"] or ov["force"]):
             add(CheckResult("policy.rumors", False, True, "rumor stories are disabled (NEWSBOT_RUMOR_POLICY=reject)"))
         else:
-            groups = {by_id[s].origin_group for c in core for s in c.verified_sources if s in by_id}
-            ok = len(groups) >= 2 or ov["rumor_ok"]
+            # Per claim, like reliability: each rumored core claim needs its own two independent origins.
+            counts = {c.id: len({by_id[s].origin_group for s in c.verified_sources if s in by_id})
+                      for c in core if c.status == "speculative"}
+            short = {cid: n for cid, n in counts.items() if n < 2}
+            ok = not short or ov["rumor_ok"]
             add(CheckResult("policy.rumors", ok, True,
-                            f"rumor from {len(groups)} independent origin(s); at least 2 required" if not ok else
-                            f"rumor corroborated by {len(groups)} independent origin(s)"))
+                            "rumor claim(s) without 2 independent origins: "
+                            + ", ".join(f"{cid} ({n})" for cid, n in short.items()) if not ok else
+                            "each rumored core claim has at least 2 independent origins" if not short else
+                            "rumor allowed by editorial override (allow_rumor_entities)"))
 
     # Timeliness / duplication ---------------------------------------------------------
     age = utcnow() - story.first_published

@@ -25,6 +25,7 @@ from .config import ConfigError, Settings
 from .enrich import (
     LinkBuilder,
     build_slug,
+    central_tags,
     content_type_for,
     find_localization,
     load_localizations,
@@ -712,8 +713,10 @@ class Pipeline:
         content_type = content_type_for(article, story)
         categories = pick_categories(content_type, s)
         slug = build_slug(article, story)
-        tag_ids, tag_notes = resolve_tags(article.entity_tags or [story.primary_display], self.wp, s,
+        tag_names, skipped_tags = central_tags(article.entity_tags or [story.primary_display], story, sheet, article)
+        tag_ids, tag_notes = resolve_tags(tag_names or [story.primary_display], self.wp, s,
                                           dry_run=s.mode == "dry-run")
+        tag_notes = skipped_tags + tag_notes
         image = choose_featured_image(s.image_policy, research.usable_docs, localization,
                                       s.fallback_featured_media_ids, s.reuse_localization_image, self.http,
                                       content_type=content_type, seed=story.story_id, media_ok=self._media_ok)

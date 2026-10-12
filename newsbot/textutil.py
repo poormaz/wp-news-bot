@@ -345,12 +345,15 @@ def latin_phrases(value: str) -> list[str]:
 # Source titles and outlet names shown to readers
 # ---------------------------------------------------------------------------
 # Store/page chrome that leaks into <title> or headings ("Forza Horizon 6Add to WishlistAdd to Wishlist").
+# A UI string starts at a word boundary or where page text was glued on without a space ("6Add",
+# "WishlistAdd"), never inside a word ("Gameplay Trailer" must not lose "play Trailer").
 UI_STRING_RE = re.compile(
-    r"(add to (?:wish ?list|cart|basket|library|collection)|remove from wish ?list|buy (?:it )?now|"
-    r"pre-?order now|sign in(?: to \w+)?|log ?in|play (?:the )?trailer|watch (?:the )?trailer|"
-    r"skip to (?:main )?content|accept (?:all )?cookies|cookie settings|view (?:in|on) store|see all reviews|"
-    r"download now|share on (?:facebook|twitter|x)|open menu|close menu|toggle navigation|back to top)",
-    re.I,
+    r"(?:(?<![A-Za-z])|(?<=[a-z0-9])(?=[A-Z]))"
+    # Only strings that are never part of a headline ("Login Issues", "Watch the Trailer" can be news).
+    r"(?i:add to (?:wish ?list|cart|basket|library|collection)|remove from wish ?list|"
+    r"skip to (?:main )?content|accept (?:all )?cookies|cookie settings|see all reviews|"
+    r"share on (?:facebook|twitter|x)|open menu|close menu|toggle navigation|back to top)"
+    r"(?![a-z])"
 )
 # Readable names for official hosts whose pages carry no usable og:site_name.
 OUTLET_NAMES = {

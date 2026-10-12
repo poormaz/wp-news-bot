@@ -98,17 +98,25 @@ Each claim has: text, category, exact value, status (`confirmed`/`reported`/`spe
 importance (`core`/`supporting`/`background`), and per-source verbatim quotes. After code
 verification each claim is labelled:
 
-* `official` — supported by an official page (developer, publisher, platform, Steam); a claim the
-  model marked "reported" becomes "confirmed" when an official page states it verbatim
-  without hedging;
+* `official` — supported by an official page (developer, publisher, platform, Steam). The
+  quote from that page must itself state the claim: its specific value (date, price, version,
+  number), or else the words for what happened ("trailer", "wishlist"). A quote that only
+  names the game or its developer, such as a Steam listing's first line, confirms nothing. A
+  claim the model marked "reported" becomes "confirmed" when an official page states it
+  verbatim without hedging;
 * `corroborated` — supported by ≥ 2 independent origins (copies of one press release or of one
   leak count once: text-overlap grouping + the model's origin attribution);
 * `single_source` — one non-official source;
 * `unverified` — quote or value not found; never shown to the writer.
 
-The gate requires verified core news, ≥ 3 verified claims, and either an official source,
-independent corroboration, or a single source of sufficient authority. Rumors require two
-independent origins (configurable) and must be framed as rumors in title and text.
+The gate requires verified core news, ≥ 3 verified claims, and that **every core claim on its
+own** is official, independently corroborated, or from a single source of sufficient authority
+(`NEWSBOT_ALLOW_SINGLE_SOURCE`, `NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY`,
+`allow_single_source_entities`). An official page confirming one detail does not vouch for the
+others. Example from live run 38232433566: Steam confirmed Squadron 42's Q2 2027 window, but
+the new trailer and the wishlist were reported by Gamingbolt alone, so the story is rejected.
+Each rumored core claim needs two independent origins of its own (configurable), and rumors
+must be framed as rumors in title and text.
 
 ## Idempotency and recovery
 

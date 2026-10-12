@@ -221,6 +221,23 @@ def sanitize_tags(names: list[str], max_tags: int) -> list[str]:
     return out
 
 
+def central_tags(names: list[str], story: Story, sheet, article: Article) -> tuple[list[str], list[str]]:
+    """Keep tag candidates the story is about: the main subject, or a name in the title, the lead or a
+    core claim. A name met only in a supporting detail (the AI model a modder used, an outlet, a
+    platform mentioned in passing) is not a tag for the post."""
+    scope = [article.title_fa, article.lead.get("text", ""), story.primary_display]
+    scope += [f"{c.subject} {c.text_en}" for c in getattr(sheet, "core_claims", [])]
+    scope_key = f" {entity_key(' '.join(s for s in scope if s))} "
+    kept, notes = [], []
+    for name in names:
+        key = entity_key(name)
+        if key and (key == story.primary_entity or f" {key} " in scope_key):
+            kept.append(name)
+        else:
+            notes.append(f"{name}: not central to the story (no tag)")
+    return kept, notes
+
+
 def resolve_tags(names: list[str], wp, settings: Settings, dry_run: bool) -> tuple[list[int], list[str]]:
     """Reuse existing tags; create a new tag only when the policy allows (avoids thin tag archives)."""
     if not settings.tags_enabled or settings.tags_max <= 0 or wp is None:
