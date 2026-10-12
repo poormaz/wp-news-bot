@@ -1,16 +1,28 @@
 # Permanent Persian subtitle / localization pages on Poormaz.
-# The bot links to one of these ONLY when an article's entity tag matches a name
-# or alias below. It never guesses URLs; a game that is not listed gets no link.
 #
-# - The key is the official English name (as the bot's entity tags use it).
-# - aliases: optional other spellings. Matching ignores case, ™/®, apostrophes
-#   and punctuation, so "Ghost Recon: Wildlands" == "ghost recon wildlands".
-# - anchor: optional. Default is "دانلود زیرنویس فارسی <name>".
-# - url: must be on the same site as WP_BASE_URL (www. optional). A URL on any
-#   other domain is skipped with a WARNING in the log.
-# - Matching also ignores accents: "Ghost of Yōtei" == "Ghost of Yotei".
+# The news bot links to one of these pages ONLY when a story is about the listed game.
+# URLs are never guessed: a game that is not listed here gets no localization link.
 #
-# Replace the example URLs with your real page URLs before relying on them.
+# Every entry is validated by the bot before it is used in an article:
+#   * the URL must be https on the WordPress site (WP_BASE_URL host, www. optional),
+#   * it must answer HTTP 200 without a redirect (redirected or 404 pages are skipped),
+#   * the page must mention the game's name (protects against a wrong mapping).
+# Results are cached in the state DB for 72 hours.
+#
+# Expanding this list (recommended - see docs/OPERATIONS.md, "Localization pages"):
+#   Run the workflow manually with mode = check. The run log contains
+#   LOCALIZATION_DISCOVERY_JSON=... listing every subtitle/localization page found through
+#   the WordPress REST API, with its HTTP status, redirects and the game name guessed from
+#   the title. Copy the entries marked "valid": true here.
+#
+# Fields:
+#   key        official English game name (as used in news headlines)
+#   aliases    optional other spellings; matching ignores case, accents, ™/®, punctuation
+#   url        the live page URL
+#   anchor     optional preferred anchor; the bot varies anchors to avoid repeating one
+#   kind       subtitle (زیرنویس فارسی) | full (فارسی‌ساز); inferred from the anchor when absent
+#   featured_media  optional WordPress media ID of the page's own artwork; may be reused as the
+#                   featured image of news about this game (no external image is copied)
 
 localizations:
   "Ghost Recon Wildlands":
@@ -18,19 +30,18 @@ localizations:
       - "Tom Clancy's Ghost Recon Wildlands"
       - "Tom Clancy’s Ghost Recon Wildlands"
       - "Ghost Recon: Wildlands"
-      - "Ghost Recon Wildlands"
     url: "https://poormaz.com/ghost-recon-wildlands-persian-subtitles/"
     anchor: "دانلود زیرنویس فارسی Ghost Recon Wildlands"
+    kind: subtitle
 
   "007 First Light":
     aliases:
       - "007: First Light"
-      - "007 First Light"
     url: "https://poormaz.com/007-first-light-persian-subtitles/"
     anchor: "دانلود زیرنویس فارسی 007 First Light"
+    kind: subtitle
 
   "Crimson Desert":
-    aliases:
-      - "Crimson Desert"
     url: "https://poormaz.com/crimson-desert-persian-subtitles/"
     anchor: "دانلود فارسی‌ساز Crimson Desert"
+    kind: full

@@ -1,0 +1,21 @@
+[project]
+name = "poormaz-news-bot"
+version = "2.0.0"
+description = "Poormaz gaming news editorial pipeline"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["legacy", "reviews"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "BLE"]
+ignore = ["E501", "B008", "UP017"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["BLE001", "B011"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

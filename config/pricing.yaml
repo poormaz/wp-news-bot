@@ -1,0 +1,22 @@
+# Model pricing in USD per 1 million tokens.
+# Used ONLY to estimate cost and to enforce the per-run / 24h budget limits.
+# Token counts always come from the API response; this file only converts them to USD.
+# Verify against https://openai.com/api/pricing and update when prices change.
+# Override without a commit via NEWSBOT_PRICING_JSON, e.g.
+#   {"gpt-6-luna": {"input": 0.10, "cached_input": 0.01, "output": 0.50}}
+models:
+  gpt-6-luna:
+    input_per_1m: 0.10
+    cached_input_per_1m: 0.01
+    output_per_1m: 0.50
+    source: "Listed OpenAI rates as reported by pricing trackers on 2026-10-04 (eesel.ai, anotherwrapper.com); confirm on openai.com/api/pricing"
+  gpt-6-sol:
+    input_per_1m: 2.00
+    cached_input_per_1m: 0.20
+    output_per_1m: 10.00
+    source: "Same trackers as gpt-6-luna; confirm on openai.com/api/pricing"
+  gpt-4o-mini:
+    input_per_1m: 0.15
+    cached_input_per_1m: 0.075
+    output_per_1m: 0.60
+    source: "OpenAI published pricing for gpt-4o-mini; confirm on openai.com/api/pricing"

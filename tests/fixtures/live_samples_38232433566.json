@@ -1,0 +1,1094 @@
+{
+ "_about": "SAMPLE_JSON records printed by the live `samples` run of GitHub Actions run 38232433566 (head 4d0df62, gpt-6-luna, ≈ $0.00927, no WordPress writes), copied verbatim from the job log (WP_BASE_URL is masked as *** by GitHub). Regressions: Squadron 42 passed sources.reliability because one core claim (Q2 2027 on Steam) was official while the trailer and wishlist core claims were Gamingbolt-only; its source title lost 'play Trailer'; the God of War 3 port was tagged with 'Claude Opus 5.5', a supporting detail.",
+ "run_id": 38232433566,
+ "head_sha": "4d0df62e9c10e283441ef287c162f23227deae4e",
+ "records": [
+  {
+   "story_id": "e68529a76fe6be46",
+   "headline": "God of War 3 Remastered Unofficial PC Port Released",
+   "outlets": [
+    "DSOGaming",
+    "Wccftech"
+   ],
+   "items": [
+    {
+     "source": "DSOGaming",
+     "title": "God of War 3 Remastered Unofficial PC Port Released",
+     "url": "https://www.dsogaming.com/news/god-of-war-3-remastered-unofficial-pc-port-released/"
+    },
+    {
+     "source": "Wccftech",
+     "title": "God of War 3 Remastered Lands on PC Unofficially a Week After Bloodborne, As PlayStation Keeps Laufey Off Steam",
+     "url": "https://wccftech.com/god-of-war-3-remastered-lands-pc-bloodborne-playstation-laufey/"
+    }
+   ],
+   "event_type": "port_platform",
+   "kind": "news",
+   "score": 1.879,
+   "score_reasons": [
+    "event port_platform (0.90)",
+    "2 outlets (+0.25)",
+    "age 3h (+0.38)",
+    "triage significance=medium relevance=high"
+   ],
+   "decision": "dry_run_pass",
+   "reasons": [
+    "passed the quality gate; dry-run made no WordPress writes"
+   ],
+   "development": false,
+   "research": {
+    "documents": [
+     {
+      "id": "S1",
+      "outlet": "DSOGaming",
+      "type": "publication",
+      "url": "https://www.dsogaming.com/news/god-of-war-3-remastered-unofficial-pc-port-released/",
+      "status": "feed_only",
+      "chars": 427,
+      "group": 1,
+      "notes": [
+       "page robots (HTTP 0); using feed text"
+      ]
+     },
+     {
+      "id": "S2",
+      "outlet": "Wccftech",
+      "type": "publication",
+      "url": "https://wccftech.com/god-of-war-3-remastered-lands-pc-bloodborne-playstation-laufey/",
+      "status": "ok",
+      "chars": 3100,
+      "group": 2,
+      "notes": []
+     }
+    ],
+    "attempts": [
+     {
+      "url": "https://www.dsogaming.com/news/god-of-war-3-remastered-unofficial-pc-port-released/",
+      "outlet": "DSOGaming",
+      "status": "robots",
+      "http": 0
+     },
+     {
+      "url": "https://wccftech.com/god-of-war-3-remastered-lands-pc-bloodborne-playstation-laufey/",
+      "outlet": "Wccftech",
+      "status": "ok",
+      "http": 200
+     }
+    ],
+    "independent_groups": 2,
+    "steam_appid": null
+   },
+   "facts": {
+    "status": "reported",
+    "claims_total": 6,
+    "claims_usable": 6,
+    "core_claims": 1,
+    "independent_groups": 2,
+    "contradictions": [],
+    "from_cache": false,
+    "injection_detected": false,
+    "newsworthiness": {
+     "is_news": true,
+     "significance": "medium",
+     "reader_value": "The release gives PC players an unofficial way to play God of War 3 Remastered and provides concrete details about the port's features and limitations.",
+     "reasons": [
+      "Reports the release of an unofficial PC port of a recognizable game.",
+      "Includes practical information about supported resolutions, frame rates, and a reported visual issue."
+     ]
+    },
+    "claims": [
+     {
+      "id": "C1",
+      "text": "An unofficial PC port of God of War 3 Remastered has been released.",
+      "category": "availability",
+      "value": "released",
+      "status": "reported",
+      "importance": "core",
+      "verification": "corroborated",
+      "sources": [
+       "DSOGaming",
+       "Wccftech"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C2",
+      "text": "The port was developed by Felipe Prado using Claude Opus 5.5 as a coding assistant.",
+      "category": "people",
+      "value": "Felipe Prado; Claude Opus 5.5",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Wccftech"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C3",
+      "text": "The port is playable from start to finish, though the article says issues are expected, including textures breaking at resolutions higher than 1080p.",
+      "category": "feature",
+      "value": "",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Wccftech"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C4",
+      "text": "The port supports 480p, 720p, 1440p, 1800p or 4K resolution and 120 and 240 FPS.",
+      "category": "spec",
+      "value": "480p, 720p, 1440p, 1800p or 4K; 120 and 240 FPS",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Wccftech"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C5",
+      "text": "The port includes an in-game menu with cheats, display mode options, a VSync toggle, FSR 1 upscaling, RCAS sharpening, and a performance overlay.",
+      "category": "feature",
+      "value": "",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Wccftech"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C6",
+      "text": "The project's official description says the game's original executable runs directly on the PC's processor, while a runtime replaces PS4 system libraries and translates graphics to Vulkan.",
+      "category": "spec",
+      "value": "",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Wccftech"
+      ],
+      "problems": []
+     }
+    ]
+   },
+   "model_factcheck": {
+    "issues": [],
+    "language": {
+     "fluent": true,
+     "translationese": false,
+     "problems": []
+    },
+    "verdict": "pass"
+   },
+   "model_factcheck_history": [
+    {
+     "revision": 0,
+     "verdict": "revise",
+     "issues": 3
+    },
+    {
+     "revision": 1,
+     "verdict": "pass",
+     "issues": 0
+    }
+   ],
+   "revisions": [
+    {
+     "revision": 1,
+     "failed": [
+      "factcheck.model_issues",
+      "factcheck.model_verdict"
+     ],
+     "feedback": [
+      "The fact checker asked for a revision. Fix every one of these findings (rewrite or delete the sentence): verdict=revise: [status_upgrade/medium] paragraph 0: «نسخه غیررسمی PC از God of War 3 Remastered منتشر شده است؛ DSOGaming و Wccftech این خبر را گزارش کرده‌اند.» — خودِ انتشار در fact sheet با وضعیت «گزارش‌شده» آمده است؛ جمله ابتدا آن را قطعی بیان می‌کند و فقط پس از آن منابع را ذکر می‌کند.; [filler/medium] paragraph 4: «نیازمندی‌های سیستمی پورت چیست؟» — این پرسش به‌جای گزارش یک واقعیت، به کمبود اطلاعات موجود اشاره می‌کند؛ fact sheet صریحاً می‌گوید نیازمندی‌های سیستمی در اسناد ذکر نشده‌اند.; [filler/medium] paragraph 5: «آیا صفحه GitHub پروژه در دسترس است؟» — این پرسش به نبود پیوند مستقیم به صفحه GitHub اشاره می‌کند، نه به یک واقعیت گزارش‌شده در fact sheet."
+     ]
+    }
+   ],
+   "article": {
+    "title": "گزارش: پورت غیررسمی God of War 3 Remastered برای PC منتشر شد",
+    "meta_title": "پورت غیررسمی God of War 3 Remastered برای PC",
+    "meta_description": "به گزارش DSOGaming و Wccftech، پورت غیررسمی God of War 3 Remastered برای PC منتشر شده و قابلیت‌هایی مانند اجرای بازی با نرخ ۲۴۰ FPS دارد.",
+    "focus_keyword": "پورت God of War 3 Remastered",
+    "slug_suggestion": "god-war-3-remastered-pc-port",
+    "words": 144,
+    "links": [],
+    "sections": 1,
+    "headings": [],
+    "uncertainties": [
+     "نیازمندی‌های سیستمی پورت اعلام نشده‌اند.",
+     "پیوند مستقیم صفحه GitHub پروژه در اسناد ارائه نشده است."
+    ],
+    "entity_tags": [
+     "God of War 3 Remastered",
+     "Claude Opus 5.5"
+    ],
+    "revision": 1,
+    "plain_text": "به گزارش DSOGaming و Wccftech، پورت غیررسمی God of War 3 Remastered برای PC منتشر شده است.\nبه گزارش Wccftech، این پورت را Felipe Prado با کمک Claude Opus 5.5 توسعه داده است. بازی از ابتدا تا انتها قابل اجراست، اما بروز مشکلاتی از جمله به‌هم‌ریختگی بافت‌ها در وضوح‌های بالاتر از 1080p پیش‌بینی شده است.\nطبق گزارش Wccftech، پورت از وضوح‌های 480p، 720p، 1440p، 1800p یا 4K و نرخ‌های 120 و 240 FPS پشتیبانی می‌کند. منوی داخل بازی شامل تقلب‌ها، گزینه‌های حالت نمایش، کلید VSync، بزرگ‌نمایی تصویر FSR 1، وضوح‌بخشی RCAS و نمایشگر عملکرد است. شرح رسمی پروژه می‌گوید فایل اجرایی اصلی بازی مستقیماً روی پردازنده PC اجرا می‌شود؛ در همین حال، یک لایه اجرایی کتابخانه‌های سیستمی PS4 را جایگزین می‌کند و گرافیک را به Vulkan ترجمه می‌کند.\nنیازمندی‌های سیستمی پورت اعلام نشده‌اند.\nپیوند مستقیم صفحه GitHub پروژه در اسناد ارائه نشده است."
+   },
+   "article_html": "<!-- wp:paragraph -->\n<p>به گزارش DSOGaming و Wccftech، پورت غیررسمی God of War 3 Remastered برای PC منتشر شده است.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>به گزارش Wccftech، این پورت را Felipe Prado با کمک Claude Opus 5.5 توسعه داده است. بازی از ابتدا تا انتها قابل اجراست، اما بروز مشکلاتی از جمله به‌هم‌ریختگی بافت‌ها در وضوح‌های بالاتر از 1080p پیش‌بینی شده است.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>طبق گزارش Wccftech، پورت از وضوح‌های 480p، 720p، 1440p، 1800p یا 4K و نرخ‌های 120 و 240 FPS پشتیبانی می‌کند. منوی داخل بازی شامل تقلب‌ها، گزینه‌های حالت نمایش، کلید VSync، بزرگ‌نمایی تصویر FSR 1، وضوح‌بخشی RCAS و نمایشگر عملکرد است. شرح رسمی پروژه می‌گوید فایل اجرایی اصلی بازی مستقیماً روی پردازنده PC اجرا می‌شود؛ در همین حال، یک لایه اجرایی کتابخانه‌های سیستمی PS4 را جایگزین می‌کند و گرافیک را به Vulkan ترجمه می‌کند.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>نیازمندی‌های سیستمی پورت اعلام نشده‌اند. پیوند مستقیم صفحه GitHub پروژه در اسناد ارائه نشده است.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">منابع خبر</h2>\n<!-- /wp:heading -->\n\n<!-- wp:list -->\n<ul class=\"wp-block-list\">\n<!-- wp:list-item -->\n<li>گزارش: <a href=\"https://www.dsogaming.com/news/god-of-war-3-remastered-unofficial-pc-port-released/\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">DSOGaming</a> — God of War 3 Remastered Unofficial PC Port Released</li>\n<!-- /wp:list-item -->\n<!-- wp:list-item -->\n<li>گزارش: <a href=\"https://wccftech.com/god-of-war-3-remastered-lands-pc-bloodborne-playstation-laufey/\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">Wccftech</a> — God of War 3 Remastered Lands on PC Unofficially a Week After Bloodborne, As PlayStation Keeps Laufey Off Steam</li>\n<!-- /wp:list-item -->\n</ul>\n<!-- /wp:list -->\n\n<!-- wp:html -->\n<!-- poormaz-newsbot v2 nbstory-e68529a76fe6be46 -->\n<!-- /wp:html -->",
+   "legacy_comparison": {
+    "model_requested": "gpt-4o-mini",
+    "source_outlets_used": 1,
+    "source": "DSOGaming",
+    "title": "انتشار پورت غیررسمی God of War 3 Remastered برای PC",
+    "words": 297,
+    "persian_ratio": 0.935,
+    "unsupported_numbers": [],
+    "unsupported_names": [],
+    "fabrication_phrases": [],
+    "plain_text": "بازی God of War 3 یکی از بهترین عناوین کنسول PS3 بود که بعداً برای PS4 نیز بازسازی شد. اکنون، گیمرهای PC می‌توانند از این بازی محبوب لذت ببرند، زیرا یک پورت غیررسمی از God of War 3 Remastered به تازگی منتشر شده است. این خبر به طور گسترده‌ای در بین طرفداران بازی‌های ویدیویی مورد توجه قرار گرفته است. پورت غیررسمی God of War 3 Remastered به گیمرها این امکان را می‌دهد که تجربه‌ای مشابه با نسخه‌های کنسولی را بر روی کامپیوترهای خود داشته باشند. این بازی با گرافیک بهبود یافته و گیم‌پلی جذاب، می‌تواند برای کسانی که به دنبال یک تجربه جدید هستند، بسیار هیجان‌انگیز باشد. با توجه به اینکه این پورت غیررسمی است، ممکن است برخی از مشکلات فنی را به همراه داشته باشد، اما برای بسیاری از گیمرها این موضوع مانع از لذت بردن از بازی نخواهد شد. انتشار این پورت غیررسمی نشان‌دهنده علاقه و اشتیاق جامعه گیمرها به تجربه بازی‌های کلاسیک بر روی پلتفرم‌های جدید است. با توجه به محبوبیت God of War 3، این پورت می‌تواند به عنوان یک فرصت برای گیمرهای جدید و قدیمی باشد تا با داستان و شخصیت‌های این بازی آشنا شوند. همچنین، این اقدام می‌تواند به توسعه‌دهندگان و ناشران یادآوری کند که همچنان تقاضا برای عناوین قدیمی وجود دارد و باید به فکر ارائه نسخه‌های به‌روز شده برای پلتفرم‌های مختلف باشند. در نهایت، با توجه به اینکه این پورت غیررسمی است، توصیه می‌شود که گیمرها قبل از دانلود و نصب آن، تحقیقات لازم را انجام دهند و از منابع معتبر استفاده کنند. این موضوع به ویژه برای جلوگیری از مشکلات امنیتی و فنی اهمیت دارد. در حالی که God of War 3 Remastered بر روی PC در دسترس قرار گرفته است، انتظار می‌رود که این روند ادامه یابد و دیگر عناوین محبوب نیز به این پلتفرم منتقل شوند.",
+    "error": "",
+    "elapsed_seconds": 10.66,
+    "api_requests": 2,
+    "models_served": [
+     "gpt-4o-mini-2024-07-18"
+    ],
+    "input_tokens": 2128,
+    "output_tokens": 1229,
+    "cost_usd": 0.001057
+   },
+   "gate": {
+    "passed": true,
+    "retryable": false,
+    "reasons": [],
+    "warnings": [],
+    "checks": [
+     {
+      "name": "newsworthiness.is_news",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "newsworthiness.significance",
+      "passed": true,
+      "blocking": true,
+      "detail": "significance=medium, outlets=2"
+     },
+     {
+      "name": "sources.available",
+      "passed": true,
+      "blocking": true,
+      "detail": "2 document(s)"
+     },
+     {
+      "name": "claims.enough_verified",
+      "passed": true,
+      "blocking": true,
+      "detail": "6 verified claim(s) (minimum 3)"
+     },
+     {
+      "name": "claims.core_verified",
+      "passed": true,
+      "blocking": true,
+      "detail": "1 core claim(s)"
+     },
+     {
+      "name": "sources.reliability",
+      "passed": true,
+      "blocking": true,
+      "detail": "core news corroborated by independent sources"
+     },
+     {
+      "name": "claims.no_unresolved_core_contradiction",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "timeliness",
+      "passed": true,
+      "blocking": true,
+      "detail": "first reported 3h ago"
+     },
+     {
+      "name": "duplicate.not_published",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.lead",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.paragraphs",
+      "passed": true,
+      "blocking": true,
+      "detail": "3 paragraph(s)"
+     },
+     {
+      "name": "length.minimum",
+      "passed": true,
+      "blocking": true,
+      "detail": "144 words"
+     },
+     {
+      "name": "length.target",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "length.no_padding",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.headings",
+      "passed": true,
+      "blocking": false,
+      "detail": "0 heading(s) for 1 section(s)"
+     },
+     {
+      "name": "citations.verified_only",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "citations.every_paragraph",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "citations.core_claim_used",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "facts.numbers_supported",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "facts.names_supported",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "fabrication.first_hand",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "fabrication.quotes",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "status.reported_attributed",
+      "passed": true,
+      "blocking": false,
+      "detail": "reported claims used without explicit attribution"
+     },
+     {
+      "name": "persian.script_ratio",
+      "passed": true,
+      "blocking": true,
+      "detail": "Persian letter ratio 0.82"
+     },
+     {
+      "name": "persian.untranslated_english",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_cliche_lead",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_cliches",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_repetition",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "links.no_pointer_sentences",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "style.no_meta_filler",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_near_duplicates",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "links.anchor_grounded",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_exclamations",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "seo.title_length",
+      "passed": true,
+      "blocking": true,
+      "detail": "title length 60"
+     },
+     {
+      "name": "seo.title_no_clickbait",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "seo.title_names_subject",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "seo.meta_description",
+      "passed": true,
+      "blocking": false,
+      "detail": "meta description length 137"
+     },
+     {
+      "name": "seo.no_keyword_stuffing",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_rejected",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_issues",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "language.fluent",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_verdict",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     }
+    ]
+   },
+   "categories": [
+    2,
+    18
+   ],
+   "content_type": "gaming",
+   "slug": "god-war-3-remastered-pc-port",
+   "tags": [
+    788
+   ],
+   "tag_notes": [
+    "God of War 3 Remastered: no tag created (policy covered)",
+    "Claude Opus 5.5: existing tag 788"
+   ],
+   "image": {
+    "media_id": 0,
+    "basis": "no licensed image available; theme default",
+    "upload_from": ""
+   },
+   "llm_cost_usd": 0.003587
+  },
+  {
+   "story_id": "d7c6f5d6523964a2",
+   "headline": "Squadron 42 Receives New Gameplay Trailer, Now Available to Wishlist Ahead of Q2 2027 Launch",
+   "outlets": [
+    "Gamingbolt"
+   ],
+   "items": [
+    {
+     "source": "Gamingbolt",
+     "title": "Squadron 42 Receives New Gameplay Trailer, Now Available to Wishlist Ahead of Q2 2027 Launch",
+     "url": "https://gamingbolt.com/squadron-42-receives-new-gameplay-trailer-now-available-to-wishlist-ahead-of-q2-2027-launch"
+    }
+   ],
+   "event_type": "launch",
+   "kind": "news",
+   "score": 1.867,
+   "score_reasons": [
+    "event launch (0.90)",
+    "age 16h (+0.27)",
+    "triage significance=high relevance=high"
+   ],
+   "decision": "dry_run_pass",
+   "reasons": [
+    "passed the quality gate; dry-run made no WordPress writes"
+   ],
+   "development": false,
+   "research": {
+    "documents": [
+     {
+      "id": "S1",
+      "outlet": "Gamingbolt",
+      "type": "publication",
+      "url": "https://gamingbolt.com/squadron-42-receives-new-gameplay-trailer-now-available-to-wishlist-ahead-of-q2-2027-launch",
+      "status": "ok",
+      "chars": 1291,
+      "group": 1,
+      "notes": []
+     },
+     {
+      "id": "S2",
+      "outlet": "Steam",
+      "type": "official_store",
+      "url": "https://store.steampowered.com/app/4045720/",
+      "status": "ok",
+      "chars": 619,
+      "group": 2,
+      "notes": [
+       "official Steam store data (background)"
+      ]
+     }
+    ],
+    "attempts": [
+     {
+      "url": "https://gamingbolt.com/squadron-42-receives-new-gameplay-trailer-now-available-to-wishlist-ahead-of-q2-2027-launch",
+      "outlet": "Gamingbolt",
+      "status": "feed_fulltext"
+     },
+     {
+      "url": "steam:appdetails:4045720",
+      "outlet": "Steam",
+      "status": "ok"
+     },
+     {
+      "url": "steam:news:4045720",
+      "outlet": "Steam",
+      "status": "ok"
+     }
+    ],
+    "independent_groups": 2,
+    "steam_appid": 4045720
+   },
+   "facts": {
+    "status": "reported",
+    "claims_total": 8,
+    "claims_usable": 8,
+    "core_claims": 3,
+    "independent_groups": 2,
+    "contradictions": [],
+    "from_cache": false,
+    "injection_detected": false,
+    "newsworthiness": {
+     "is_news": true,
+     "significance": "medium",
+     "reader_value": "The new trailer and Steam wishlist availability are useful updates, while the Steam listing also confirms the Q2 2027 release window and Windows platform.",
+     "reasons": [
+      "A new trailer has been released.",
+      "The game is available to wishlist on Steam.",
+      "Steam lists Q2 2027 as the release window and Windows as a platform."
+     ]
+    },
+    "claims": [
+     {
+      "id": "C1",
+      "text": "Cloud Imperium Games released a new trailer for Squadron 42.",
+      "category": "other",
+      "value": "",
+      "status": "reported",
+      "importance": "core",
+      "verification": "single_source",
+      "sources": [
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C2",
+      "text": "Squadron 42 became available to wishlist on Steam.",
+      "category": "availability",
+      "value": "Steam",
+      "status": "reported",
+      "importance": "core",
+      "verification": "single_source",
+      "sources": [
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C3",
+      "text": "Squadron 42 has a Steam release date of Q2 2027.",
+      "category": "release_window",
+      "value": "Q2 2027",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "official",
+      "sources": [
+       "Steam",
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C4",
+      "text": "The Steam listing lists Windows as a platform for Squadron 42.",
+      "category": "platform",
+      "value": "Windows",
+      "status": "confirmed",
+      "importance": "supporting",
+      "verification": "official",
+      "sources": [
+       "Steam"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C5",
+      "text": "The Steam listing names Cloud Imperium Games Ltd and Cloud Imperium Games Texas LLC as developers.",
+      "category": "business",
+      "value": "Cloud Imperium Games Ltd, Cloud Imperium Games Texas LLC",
+      "status": "confirmed",
+      "importance": "supporting",
+      "verification": "official",
+      "sources": [
+       "Steam"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C6",
+      "text": "The Steam listing names Roberts Space Industries International Ltd and Roberts Space Industries LLC as publishers.",
+      "category": "business",
+      "value": "Roberts Space Industries International Ltd, Roberts Space Industries LLC",
+      "status": "confirmed",
+      "importance": "supporting",
+      "verification": "official",
+      "sources": [
+       "Steam"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C7",
+      "text": "Gamingbolt reports that the Steam page lists minimum requirements of Windows 11, a quad-core Intel i7 (Sandy Bridge or later) or AMD (Bulldozer or later) CPU, 16 GB of RAM, and a DirectX 11.1 GPU with 8 GB VRAM.",
+      "category": "spec",
+      "value": "Windows 11; quad-core Intel i7 (Sandy Bridge or later) or AMD (Bulldozer or later) CPU; 16 GB of RAM; DirectX 11.1 GPU with 8 GB VRAM",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C8",
+      "text": "Gamingbolt reports that Squadron 42 requires 150 GB of installation space.",
+      "category": "spec",
+      "value": "150 GB",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Gamingbolt"
+      ],
+      "problems": []
+     }
+    ]
+   },
+   "model_factcheck": {
+    "issues": [],
+    "language": {
+     "fluent": true,
+     "translationese": false,
+     "problems": []
+    },
+    "verdict": "pass"
+   },
+   "model_factcheck_history": [
+    {
+     "revision": 0,
+     "verdict": "revise",
+     "issues": 1
+    },
+    {
+     "revision": 1,
+     "verdict": "pass",
+     "issues": 0
+    }
+   ],
+   "revisions": [
+    {
+     "revision": 1,
+     "failed": [
+      "factcheck.model_issues",
+      "factcheck.model_verdict"
+     ],
+     "feedback": [
+      "The fact checker asked for a revision. Fix every one of these findings (rewrite or delete the sentence): verdict=revise: [status_upgrade/medium] paragraph 0: «تریلر تازه Squadron 42 منتشر شد؛ عرضه در Q2 2027» — تیتر انتشار تریلر را قطعی بیان می‌کند، درحالی‌که برگهٔ اطلاعات این خبر را به Gamingbolt نسبت می‌دهد و وضعیت آن را گزارش‌شده، نه تأییدشده، می‌داند. بخش مربوط به بازهٔ عرضه تأییدشده است."
+     ]
+    }
+   ],
+   "article": {
+    "title": "گزارش: تریلر جدید Squadron 42 منتشر شد؛ عرضه در Q2 2027",
+    "meta_title": "گزارش انتشار تریلر جدید Squadron 42",
+    "meta_description": "Gamingbolt از انتشار تریلر تازه Squadron 42 و فعال‌شدن امکان افزودن بازی به فهرست علاقه‌مندی‌های Steam خبر داده است؛ عرضه برای Q2 2027 ثبت شده است.",
+    "focus_keyword": "تریلر Squadron 42",
+    "slug_suggestion": "squadron-42-trailer",
+    "words": 145,
+    "links": [],
+    "sections": 2,
+    "headings": [
+     "پلتفرم و شرکت‌های ثبت‌شده در Steam",
+     "سیستم موردنیاز گزارش‌شده"
+    ],
+    "uncertainties": [
+     "قیمت بازی اعلام نشده است.",
+     "عرضه بازی روی پلتفرم‌هایی غیر از Windows مشخص نیست."
+    ],
+    "entity_tags": [
+     "Squadron 42",
+     "Cloud Imperium Games",
+     "Steam"
+    ],
+    "revision": 1,
+    "plain_text": "به گزارش Gamingbolt، Cloud Imperium Games تریلر تازه‌ای از Squadron 42 منتشر کرده و این بازی برای افزودن به فهرست علاقه‌مندی‌های Steam در دسترس قرار گرفته است. تاریخ عرضه ثبت‌شده در Steam، Q2 2027 است.\nصفحه Steam، Windows را به‌عنوان پلتفرم Squadron 42 معرفی می‌کند. نام Cloud Imperium Games Ltd و Cloud Imperium Games Texas LLC به‌عنوان توسعه‌دهنده و Roberts Space Industries International Ltd و Roberts Space Industries LLC به‌عنوان ناشر در این صفحه آمده است.\nGamingbolt حداقل سیستم موردنیاز اعلام‌شده در صفحه Steam را Windows 11، پردازنده چهار‌هسته‌ای Intel i7 (Sandy Bridge or later) یا AMD (Bulldozer or later)، حافظه 16 GB RAM و کارت گرافیک DirectX 11.1 با 8 GB VRAM گزارش کرده است. این گزارش همچنین به نیاز بازی به 150 GB فضای نصب اشاره می‌کند.\nقیمت بازی اعلام نشده است.\nعرضه بازی روی پلتفرم‌هایی غیر از Windows مشخص نیست."
+   },
+   "article_html": "<!-- wp:paragraph -->\n<p>به گزارش Gamingbolt، Cloud Imperium Games تریلر تازه‌ای از Squadron 42 منتشر کرده و این بازی برای افزودن به فهرست علاقه‌مندی‌های Steam در دسترس قرار گرفته است. تاریخ عرضه ثبت‌شده در Steam، Q2 2027 است.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">پلتفرم و شرکت‌های ثبت‌شده در Steam</h2>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>صفحه Steam، Windows را به‌عنوان پلتفرم Squadron 42 معرفی می‌کند. نام Cloud Imperium Games Ltd و Cloud Imperium Games Texas LLC به‌عنوان توسعه‌دهنده و Roberts Space Industries International Ltd و Roberts Space Industries LLC به‌عنوان ناشر در این صفحه آمده است.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">سیستم موردنیاز گزارش‌شده</h2>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>Gamingbolt حداقل سیستم موردنیاز اعلام‌شده در صفحه Steam را Windows 11، پردازنده چهار‌هسته‌ای Intel i7 (Sandy Bridge or later) یا AMD (Bulldozer or later)، حافظه 16 GB RAM و کارت گرافیک DirectX 11.1 با 8 GB VRAM گزارش کرده است. این گزارش همچنین به نیاز بازی به 150 GB فضای نصب اشاره می‌کند.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>قیمت بازی اعلام نشده است. عرضه بازی روی پلتفرم‌هایی غیر از Windows مشخص نیست.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">منابع خبر</h2>\n<!-- /wp:heading -->\n\n<!-- wp:list -->\n<ul class=\"wp-block-list\">\n<!-- wp:list-item -->\n<li>منبع رسمی: <a href=\"https://store.steampowered.com/app/4045720/\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">Steam</a> — Squadron 42 on Steam</li>\n<!-- /wp:list-item -->\n<!-- wp:list-item -->\n<li>گزارش: <a href=\"https://gamingbolt.com/squadron-42-receives-new-gameplay-trailer-now-available-to-wishlist-ahead-of-q2-2027-launch\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">Gamingbolt</a> — Squadron 42 Receives New Game , Now Available to Wishlist Ahead of Q2 2027 Launch</li>\n<!-- /wp:list-item -->\n</ul>\n<!-- /wp:list -->\n\n<!-- wp:html -->\n<!-- poormaz-newsbot v2 nbstory-d7c6f5d6523964a2 -->\n<!-- /wp:html -->",
+   "legacy_comparison": {
+    "model_requested": "gpt-4o-mini",
+    "source_outlets_used": 1,
+    "source": "Gamingbolt",
+    "title": "تریلر جدید گیم‌پلی Squadron 42 منتشر شد، امکان اضافه کردن به لیست آرزوها فراهم شد",
+    "words": 286,
+    "persian_ratio": 0.915,
+    "unsupported_numbers": [],
+    "unsupported_names": [],
+    "fabrication_phrases": [],
+    "plain_text": "پس از تأخیرهای متعدد و سال‌ها توسعه، بازی Squadron 42، که یک نسخه تک‌نفره از Star Citizen است، به نظر می‌رسد که در حال حاضر در مسیر انتشار در سه‌ماهه دوم سال 2027 قرار دارد. شرکت Cloud Imperium Games اخیراً تریلر جدیدی از این بازی منتشر کرده و امکان اضافه کردن آن به لیست آرزوها در استیم را فراهم کرده است. داستان بازی حول محور یک خلبان تازه‌کار می‌چرخد که به نیروی دریایی UEE ملحق می‌شود و با فرمانده لوتی استیو کلتون (با بازی مارک همیل) هم‌تیمی می‌شود. در مدت کوتاهی، بشریت به جنگی علیه بیگانگانی می‌افتد که به نظر می‌رسد به شدت در تلاش برای حمله به زمین هستند. با وجود ریشه‌های ساده‌اش به عنوان دنباله‌ای از بازی Wing Commander، Squadron 42 ویژگی‌های بیشتری از جمله پلتفرم‌سازی، تیراندازی اول‌شخص و حل معما را ارائه می‌دهد. شما همچنین می‌توانید در کشتی‌ها، ایستگاه‌ها و پایگاه‌های بزرگ قدم بزنید و با بازیگران مشهور (از جمله گری اولدمن و گیلین اندرسون) تعامل داشته باشید. با وجود تمام جنجال‌هایی که پیرامون Cloud Imperium وجود دارد، باید اعتراف کرد که Squadron 42 از نظر بصری جذاب به نظر می‌رسد. همچنین، صفحه استیم بازی حداقل نیازمندی‌ها را نیز فاش کرده است. این نیازمندی‌ها شامل ویندوز 11، پردازنده چهار هسته‌ای Intel i7 (نسل سندی بریج یا جدیدتر) یا AMD (نسل بولدوزر یا جدیدتر)، 16 گیگابایت رم و یک کارت گرافیک DirectX 11.1 با 8 گیگابایت VRAM می‌باشد. همچنین، باید حداقل 150 گیگابایت فضای نصب در دسترس داشته باشید. انتشار این تریلر و جزئیات جدید، امیدها را برای طرفداران این بازی افزایش داده است. با توجه به تاریخ انتشار اعلام‌شده، انتظار می‌رود که اطلاعات بیشتری در آینده نزدیک منتشر شود و بازیکنان بتوانند تجربه‌ای جذاب و هیجان‌انگیز از این عنوان داشته باشند.",
+    "error": "",
+    "elapsed_seconds": 4.88,
+    "api_requests": 1,
+    "models_served": [
+     "gpt-4o-mini-2024-07-18"
+    ],
+    "input_tokens": 1134,
+    "output_tokens": 673,
+    "cost_usd": 0.000574
+   },
+   "gate": {
+    "passed": true,
+    "retryable": false,
+    "reasons": [],
+    "warnings": [],
+    "checks": [
+     {
+      "name": "newsworthiness.is_news",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "newsworthiness.significance",
+      "passed": true,
+      "blocking": true,
+      "detail": "significance=medium, outlets=1"
+     },
+     {
+      "name": "sources.available",
+      "passed": true,
+      "blocking": true,
+      "detail": "2 document(s)"
+     },
+     {
+      "name": "claims.enough_verified",
+      "passed": true,
+      "blocking": true,
+      "detail": "8 verified claim(s) (minimum 3)"
+     },
+     {
+      "name": "claims.core_verified",
+      "passed": true,
+      "blocking": true,
+      "detail": "3 core claim(s)"
+     },
+     {
+      "name": "sources.reliability",
+      "passed": true,
+      "blocking": true,
+      "detail": "core news confirmed by an official source"
+     },
+     {
+      "name": "claims.no_unresolved_core_contradiction",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "timeliness",
+      "passed": true,
+      "blocking": true,
+      "detail": "first reported 16h ago"
+     },
+     {
+      "name": "duplicate.not_published",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.lead",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.paragraphs",
+      "passed": true,
+      "blocking": true,
+      "detail": "3 paragraph(s)"
+     },
+     {
+      "name": "length.minimum",
+      "passed": true,
+      "blocking": true,
+      "detail": "145 words"
+     },
+     {
+      "name": "length.target",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "length.no_padding",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.headings",
+      "passed": true,
+      "blocking": false,
+      "detail": "2 heading(s) for 2 section(s)"
+     },
+     {
+      "name": "citations.verified_only",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "citations.every_paragraph",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "citations.core_claim_used",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "facts.numbers_supported",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "facts.names_supported",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "fabrication.first_hand",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "fabrication.quotes",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "status.reported_attributed",
+      "passed": true,
+      "blocking": false,
+      "detail": "reported claims used without explicit attribution"
+     },
+     {
+      "name": "persian.script_ratio",
+      "passed": true,
+      "blocking": true,
+      "detail": "Persian letter ratio 0.58"
+     },
+     {
+      "name": "persian.untranslated_english",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_cliche_lead",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_cliches",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_repetition",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "links.no_pointer_sentences",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "style.no_meta_filler",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_near_duplicates",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "links.anchor_grounded",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_exclamations",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "seo.title_length",
+      "passed": true,
+      "blocking": true,
+      "detail": "title length 55"
+     },
+     {
+      "name": "seo.title_no_clickbait",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "seo.title_names_subject",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "seo.meta_description",
+      "passed": true,
+      "blocking": false,
+      "detail": "meta description length 147"
+     },
+     {
+      "name": "seo.no_keyword_stuffing",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_rejected",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_issues",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "language.fluent",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_verdict",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     }
+    ]
+   },
+   "categories": [
+    2,
+    18
+   ],
+   "content_type": "gaming",
+   "slug": "squadron-42-trailer",
+   "tags": [],
+   "tag_notes": [
+    "Squadron 42: no tag created (policy covered)",
+    "Cloud Imperium Games: no tag created (policy covered)"
+   ],
+   "image": {
+    "media_id": 0,
+    "basis": "no licensed image available; theme default",
+    "upload_from": ""
+   },
+   "llm_cost_usd": 0.003444
+  }
+ ]
+}

@@ -1,0 +1,23 @@
+{
+  "description": "Items bot v1 picked in production runs #2140-#2145 (2026-10-06/08), taken from the public GitHub Actions logs. 'v1' records what v1 did; titles/URLs are the real feed items.",
+  "items": [
+    {"run": 2145, "source": "Gamingbolt", "authority": "medium", "title": "Planet Zoo 2 Adds Another 6 New Species to Its Roster, More Coming on Release",
+     "url": "https://gamingbolt.com/planet-zoo-2-adds-another-6-new-species-to-its-roster-more-coming-on-release",
+     "v1": {"posted": false, "openai_calls": 2, "error": "Article quality failed: too short: 276 words < 300", "run_bot_seconds": 16}},
+    {"run": 2144, "source": "PC Gamer", "authority": "high", "title": "Here's the Dragon's Dogma 2: Dark Arisen release time for your region",
+     "url": "https://www.pcgamer.com/games/rpg/heres-the-dragons-dogma-2-dark-arisen-release-time-for-your-region/",
+     "v1": {"posted": true, "post_id": 7062, "openai_calls": 2, "publisher_image_copied": true, "tags_created": 1, "related_links": 0, "localization_link": false, "run_bot_seconds": 38}},
+    {"run": 2143, "source": "Wccftech", "authority": "medium", "title": "Switching From An RTX 4090 To iGPU Via Display Cable Allegedly Helped A User Gain 2.5GB VRAM, Allowing Him To Double The Context Window In Qwen3.8-27B To 132K",
+     "url": "https://wccftech.com/rtx-4090-igpu-display-cable-vram-qwen3-8-27b-132k-context-window/",
+     "v1": {"posted": true, "post_id": 7060, "openai_calls": 1, "publisher_image_copied": true, "tags_created": 2, "related_links": 0, "localization_link": false, "run_bot_seconds": 24}},
+    {"run": 2142, "source": "DSOGaming", "authority": "medium", "title": "Bloodborne Unofficial Native PC Port Available Now for Download",
+     "url": "https://www.dsogaming.com/news/bloodborne-unofficial-native-pc-port-available-now-for-download/",
+     "v1": {"posted": true, "post_id": 7057, "openai_calls": 1, "publisher_image_copied": true, "tags_created": 0, "related_links": 3, "localization_link": false, "run_bot_seconds": 17}},
+    {"run": 2141, "source": "Gamingbolt", "authority": "medium", "title": "Star Wars: Galactic Racer Guide – 15 Best Tips and Tricks",
+     "url": "https://gamingbolt.com/star-wars-galactic-racer-guide-15-best-tips-and-tricks",
+     "v1": {"posted": true, "post_id": 7053, "openai_calls": 1, "publisher_image_copied": true, "tags_created": 1, "related_links": 4, "localization_link": false, "run_bot_seconds": 22}},
+    {"run": 2140, "source": "PC Gamer", "authority": "high", "title": "My most-played album of 2026? Sorry, Mitski—it's Final Fantasy 10: House Grooves, a real thing that exists",
+     "url": "https://www.pcgamer.com/games/final-fantasy/my-most-played-album-of-2026-sorry-mitski-its-final-fantasy-10-house-grooves-a-real-thing-that-exists/",
+     "v1": {"posted": true, "post_id": 7044, "openai_calls": 1, "publisher_image_copied": true, "tags_created": 1, "related_links": 0, "localization_link": false, "run_bot_seconds": 21}}
+  ]
+}
