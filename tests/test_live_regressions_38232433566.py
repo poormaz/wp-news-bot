@@ -76,15 +76,23 @@ def test_live_squadron42_fact_sheet_is_the_regression():
 
 
 def test_official_steam_window_does_not_validate_the_other_core_claims(repo):
+    """Each core claim is judged on its own sources. Under a strict single-source setting the trailer and
+    wishlist claims fail even though Steam confirms the window; under the default balanced policy they
+    pass on their OWN merit (one trusted outlet, ordinary low-risk news), never because of C3."""
     docs = live_docs(SQUADRON)
     sheet = live_sheet(SQUADRON, docs)
-    checks = source_checks(live_story(SQUADRON, "squadron 42", "Squadron 42"), sheet, ResearchResult(docs=docs),
-                           make_settings(repo))
+    story = live_story(SQUADRON, "squadron 42", "Squadron 42")
+    checks = source_checks(story, sheet, ResearchResult(docs=docs),
+                           make_settings(repo, single_source_low_risk_min_authority="high"))
     check = reliability(checks)
     assert not check.passed
     assert "C1 only Gamingbolt" in check.detail and "C2 only Gamingbolt" in check.detail
     assert "C3" not in check.detail                               # the Steam-confirmed window is fine on its own
     assert not decide(checks).passed
+    balanced = reliability(source_checks(story, sheet, ResearchResult(docs=docs), make_settings(repo)))
+    assert balanced.passed
+    assert "C1 single source with sufficient authority (Gamingbolt)" in balanced.detail
+    assert "C3 official (Steam)" in balanced.detail
 
 
 @pytest.mark.parametrize("how", ["high_authority_outlet", "lower_threshold", "editorial_override"])
@@ -185,7 +193,7 @@ def test_steam_listing_confirms_only_what_it_states(repo):
     checks = source_checks(Story("s", [FeedItem("i", "Gamingbolt", "publication", "medium", "primary", "u", "u",
                                                 SQUADRON["headline"], "", NOW - timedelta(hours=2))],
                                  primary_entity="squadron 42", primary_display="Squadron 42"),
-                           sheet, ResearchResult(docs=docs), make_settings(repo))
+                           sheet, ResearchResult(docs=docs), make_settings(repo, single_source_low_risk_min_authority="high"))
     assert not reliability(checks).passed
 
 

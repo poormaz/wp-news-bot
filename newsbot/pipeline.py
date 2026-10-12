@@ -42,7 +42,7 @@ from .ingest import fetch_feed, load_sources, manual_item, prefilter, read_manua
 from .llm import BudgetExceeded, Ledger, LLMBadOutput, LLMClient, LLMError, LLMTransient, LLMUnavailable
 from .models import Article, CheckResult, FactSheet, Story, utcnow
 from .newsworthiness import apply_triage, assess, rule_score, seedable, triage
-from .quality import decide, source_checks
+from .quality import decide, policy_version, source_checks
 from .research import Researcher, ResearchResult
 from .state import StateStore, iso, legacy_sync, parse_iso
 from .textutil import entity_key, extract_numbers, make_latin_slug, url_identity
@@ -51,6 +51,8 @@ from .wordpress import DryRunViolation, PublishNotAllowed, WordPressClient, Word
 log = logging.getLogger("newsbot.pipeline")
 
 TRANSIENT_FETCH = {"error", "rate_limited"}
+# Rejection reasons no policy change can fix: never reconsidered.
+PERMANENT_REJECTIONS = ("duplicate", "stale", "timeliness", "blocked", "security")
 
 
 @dataclass
@@ -98,10 +100,11 @@ class Pipeline:
         # may still have been applied, so no other story may reach WordPress in the same run.
         self.wp_write_attempted = False
         self._media_cache: dict[int, bool] = {}
+        self._started = time.monotonic()
 
     # ------------------------------------------------------------------
     def run(self) -> RunReport:
-        started = time.monotonic()
+        started = self._started = time.monotonic()
         self.report.started_at = iso(utcnow())
         try:
             self._setup()
@@ -253,37 +256,74 @@ class Pipeline:
             if story.manual:
                 story.score += 5.0
         eligible.sort(key=lambda st: st.score, reverse=True)
-        shortlist = eligible[: max(s.max_candidates_per_run * 3, 6)]
         if not self.samples and (self.posts_made >= s.max_posts_per_run or self.wp_write_attempted):
-            shortlist = []  # this run's single post was already used (resumed publication): no model spend
-        if s.triage_llm and self.llm.available and len(shortlist) > 1:
-            try:
-                verdicts = triage(shortlist, self.llm, s)
-                kept = []
-                for story in shortlist:
-                    if apply_triage(story, verdicts.get(story.story_id)) or story.manual:
-                        kept.append(story)
-                    else:
-                        # Persist: re-triaged only when new outlets cover the story.
-                        self.store.update_story(story.story_id, status="rejected",
-                                                last_reasons_json=json.dumps(story.score_reasons[-1:]),
-                                                source_count_at_decision=len(story.outlets))
-                        self._record(story, "rejected", story.score_reasons[-1:], decision_reason="triage")
-                shortlist = sorted(kept, key=lambda st: st.score, reverse=True)
-            except (LLMError, BudgetExceeded) as exc:
-                self.report.warnings.append(f"triage skipped: {exc}")
+            eligible = []  # this run's single post was already used (resumed publication): no model spend
         limit = self.samples if self.samples else s.max_candidates_per_run
-        candidates = shortlist[:limit]
-        self.report.counts["candidates"] = len(candidates)
-        log.info("CANDIDATES: %s", [(st.story_id, round(st.score, 2), st.headline[:70]) for st in candidates])
+        self._backfill(eligible, limit)
 
-        # 5-12. Per-story processing ---------------------------------------------
-        for story in candidates:
+        self.report.counts["published"] = sum(1 for p in self.report.published if p.get("status") == "publish")
+        self.report.counts["drafted"] = sum(1 for p in self.report.published if p.get("status") == "draft")
+        self.report.counts["rejected"] = sum(1 for st in self.report.stories if st["decision"] == "rejected")
+        if self.llm.disabled_reason and not self.offline and self.report.exit_code == 0:
+            self.report.exit_code = 3
+
+    # -- candidate backfilling ---------------------------------------------------------
+    def _backfill(self, ranked: list[Story], limit: int) -> None:
+        """Evaluate ranked stories one by one until one passes (or, in samples mode, `limit` are done).
+
+        Bounded by NEWSBOT_MAX_CANDIDATES, NEWSBOT_MAX_RUN_SECONDS, the request cap and the run/24h cost
+        budgets: a new candidate is only started when enough budget remains to finish it. Requirements
+        never change with the attempt number - a later candidate faces exactly the same gate.
+        """
+        s = self.s
+        triaged: set[str] = set()
+        dropped: set[str] = set()
+        attempted = 0
+        stop = ""
+        triage_ok = s.triage_llm and self.llm.available
+        index = 0
+        while index < len(ranked):
             if not self.samples and (self.posts_made >= s.max_posts_per_run or self.wp_write_attempted):
                 break
+            if attempted >= limit:
+                stop = f"candidate limit reached ({limit})"
+                break
+            if time.monotonic() - self._started > s.max_run_seconds:
+                stop = f"time budget reached ({s.max_run_seconds}s)"
+                break
+            short = self._budget_short()
+            if short:
+                stop = short
+                break
+            story = ranked[index]
+            if triage_ok and story.story_id not in triaged:
+                batch = [st for st in ranked[index:] if st.story_id not in triaged][: s.triage_batch_size]
+                if len(batch) > 1:
+                    try:
+                        verdicts = triage(batch, self.llm, s)
+                    except (LLMError, BudgetExceeded) as exc:
+                        self.report.warnings.append(f"triage skipped: {exc}")
+                        triage_ok, verdicts = False, {}
+                    for st in batch:
+                        triaged.add(st.story_id)
+                        if verdicts and not apply_triage(st, verdicts.get(st.story_id)) and not st.manual:
+                            dropped.add(st.story_id)
+                            self._persist_rejection(st, st.score_reasons[-1:], len(st.outlets))
+                            self._record(st, "rejected", st.score_reasons[-1:], decision_reason="triage")
+                    # Triage adjusts scores: re-rank the batch that has not been evaluated yet.
+                    ranked[index:index + len(batch)] = sorted(ranked[index:index + len(batch)],
+                                                              key=lambda st: st.score, reverse=True)
+                    continue
+                triaged.update(st.story_id for st in batch)
+            index += 1
+            if story.story_id in dropped:
+                continue
             if not self.llm.available:
                 self._record(story, "skipped", [f"model unavailable: {self.llm.disabled_reason}"])
                 continue
+            attempted += 1
+            log.info("CANDIDATE %d/%d: %s (score %.2f) %s", attempted, limit, story.story_id, story.score,
+                     story.headline[:80])
             try:
                 outcome = self.process_story(story)
             except BudgetExceeded as exc:
@@ -291,6 +331,7 @@ class Pipeline:
                 self.store.update_story(story.story_id, status="transient", next_retry_at=iso(utcnow()))
                 self._record(story, "budget", [str(exc)])
                 self.report.warnings.append(f"budget: {exc}")
+                stop = f"budget: {exc}"
                 break
             except LLMUnavailable as exc:
                 self._record(story, "skipped", [f"model unavailable: {exc}"])
@@ -302,12 +343,32 @@ class Pipeline:
                 self.report.warnings.append("stopped after a WordPress write with an uncertain result; "
                                             "the next run adopts or resumes the post instead of creating another")
                 break
+        remaining = sum(1 for st in ranked[index:] if st.story_id not in dropped)
+        self.report.counts["candidates"] = attempted
+        self.report.counts["candidates_not_evaluated"] = remaining
+        if stop and remaining and not self.posts_made:
+            self.report.warnings.append(f"backfill stopped: {stop}; {remaining} eligible story(ies) not evaluated")
+        log.info("BACKFILL: %d candidate(s) evaluated, %d eligible not evaluated%s", attempted, remaining,
+                 f" ({stop})" if stop else "")
 
-        self.report.counts["published"] = sum(1 for p in self.report.published if p.get("status") == "publish")
-        self.report.counts["drafted"] = sum(1 for p in self.report.published if p.get("status") == "draft")
-        self.report.counts["rejected"] = sum(1 for st in self.report.stories if st["decision"] == "rejected")
-        if self.llm.disabled_reason and not self.offline and self.report.exit_code == 0:
-            self.report.exit_code = 3
+    def _budget_short(self) -> str:
+        """Why another candidate must not be started (it could not finish within the limits), or ""."""
+        s, ledger = self.s, self.ledger
+        left = s.max_llm_requests_per_run - ledger.requests
+        if left < 3:   # extraction + composition + fact check
+            return f"request budget too low for another candidate ({left} left)"
+        # At least the worst case the ledger will check for the candidate's first (extraction) call, so a
+        # started candidate is never refused before its facts are even read.
+        worst_first_call = self.llm.estimate_cost(s.max_source_docs * s.max_doc_chars,
+                                                  s.max_output_tokens_extract) or 0.0
+        reserve = max(s.candidate_reserve_usd, worst_first_call)
+        run_left = s.max_run_cost_usd - ledger.cost
+        if run_left < reserve:
+            return f"run budget too low for another candidate (${run_left:.4f} left, ${reserve:.4f} needed)"
+        day_left = s.max_daily_cost_usd - ledger.daily_spent_before - ledger.cost
+        if day_left < reserve:
+            return f"24h budget too low for another candidate (${day_left:.4f} left, ${reserve:.4f} needed)"
+        return ""
 
     # ------------------------------------------------------------------
     def _manual_items(self, extractor, sources) -> list:
@@ -451,10 +512,16 @@ class Pipeline:
                                      "id": stored.get("wp_post_id")}
             else:
                 return f"duplicate: story already {status} (post {stored.get('wp_post_id')})"
-        if status == "rejected":
-            if int(stored.get("attempts") or 0) >= s.max_story_attempts:
+        # Dry-run/samples rejections never block draft/publish runs; a dry run does not repeat them.
+        blocking_rejection = status == "rejected" or (status == "dry_run_rejected" and s.mode == "dry-run"
+                                                      and not self.samples)
+        if blocking_rejection:
+            if self._reconsider_after_policy_change(stored):
+                story.score_reasons.append(f"reconsidered: rejected under policy {stored.get('policy_version') or '2.0'}, "
+                                           f"now {policy_version()}")
+            elif int(stored.get("attempts") or 0) >= s.max_story_attempts:
                 return "rejected earlier; attempt limit reached"
-            if len(story.outlets) <= int(stored.get("source_count_at_decision") or 0):
+            elif len(story.outlets) <= int(stored.get("source_count_at_decision") or 0):
                 return "rejected earlier; no new sources since"
         if status == "transient":
             retry_at = parse_iso(stored.get("next_retry_at"))
@@ -468,6 +535,27 @@ class Pipeline:
         if dup:
             return dup
         return ""
+
+    def _reconsider_after_policy_change(self, stored: dict) -> bool:
+        """A story rejected under an older editorial policy/prompt version gets one fresh evaluation.
+
+        Only for rejections the policy decides (sourcing, newsworthiness, triage, fact check). Duplicates,
+        stale and blocked stories are never retried; published/drafted stories never reach this point.
+        """
+        if not self.s.reconsider_after_policy_change:
+            return False
+        if (stored.get("policy_version") or "") == policy_version():
+            return False
+        reasons = " ".join(json.loads(stored.get("last_reasons_json") or "[]")).lower()
+        return not any(word in reasons for word in PERMANENT_REJECTIONS)
+
+    def _persist_rejection(self, story: Story, reasons: list[str], sources: int) -> None:
+        """Record a rejection. In dry-run/samples it is kept apart so it cannot starve production runs."""
+        production = self.s.mode in ("draft", "publish")
+        self.store.update_story(story.story_id, status="rejected" if production else "dry_run_rejected",
+                                last_reasons_json=json.dumps(reasons, ensure_ascii=False),
+                                source_count_at_decision=sources, policy_version=policy_version(),
+                                decision_mode=self.s.mode + ("-samples" if self.samples else ""))
 
     def _has_new_numbers(self, story: Story, known: list[str]) -> bool:
         known_set = set(known)
@@ -683,8 +771,7 @@ class Pipeline:
         record["llm_cost_usd"] = round(self.ledger.cost - cost_before, 6)
         if retryable:
             return self._fail(story, record, "; ".join(reasons), transient=True, cost_before=cost_before)
-        self.store.update_story(story.story_id, status="rejected", last_reasons_json=json.dumps(reasons, ensure_ascii=False),
-                                source_count_at_decision=sources)
+        self._persist_rejection(story, reasons, sources)
         if self.s.legacy_sync and self.s.mode != "dry-run":
             legacy_sync(self.s.legacy_db, story.items, "skipped")
         self._record(story, "rejected", reasons, extra=record)
@@ -701,8 +788,7 @@ class Pipeline:
                                     next_retry_at=iso(retry_at), last_reasons_json=json.dumps([reason]))
             self._record(story, "transient", [reason, f"retry after {iso(retry_at)}"], extra=record)
             return "transient"
-        self.store.update_story(story.story_id, status="rejected", last_reasons_json=json.dumps([reason]),
-                                source_count_at_decision=len(story.outlets))
+        self._persist_rejection(story, [reason], len(story.outlets))
         self._record(story, "rejected", [reason], extra=record)
         return "rejected"
 

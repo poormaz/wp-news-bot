@@ -52,20 +52,42 @@ def test_official_source_passes(repo):
     assert decision.passed, decision.reasons
 
 
-def test_single_medium_source_is_rejected_but_high_authority_passes(repo):
+def test_single_medium_source_is_enough_for_ordinary_news(repo):
     s = make_settings(repo)
     docs = [doc("S1")]
     decision = gate(s, docs, sheet_for(docs))
-    assert not decision.passed
-    assert any(r.startswith("sources.reliability") for r in decision.reasons)
+    assert decision.passed, decision.reasons                    # one trusted medium outlet, low-risk story
+    s.single_source_low_risk_min_authority = "high"             # stricter configuration
+    decision = gate(s, docs, sheet_for(docs))
+    assert not decision.passed and any(r.startswith("sources.reliability") for r in decision.reasons)
     docs = [doc("S1", authority="high")]
     assert gate(s, docs, sheet_for(docs)).passed
 
 
-def test_corroboration_requires_independent_origins(repo):
+def test_low_authority_single_source_is_never_enough(repo):
     s = make_settings(repo)
+    docs = [doc("S1", authority="low")]
+    assert not gate(s, docs, sheet_for(docs)).passed
+
+
+def test_high_risk_story_needs_more_than_one_medium_source(repo):
+    s = make_settings(repo)
+    docs = [doc("S1")]
+    rumor = sheet_for(docs, statuses=("speculative", "confirmed", "confirmed"))
+    decision = gate(s, docs, rumor)
+    assert not decision.passed
+    assert any("high-risk story" in w for w in decision.warnings + [c.detail for c in decision.checks])
+    sensitive = story()
+    sensitive.items[0].title = "Ironvale studio faces lawsuit over unpaid overtime"
+    decision = gate(s, docs, sheet_for(docs), st=sensitive)
+    assert not decision.passed and any(r.startswith("sources.reliability") for r in decision.reasons)
+    assert gate(s, [doc("S1", authority="high")], sheet_for([doc("S1", authority="high")]), st=sensitive).passed
+
+
+def test_corroboration_requires_independent_origins(repo):
+    s = make_settings(repo, single_source_low_risk_min_authority="high")
     same_origin = [doc("S1", group=1), doc("S2", group=1)]
-    assert not gate(s, same_origin, sheet_for(same_origin)).passed
+    assert not gate(s, same_origin, sheet_for(same_origin)).passed   # one press release, two copies
     independent = [doc("S1", group=1), doc("S2", group=2)]
     assert gate(s, independent, sheet_for(independent)).passed
 

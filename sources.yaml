@@ -2,8 +2,12 @@
 #
 # Required per source: name, feed. Optional (News Bot 2.0):
 #   type:      official | publication          (official = developer/publisher/platform holder)
-#   authority: high | medium | low             (a single-source story needs NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY,
-#                                               default high, unless confirmed officially or corroborated)
+#   authority: high | medium | low             (each core claim needs an official source, independent
+#                                               corroboration, or a single source of sufficient authority:
+#                                               NEWSBOT_SINGLE_SOURCE_LOW_RISK_MIN_AUTHORITY (default medium)
+#                                               for ordinary news, NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY
+#                                               (default high) for rumors, allegations and other high-risk
+#                                               stories; low authority is never enough alone)
 #   role:      primary | corroboration         (corroboration sources help verify and cluster stories
 #                                               but never start a story on their own)
 #   enabled:   true | false
@@ -50,6 +54,28 @@ sources:
     role: corroboration
   - name: GameSpot
     feed: "https://www.gamespot.com/feeds/news/"
+    type: publication
+    authority: high
+    role: corroboration
+  # Added in 2.1 for independent corroboration (never start a story). Verify with a `check` run:
+  # a feed that fails is reported and skipped; disable it here if it keeps failing.
+  - name: Eurogamer
+    feed: "https://www.eurogamer.net/feed"
+    type: publication
+    authority: high
+    role: corroboration
+  - name: VGC
+    feed: "https://www.videogameschronicle.com/feed/"
+    type: publication
+    authority: high
+    role: corroboration
+  - name: Gematsu
+    feed: "https://www.gematsu.com/feed"
+    type: publication
+    authority: high
+    role: corroboration
+  - name: Rock Paper Shotgun
+    feed: "https://www.rockpapershotgun.com/feed"
     type: publication
     authority: high
     role: corroboration

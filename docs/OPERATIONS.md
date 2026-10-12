@@ -21,7 +21,9 @@ and the legacy engine is refused.
    * `CHECK_REPORT_JSON` → `model_probe.ok = true`, `models_served` starts with `gpt-6-luna`
      (if not, set `OPENAI_MODEL` to an available model or set `OPENAI_FALLBACK_MODEL`);
    * `wordpress.auth.ok = true`, `categories` show CAT_ALL/CAT_GAMING/CAT_HARDWARE with names;
-   * every enabled feed `ok = true` (disable failing ones in `sources.yaml`);
+   * every enabled feed `ok = true` (disable failing ones in `sources.yaml`); this includes the
+     corroboration feeds added in 2.1 (Eurogamer, VGC, Gematsu, Rock Paper Shotgun), whose URLs
+     could not be fetched from the development environment;
    * `post_audit`: `h1_count`, `canonical_count`, `og_title_count` — record the theme's baseline
      (the bot adds no H1, canonical, OpenGraph or schema of its own);
    * `LOCALIZATION_DISCOVERY_JSON` → copy entries with `"valid": true` into
@@ -33,7 +35,10 @@ and the legacy engine is refused.
    `newsbot-report-*` artifact: facts with sources, gate decisions, Persian article, and the
    bot v1 article for the same story with its cost and evidence findings.
 4. **Dry run**: `mode = dry-run`. The step summary lists every story decision with reasons,
-   model, tokens, cost and elapsed time.
+   model, tokens, cost and elapsed time. `candidates` / `candidates_not_evaluated` and a
+   `backfill stopped: …` warning show how far backfilling got and which limit ended it.
+   Dry-run and samples rejections are stored as `dry_run_rejected`. They never block a later
+   `draft`/`publish` run, and PR-branch runs use their own Actions cache anyway.
 5. **Canary**: `mode = draft`. Open the draft in WordPress and verify facts against the
    listed sources, formatting (Gutenberg blocks, H2 only, no H1), internal links, Rank Math
    title/description/focus keyword, category and tags. Use *Preview* to see how the theme
@@ -59,8 +64,11 @@ Warnings worth acting on: `MODEL MISMATCH`, `MODEL FALLBACK`, `budget: …`, rep
 
 Token usage is taken from every API response and priced with `config/pricing.yaml`.
 Budgets: `NEWSBOT_MAX_RUN_COST_USD` (0.10), `NEWSBOT_MAX_DAILY_COST_USD` (1.00),
-`NEWSBOT_MAX_LLM_REQUESTS` (16). When a limit would be exceeded the call is not made, the story
-is retried next run, and the run ends normally. See `docs/COMPARISON.md` for estimates.
+`NEWSBOT_MAX_LLM_REQUESTS` (30). Backfilling starts another candidate only when the remaining
+run and 24 h budgets cover at least its worst-case extraction call and 3 requests remain, so a
+run tries up to `NEWSBOT_MAX_CANDIDATES` (8) stories within the same $0.10 / $1.00 caps. When a
+limit would be exceeded mid-story, the call is not made, the story is retried next run, and the
+run ends normally. See `docs/COMPARISON.md` for estimates.
 
 ## Maintenance
 
@@ -83,12 +91,18 @@ verified fact sheets are learned automatically.
 (validation refuses unpriced models so budgets stay meaningful).
 
 **Prompts** — `newsbot/prompts.py`; bump `PROMPT_VERSION` (invalidates the fact cache).
+Bumping it, or `quality.EDITORIAL_POLICY_VERSION` when the gate rules change, lets fresh stories
+rejected under the old version be evaluated once more
+(`NEWSBOT_RECONSIDER_AFTER_POLICY_CHANGE`).
 
 ## Troubleshooting
 
 | Symptom | Likely cause | Action |
 |---|---|---|
-| no posts for many runs | stories fail the gate | read `reasons` in the summary; common: single medium source (consider `allow_single_source_entities` or adding corroborating sources), stale stories |
+| no posts for many runs | stories fail the gate | read `reasons` in the summary; common: a high-risk story with one medium source (`sources.risk` says why it is high-risk), single-source article not attributed (`status.*_attributed`, usually fixed by the revision), stale stories |
+| `backfill stopped: candidate limit reached` with stories left | all tried candidates failed | raise `NEWSBOT_MAX_CANDIDATES`; the cost caps still apply |
+| `backfill stopped: run budget too low…` | earlier candidates used the run budget | expected; the rest are considered next run |
+| a repository variable seems ignored | integer outside its documented range (clamped to the range) or a typo in the name | every tunable is passed by the workflow (`tests/test_workflow.py`); non-numeric or unknown values fail `--validate-config` with exit code 2 |
 | `model unavailable: model 'gpt-6-luna' not found` | account lacks access | set `OPENAI_FALLBACK_MODEL` or `OPENAI_MODEL` |
 | `WordPress authentication check failed` | app password revoked | rotate `WP_APP_PASSWORD` |
 | `no state DB restored` every run | cache evicted/unsaved | harmless (WordPress recovery); check the save step |

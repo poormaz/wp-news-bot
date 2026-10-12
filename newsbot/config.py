@@ -121,8 +121,11 @@ class Settings:
     # Budget
     max_run_cost_usd: float = 0.10
     max_daily_cost_usd: float = 1.00
-    max_llm_requests_per_run: int = 16
-    max_candidates_per_run: int = 3
+    max_llm_requests_per_run: int = 30
+    max_candidates_per_run: int = 8         # stories researched per run (backfilling stops at the first pass)
+    max_run_seconds: int = 840              # stop starting new candidates after this (step timeout is 18 min)
+    candidate_reserve_usd: float = 0.005    # do not start a candidate unless this much run budget remains
+    triage_batch_size: int = 9
     max_posts_per_run: int = 1
 
     # WordPress
@@ -157,6 +160,7 @@ class Settings:
     official_expansion: bool = True
     max_official_fetches: int = 2
     steam_context: bool = True
+    steam_search: bool = True               # find a game's official Steam page by exact name when not linked
 
     # Editorial
     min_verified_claims: int = 3
@@ -165,7 +169,8 @@ class Settings:
     words_per_claim: int = 75
     rumor_policy: str = "corroborated"
     allow_single_source: bool = True
-    single_source_min_authority: str = "high"
+    single_source_min_authority: str = "high"            # high-risk stories (rumors, allegations, conflicts)
+    single_source_low_risk_min_authority: str = "medium"  # ordinary news from one trusted publication
     triage_llm: bool = True
     llm_factcheck: bool = True
     max_revisions: int = 2
@@ -173,6 +178,7 @@ class Settings:
     cluster_threshold: float = 0.55
     story_dedup_days: int = 10
     max_story_attempts: int = 3
+    reconsider_after_policy_change: bool = True
     retry_backoff_minutes: int = 110
 
     # Links
@@ -245,6 +251,12 @@ class Settings:
         if unknown:
             problems.append(f"NEWSBOT_FALLBACK_MEDIA_IDS: unknown content type(s) {', '.join(unknown)} "
                             f"(use {', '.join(MEDIA_KINDS)})")
+        for pattern in (self.editorial or {}).get("high_risk_patterns") or []:
+            try:
+                re.compile(str(pattern))
+            except re.error as exc:
+                problems.append(f"config/editorial.yaml high_risk_patterns: invalid regular expression "
+                                f"{str(pattern)!r} ({exc})")
         if not self.sources_file.exists():
             problems.append(f"Sources file not found: {self.sources_file.name}")
         return problems
@@ -326,8 +338,11 @@ def load_settings(mode: str | None = None, repo_root: Path | None = None) -> Set
 
     s.max_run_cost_usd = env_float("NEWSBOT_MAX_RUN_COST_USD", 0.10, minimum=0.0)
     s.max_daily_cost_usd = env_float("NEWSBOT_MAX_DAILY_COST_USD", 1.00, minimum=0.0)
-    s.max_llm_requests_per_run = env_int("NEWSBOT_MAX_LLM_REQUESTS", 16, 0, 60)
-    s.max_candidates_per_run = env_int("NEWSBOT_MAX_CANDIDATES", 3, 1, 10)
+    s.max_llm_requests_per_run = env_int("NEWSBOT_MAX_LLM_REQUESTS", 30, 0, 80)
+    s.max_candidates_per_run = env_int("NEWSBOT_MAX_CANDIDATES", 8, 1, 40)
+    s.max_run_seconds = env_int("NEWSBOT_MAX_RUN_SECONDS", 840, 60, 1500)
+    s.candidate_reserve_usd = env_float("NEWSBOT_CANDIDATE_RESERVE_USD", 0.005, minimum=0.0)
+    s.triage_batch_size = env_int("NEWSBOT_TRIAGE_BATCH", 9, 3, 20)
     # One post per run is a ceiling, never a quota.
     s.max_posts_per_run = env_int("MAX_POSTS_PER_RUN", 1, 0, HARD_MAX_POSTS_PER_RUN)
 
@@ -358,6 +373,7 @@ def load_settings(mode: str | None = None, repo_root: Path | None = None) -> Set
     s.official_expansion = env_bool("NEWSBOT_OFFICIAL_EXPANSION", True)
     s.max_official_fetches = env_int("NEWSBOT_MAX_OFFICIAL_FETCHES", 2, 0, 5)
     s.steam_context = env_bool("NEWSBOT_STEAM_CONTEXT", True)
+    s.steam_search = env_bool("NEWSBOT_STEAM_SEARCH", True)
 
     s.min_verified_claims = env_int("NEWSBOT_MIN_VERIFIED_CLAIMS", 3, 1, 10)
     s.min_words = env_int("NEWSBOT_MIN_WORDS", 130, 60, 600)
@@ -367,6 +383,8 @@ def load_settings(mode: str | None = None, repo_root: Path | None = None) -> Set
     s.allow_single_source = env_bool("NEWSBOT_ALLOW_SINGLE_SOURCE", True)
     s.single_source_min_authority = env_choice("NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY", "high",
                                                ("high", "medium", "low"))
+    s.single_source_low_risk_min_authority = env_choice("NEWSBOT_SINGLE_SOURCE_LOW_RISK_MIN_AUTHORITY", "medium",
+                                                        ("high", "medium", "low"))
     s.triage_llm = env_bool("NEWSBOT_TRIAGE_LLM", True)
     s.llm_factcheck = env_bool("NEWSBOT_LLM_FACTCHECK", True)
     s.max_revisions = env_int("NEWSBOT_MAX_REVISIONS", 2, 0, 3)
@@ -374,6 +392,7 @@ def load_settings(mode: str | None = None, repo_root: Path | None = None) -> Set
     s.cluster_threshold = env_float("NEWSBOT_CLUSTER_THRESHOLD", 0.55, minimum=0.2)
     s.story_dedup_days = env_int("NEWSBOT_STORY_DEDUP_DAYS", 10, 1, 60)
     s.max_story_attempts = env_int("NEWSBOT_MAX_STORY_ATTEMPTS", 3, 1, 10)
+    s.reconsider_after_policy_change = env_bool("NEWSBOT_RECONSIDER_AFTER_POLICY_CHANGE", True)
     s.retry_backoff_minutes = env_int("NEWSBOT_RETRY_BACKOFF_MINUTES", 110, 10, 1440)
 
     s.internal_links_enabled = (_first_env("SEO_INTERNAL_LINKS_ENABLED", default="1") == "1")

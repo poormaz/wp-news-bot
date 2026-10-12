@@ -19,8 +19,9 @@ overrides:
     - '\bwordle\b'
     - '\bconnections (?:hints|answers)\b'
 
-  # For these entities a single medium-authority source is enough
-  # (default requires an official source, independent corroboration or a high-authority outlet).
+  # For these entities a single medium-authority source is enough even for high-risk stories
+  # (rumors, allegations, layoffs, closures...). Ordinary news already accepts one medium source
+  # (NEWSBOT_SINGLE_SOURCE_LOW_RISK_MIN_AUTHORITY); the article must still attribute it.
   allow_single_source_entities: []
 
   # Rumors about these entities may be published with one origin
@@ -29,6 +30,11 @@ overrides:
 
   # Ranking boost for games Poormaz cares about most (localization pages get a boost automatically).
   priority_entities: []
+
+# Extra headline topics (regular expressions, case-insensitive) that make a story high-risk, so a single
+# source needs NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY (default high) instead of the low-risk level. Built-in
+# topics: allegations, lawsuits, layoffs, strikes, closures, cancellations, acquisitions, leaks, rumors.
+high_risk_patterns: []
 
 # Official spellings enforced in names written in Latin script (applied to the model's text and to the
 # fact sheet it reads; source quotes are verified before this and are never changed). Some press

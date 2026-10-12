@@ -10,9 +10,9 @@ import re
 
 from .entities import EVENT_TYPES
 
-PROMPT_VERSION = "2.1.0"
+PROMPT_VERSION = "2.2.0"
 
-KINDS = ["news", "rumor", "opinion", "guide", "deal", "review", "list", "sponsored", "other"]
+KINDS = ["news", "rumor", "interview", "feature", "opinion", "guide", "deal", "review", "list", "sponsored", "other"]
 CLAIM_CATEGORIES = ["release_date", "release_window", "price", "platform", "version", "spec", "feature",
                     "content", "availability", "business", "sales", "delay", "cancellation", "quote", "people",
                     "other"]
@@ -105,8 +105,12 @@ Iranian PC and console players. You receive candidate stories (headlines from En
 which are real, useful news. {UNTRUSTED_NOTICE}
 
 For each story id return:
-- is_news: false for guides, deals/sales, reviews/previews/impressions, opinion, listicles, quizzes, sponsored
-  posts, minor social-media chatter, and recycled old news.
+- is_news: false for guides, deals/sales, reviews/previews/impressions, opinion columns, listicles, quizzes,
+  sponsored posts, minor social-media chatter, and recycled old news. Judge the information, not the format:
+  interviews, technical deep-dives and analysis pieces are news (is_news true, kind "interview" or "feature")
+  when the headline indicates NEW, verifiable information about gameplay, technology or performance, game
+  updates, release plans, platforms or development decisions. A piece whose substance is the writer's own
+  opinion or speculation is not news.
 - kind: the best label.
 - significance: how important the development is for players (release dates, delays, launches, major updates,
   official reveals and platform news are usually medium/high; tiny cosmetic drops are low).
@@ -139,10 +143,17 @@ Rules:
    PlayStation Blog post", "Capcom press release", "own reporting", "leaker on X", "report by Bloomberg").
    repeats_press_release = true when the document mostly restates a press release or another outlet's story.
    is_primary_source = true only for the official announcement itself.
-9. kind and event_type classify the story. newsworthiness: would Persian-speaking players find this genuinely
-   useful? Minor promotions, trivial social posts, filler and recycled news are low significance.
+9. kind and event_type classify the story by its verifiable development, not by the writing style. A column,
+   interview or technical feature that reports something new (a developer's statement, a confirmed change,
+   technical details, release or platform plans) is "interview" or "feature" (or "news") with is_news true;
+   use "opinion" only when the substance is the writer's own evaluation with no new verifiable development.
+   newsworthiness: would Persian-speaking players find this genuinely useful? Minor promotions, trivial
+   social posts, filler and recycled news are low significance.
 10. open_questions: important things the documents do not answer (for example price, other platforms).
-11. Return 3 to 15 claims. Prefer fewer precise claims to many vague ones. No marketing adjectives."""
+11. Return 3 to 15 claims. Prefer fewer precise claims to many vague ones. No marketing adjectives.
+12. Never turn the writer's opinions, evaluations, predictions or speculation into claims (if unavoidable,
+   status "speculative"). Statements made by developers or publishers in an interview are claims attributed
+   to that person; quote them verbatim in support."""
 
 COMPOSE_SYSTEM = f"""You are a senior Persian-language news editor at Poormaz (poormaz.com), an Iranian gaming news
 and Persian game-localization site. You write an ORIGINAL Persian news article from a verified fact sheet.
@@ -157,6 +168,12 @@ Hard rules:
 3. Respect each claim's status. "confirmed" may be stated as fact. "reported" must be attributed in the
    sentence (for example «به گزارش Wccftech» or «طبق گزارش ...»). "speculative" must be framed clearly as an
    unconfirmed rumor or leak. Never upgrade a rumor to a fact. Explain contradictions; never merge them.
+   When the core news comes from one publication's own reporting (verification "single_source", status
+   "reported"), the lead attributes it to that outlet («به گزارش DSOGaming») and the headline signals it (for
+   example «گزارش: ...» or the outlet's name).
+   When the source is an interview, column or technical feature, write a news report of the new, verifiable
+   information only, attributed to the person who said it («به گفته ...»); never reproduce the writer's
+   opinions or evaluations.
 4. Poormaz did not test, play, benchmark, interview or obtain anything exclusively. Never claim first-hand
    experience, testing, benchmarks, interviews, exclusives or quotations. Only quote text that appears as a
    quote in a claim, with attribution.
@@ -204,6 +221,8 @@ Report every statement in the article that:
   wrong_attribution),
 - claims testing, playing, benchmarks, interviews, exclusives or quotations not in the fact sheet (fabrication),
 - merges contradictory claims into one statement (contradiction_merged).
+- presents the source writer's opinion, evaluation or speculation as fact, or reproduces an opinion piece
+  instead of reporting its verifiable news (unsupported or status_upgrade),
 - adds filler: restates an earlier sentence, comments on the available information («اطلاعات موجود ...»),
   gives readers advice, draws conclusions or implications that no claim states, or points readers to other
   pages (filler, severity medium).

@@ -170,12 +170,31 @@ def test_transient_failures_retry_later_with_backoff(repo):
 
 
 def test_budget_exhaustion_stops_cleanly(repo):
+    # Two requests: a candidate needs at least three (extract, compose, check), so nothing is started
+    # and no model call is wasted.
     pipeline, web, fake_wp, ai = build(repo, "publish", max_llm_requests_per_run=2)
     report = pipeline.run()
     assert fake_wp.posts == {}
-    assert any(s["decision"] == "budget" for s in report.stories)
-    assert report.exit_code == 0 and any("budget" in w for w in report.warnings)
-    assert len(ai.calls) == 2
+    assert report.exit_code == 0
+    assert any("backfill stopped: request budget too low" in w for w in report.warnings)
+    assert ai.schema_calls() == [] and report.counts["candidates"] == 0
+
+
+def test_budget_exhausted_mid_story_is_retried_next_run(repo):
+    revise = {"issues": [{"paragraph": 1, "excerpt_fa": "x", "problem": "unsupported", "severity": "medium",
+                          "explanation": "y"}], "language": {"fluent": True, "translationese": False,
+                                                              "problems": []}, "verdict": "revise"}
+    ai = FakeOpenAI({"fact_check": lambda kw: revise})
+    pipeline, web, fake_wp, _ = build(repo, "publish", openai_client=ai, max_llm_requests_per_run=4)
+    report = pipeline.run()
+    assert fake_wp.posts == {}
+    story = next(s for s in report.stories if s["decision"] == "budget")
+    assert ai.schema_calls() == ["triage", "fact_sheet", "article", "fact_check"]   # the revision did not fit
+    import sqlite3
+    conn = sqlite3.connect(repo / "newsbot_state.db")
+    status, = conn.execute("SELECT status FROM stories WHERE story_id=?", (story["story_id"],)).fetchone()
+    conn.close()
+    assert status == "transient"
 
 
 def test_missing_model_marks_run_failed_but_publishes_nothing(repo):

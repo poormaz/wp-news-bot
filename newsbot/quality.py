@@ -8,6 +8,7 @@ entities, but can never relax fact verification (NON_OVERRIDABLE).
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 
 from .config import Settings
@@ -19,6 +20,49 @@ from .textutil import entity_key
 NON_OVERRIDABLE_PREFIXES = ("citations.", "facts.", "fabrication.", "status.", "factcheck.", "claims.",
                             "language.", "persian.", "duplicate.")
 RETRYABLE_CHECKS = {"sources.available"}
+# Bump when the editorial rules change what passes: stories rejected under an older policy may then be
+# reconsidered once (see pipeline._eligibility). Combined with prompts.PROMPT_VERSION in policy_version().
+EDITORIAL_POLICY_VERSION = "2.1"
+
+# Topics where a single medium-authority report is not enough: allegations, legal and labour matters,
+# closures, cancellations, acquisitions, leaks. Extend with `high_risk_patterns` in config/editorial.yaml.
+HIGH_RISK_RE = re.compile(
+    r"\b(lawsuits?|sued|suing|court (?:case|ruling|filing|order)s?|allegations?|alleged(?:ly)?|accus\w*|"
+    r"harass\w*|abus(?:e|ive)|fraud\w*|scandal\w*|arrest\w*|lay ?offs?|laid off|fired|firings?|unioni[sz]\w*|"
+    r"on strike|strike action|bankrupt\w*|insolven\w*|acquisitions?|acquires|acquired by|mergers?|buyouts?|"
+    r"shut(?:s|ting)? down|shutdown|closures?|clos(?:e|es|ing) (?:its |the )?studio|"
+    r"cancel(?:s|led|ed|ling|ing|lation)?|leak\w*|insiders?|datamin\w*|rumou?r\w*|reportedly|anonymous|"
+    r"unnamed sources?|according to sources|died|dies|passed away|hack(?:ed|ers)|data breach)\b",
+    re.I,
+)
+
+
+def policy_version() -> str:
+    from .prompts import PROMPT_VERSION
+    return f"{EDITORIAL_POLICY_VERSION}+{PROMPT_VERSION}"
+
+
+def story_risk(story: Story, sheet: FactSheet, settings: Settings) -> list[str]:
+    """Why this story is high-risk (empty list = ordinary, low-risk news)."""
+    reasons: list[str] = []
+    core = sheet.core_claims
+    speculative = [c.id for c in core if c.status == "speculative"]
+    if speculative:
+        reasons.append("speculative core claim(s) " + ", ".join(speculative))
+    if story_status(sheet) == "rumor" or story.kind == "rumor" or sheet.kind == "rumor":
+        reasons.append("rumor")
+    if sheet.contradictions:
+        reasons.append("conflicting reports")
+    extra = [str(p) for p in ((settings.editorial or {}).get("high_risk_patterns") or []) if str(p).strip()]
+    # Headlines name the topic; claim texts are not scanned (a claim like "players can acquire the DLC" or a
+    # game called Death Stranding must not turn ordinary news into a high-risk story).
+    for text in (i.title for i in story.items):
+        match = HIGH_RISK_RE.search(text or "") or next(
+            (m for m in (re.search(p, text or "", re.I) for p in extra) if m), None)
+        if match:
+            reasons.append(f"sensitive topic ({match.group(0).lower()})")
+            break
+    return reasons
 
 
 def overrides_for(story: Story, settings: Settings) -> dict:
@@ -71,8 +115,18 @@ def source_checks(story: Story, sheet: FactSheet, research: ResearchResult, sett
     # Reliability ------------------------------------------------------------------
     # Every core claim must stand on its own sources: an official page confirming one detail (a Steam
     # release window) says nothing about another core claim (a trailer only one outlet reported).
+    # A single trusted publication is enough for ordinary news (NEWSBOT_SINGLE_SOURCE_LOW_RISK_MIN_AUTHORITY,
+    # default medium); rumors, allegations, conflicting reports and other high-risk stories need
+    # NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY (default high) or independent corroboration.
     by_id = {d.doc_id: d for d in research.docs}
-    needed = AUTHORITY_RANK.get("medium" if ov["single_source_ok"] else settings.single_source_min_authority, 3)
+    risk = story_risk(story, sheet, settings)
+    level = settings.single_source_min_authority if risk else settings.single_source_low_risk_min_authority
+    if ov["single_source_ok"]:
+        level = min((level, "medium"), key=lambda v: AUTHORITY_RANK.get(v, 3))
+    needed = AUTHORITY_RANK.get(level, 3)
+    add(CheckResult("sources.risk", True, False,
+                    ("high-risk story (" + "; ".join(risk) + f"): single sources need authority {level}")
+                    if risk else f"ordinary news: a single source of authority {level} or higher may suffice"))
     assessed = [(c, *claim_reliability(c, by_id, settings.allow_single_source, needed)) for c in core]
     weak = [(c, why) for c, ok, why in assessed if not ok]
     if not core:

@@ -56,6 +56,15 @@ def test_invalid_values(tmp_path, clean_env):
         load_settings(repo_root=tmp_path)
 
 
+def test_invalid_high_risk_pattern_is_flagged(tmp_path, clean_env):
+    write_repo(tmp_path)
+    editorial = tmp_path / "config" / "editorial.yaml"
+    editorial.write_text(editorial.read_text(encoding="utf-8").replace(
+        "high_risk_patterns: []", "high_risk_patterns: ['(unclosed']"), encoding="utf-8")
+    problems = load_settings(repo_root=tmp_path).validate(needs_llm=False)
+    assert any("high_risk_patterns" in p and "(unclosed" in p for p in problems)
+
+
 def test_unpriced_model_is_flagged(tmp_path, clean_env):
     write_repo(tmp_path)
     clean_env.setenv("OPENAI_MODEL", "some-unknown-model")

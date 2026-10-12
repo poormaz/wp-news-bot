@@ -70,3 +70,17 @@ def test_test_workflow_runs_lint_actionlint_and_pytest():
 def test_review_workflow_untouched():
     text = (WF / "reviews.yml").read_text(encoding="utf-8")
     assert "python reviews/review_bot.py" in text and "REVIEW_POST_STATUS: draft" in text
+
+
+def test_every_tunable_setting_reaches_the_bot():
+    """A repository variable must actually change the run: every NEWSBOT_* setting read by config.py is
+    passed through from `vars` (without a workflow-side default that would shadow the code default)."""
+    config = (ROOT / "newsbot" / "config.py").read_text(encoding="utf-8")
+    names = set(re.findall(r'"(NEWSBOT_[A-Z0-9_]+)"', config)) | {"HTTP_TIMEOUT"}
+    internal = {"NEWSBOT_MODE", "NEWSBOT_STATE_DB", "NEWSBOT_REPORT_DIR"}   # set by the workflow/cache steps
+    env = steps(load("newsbot.yml"))["Run News Bot 2.0"]["env"]
+    missing = sorted(n for n in names - internal if n not in env)
+    assert missing == []
+    shadowed = sorted(n for n in names - internal if env[n] != "${{ vars." + n + " }}")
+    assert shadowed == []
+    assert "NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY" in env and "NEWSBOT_MAX_CANDIDATES" in env

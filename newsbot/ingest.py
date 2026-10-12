@@ -28,7 +28,9 @@ from .textutil import clean_text, entity_key, short_hash, site_host, truncate_wo
 log = logging.getLogger("newsbot.ingest")
 
 NON_NEWS_KINDS = {"guide", "deal", "review", "list", "opinion", "sponsored", "other"}
-NON_NEWS_FEED_CATEGORIES = re.compile(r"^(deals?|guides?|reviews?|sponsored|buying guides?|opinion|features?|"
+# Formats that cannot carry news. Features, interviews and analysis are not listed: they are judged by
+# their content (triage and fact extraction report only their new, verifiable development).
+NON_NEWS_FEED_CATEGORIES = re.compile(r"^(deals?|guides?|reviews?|sponsored|buying guides?|opinion|"
                                       r"hardware deals|best of|walkthroughs?|quiz)$", re.I)
 
 

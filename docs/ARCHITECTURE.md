@@ -24,16 +24,16 @@ A run publishes **at most one** post; zero is a normal outcome.
 | 1 | `ingest.fetch_feed` | `sources.yaml` → `FeedItem`s | HTTP only | feed errors are logged; the run continues |
 | 2 | `ingest.parse_feed` | RSS/Atom → normalized items (canonical URL, UTC date, plain summary, full text if the feed has it) | 0 | malformed entries skipped |
 | 3 | `entities` | headline + summary → entities (games, companies, hardware, platforms, events), event type, editorial kind | 0 | rule-based; learns canonical names from verified fact sheets |
-| — | `ingest.prefilter` | drops guides, deals, reviews, lists, opinion, sponsored, stale, blocked items | 0 | reason recorded per item |
+| — | `ingest.prefilter` | drops guides, deals, reviews, lists, first-person opinion columns, sponsored, stale, blocked items (interviews and features are kept: their content decides) | 0 | reason recorded per item |
 | 4 | `cluster` | items from the last 72 h → event-level `Story` clusters with persistent IDs | 0 | see "Deduplication" |
-| — | `newsworthiness.rule_score` + `triage` | stories → ranked shortlist; one batched model call judges up to ~9 headlines | 1 small call | triage failure only skips the refinement |
-| 5 | `research` | story → `SourceDoc`s: one per outlet, linked official pages, Steam store/announcement data | HTTP | blocked/removed/robots-disallowed pages are recorded and skipped (never bypassed); feed text is the fallback |
+| — | `newsworthiness.rule_score` + `triage` | stories → ranked list; triage judges headlines in batches of `NEWSBOT_TRIAGE_BATCH` as backfilling reaches them | 1 small call per batch | triage failure only skips the refinement |
+| 5 | `research` | story → `SourceDoc`s: one per outlet, linked official pages, the game's Steam store data and developer announcements (found by name when no source links to Steam) | HTTP | blocked/removed/robots-disallowed pages are recorded and skipped (never bypassed); feed text is the fallback |
 | 6 | `facts.FactDesk.extract` | documents → `FactSheet` (claims with verbatim quotes, status, importance, contradictions, origins, newsworthiness) | 1 call (cached) | invalid output → transient failure with backoff |
 | 7 | `facts.verify_fact_sheet` | claims → verified claims | 0 | quotes and exact values must exist in the cited source; numbers never fuzzy; hedged wording downgrades "confirmed"; official sources win conflicts; unresolved conflicts are kept, not merged |
 | 8 | `newsworthiness.assess`, `quality.source_checks` | early gate before writing | 0 | rejection recorded; no writing call is spent |
 | 9 | `compose` | verified fact sheet + validated link candidates → Persian article (plain text + `[[L2|name]]`) → Gutenberg HTML built in code | 1 call | model cannot emit markup or URLs; links only on a name that the target page's title contains; localization links are a fixed sentence built in code; open questions already stated in the body are dropped and rendered as one paragraph (a list only for ≥ 3) |
 | 10 | `factcheck` | article → rule checks (numbers, names, quotes, fabrication, rumor framing, Persian quality, filler, "see also" sentences, restated points, link grounding, SEO) + model fact check | 1 call per draft | see "Fact-check gate" |
-| 11 | `quality.decide` | all checks → `GateDecision` (pass/reject + reasons) | 0 | rejected stories retry only when new sources join |
+| 11 | `quality.decide` | all checks → `GateDecision` (pass/reject + reasons) | 0 | rejected stories retry only when new sources join or the editorial policy changes (see "Candidates and state") |
 | 12 | `enrich`, `images` | categories, tags (restrained), slug, featured image policy, internal links | WP reads | link targets must return 200 without redirect; media IDs must exist as images |
 | 13 | `pipeline._publish` | create **draft** → Rank Math meta → re-read & verify → switch to publish | WP writes | verification failure leaves a draft; nothing half-public |
 
@@ -111,12 +111,58 @@ verification each claim is labelled:
 
 The gate requires verified core news, ≥ 3 verified claims, and that **every core claim on its
 own** is official, independently corroborated, or from a single source of sufficient authority
-(`NEWSBOT_ALLOW_SINGLE_SOURCE`, `NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY`,
-`allow_single_source_entities`). An official page confirming one detail does not vouch for the
-others. Example from live run 38232433566: Steam confirmed Squadron 42's Q2 2027 window, but
-the new trailer and the wishlist were reported by Gamingbolt alone, so the story is rejected.
-Each rumored core claim needs two independent origins of its own (configurable), and rumors
-must be framed as rumors in title and text.
+(`NEWSBOT_ALLOW_SINGLE_SOURCE`, `allow_single_source_entities`). An official page confirming one
+detail does not vouch for the others.
+
+The authority a single source needs depends on the story's risk (`quality.story_risk`, reported
+as the non-blocking check `sources.risk`):
+
+| Story | Single source must be | Examples |
+|---|---|---|
+| ordinary news | `NEWSBOT_SINGLE_SOURCE_LOW_RISK_MIN_AUTHORITY` (default `medium`) | DSOGaming reporting a PC port's date and features; a patch; a trailer; a developer's statement in an interview |
+| high-risk | `NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY` (default `high`) | rumors or speculative core claims; any recorded contradiction; headlines about allegations, lawsuits, layoffs, closures, cancellations, acquisitions, leaks (`HIGH_RISK_RE` + `high_risk_patterns`) |
+
+`low` authority is never enough on its own. Sources keep their own authority from `sources.yaml`;
+nothing is promoted. A single-source article also has to say so: two blocking rule checks require
+the lead to name every outlet the reported core claims rest on (`status.reported_attributed`) and
+the headline to name the outlet or carry a «گزارش:» style hedge (`status.title_attributed`). The
+model fact check still has to return `pass`.
+
+Example from live run 38232433566: Steam confirmed Squadron 42's Q2 2027 window, but the new
+trailer and the wishlist were reported by Gamingbolt alone. That is now ordinary single-source
+news from a medium outlet: it can pass, but only attributed to Gamingbolt; with the strict
+setting (`high`) it is rejected. Each rumored core claim needs two independent origins of its
+own (configurable), and rumors must be framed as rumors in title and text.
+
+### Interviews, features and analysis
+
+The format does not decide newsworthiness; the content does. Triage keeps an interview or
+technical feature when its headline points to new, verifiable information. Extraction classifies
+the piece by its development (kind `interview`/`feature`) and turns only verifiable statements
+into claims: a developer's statement becomes a claim attributed to the developer; the writer's
+opinions, evaluations and predictions never become facts (at most `speculative`). A piece the
+model still labels `opinion` is reported only when it contains verified (`confirmed`/`reported`)
+core claims; the composer writes a news report of those facts, and the fact checker flags any
+opinion or speculation presented as fact.
+
+## Candidates and state
+
+* **Backfilling.** Eligible stories are ranked and evaluated one at a time, best first, until one
+  passes the gate (at most one post per run). Each further candidate faces exactly the same gate.
+  The loop stops at `NEWSBOT_MAX_CANDIDATES` (default 8) or `NEWSBOT_MAX_RUN_SECONDS`. It also
+  stops when fewer than 3 model requests remain, or when the run or 24 h budget left is below the
+  worst case of the next candidate's extraction call (at least `NEWSBOT_CANDIDATE_RESERVE_USD`).
+  A started candidate is therefore not starved mid-way. If it still runs out (revisions), it
+  becomes `transient` and is retried next run without penalty. The report shows `candidates`,
+  `candidates_not_evaluated` and a `backfill stopped: …` warning naming the limit.
+* **Policy versions.** Every rejection stores `policy_version()` (editorial policy + prompt
+  version) and the run mode. A fresh, unpublished story rejected under an older version is
+  evaluated once more. Duplicate, stale, blocked and security rejections are permanent.
+  Published and drafted stories only return as developments with new numbers.
+* **Dry-run isolation.** Rejections in `dry-run` and samples runs are stored as
+  `dry_run_rejected`. They stop the next dry run from repeating the same evaluation but never block
+  a `draft` or `publish` run. GitHub Actions caches are also branch-scoped, so a run on a PR branch
+  cannot change the state that runs on `main` read.
 
 ## Idempotency and recovery
 

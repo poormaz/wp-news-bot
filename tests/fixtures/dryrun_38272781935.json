@@ -1,0 +1,79 @@
+{
+ "_about": "Decisions logged by the live dry-run of GitHub Actions run 38272781935 (head 6f5c07a): 100 feed items, 51 eligible stories, 3 researched candidates, all rejected. Copied from the job log; the run report artifact could not be downloaded from the development environment. The log does not contain the Witcher 3 interview's headline (only its story id and triage reason), so tests use a clearly labelled stand-in headline for it.",
+ "run_id": 38272781935,
+ "head_sha": "6f5c07abdbcbb6c15ff5b69187a511e81e27c546",
+ "counts": {
+  "feed_items": 100,
+  "new_items": 46,
+  "prefiltered": 7,
+  "clusters": 86,
+  "eligible_stories": 51,
+  "candidates": 3,
+  "rejected": 6,
+  "llm_requests": 4,
+  "estimated_cost_usd": 0.00246
+ },
+ "triage_rejections": [
+  {
+   "story_id": "4760046f18bc7a1f",
+   "reason": "triage: not news (The headline frames this as an editorial discussion of the game's appeal rather than a new development.)"
+  },
+  {
+   "story_id": "11ecf10295af3ac9",
+   "subject": "The Witcher 3 technical interview",
+   "reason": "triage: not news (The headline describes a technical interview rather than a specific new release or player-facing development.)"
+  },
+  {
+   "story_id": "9fa71ab546ebbcb2",
+   "reason": "triage: not news (The headline concerns enterprise AI server rack design rather than gaming news relevant to PC or console players.)"
+  }
+ ],
+ "candidates": [
+  {
+   "story_id": "feb2eeb7450b73a6",
+   "outlets": [
+    "PC Gamer"
+   ],
+   "score": 1.58,
+   "headline_prefix": "Pearl Abyss goes easy on us critics for our Crimson Desert reviews: 'T",
+   "facts": {
+    "claims": 5,
+    "usable": 5,
+    "contradictions": 0
+   },
+   "decision": "REJECTED | newsworthiness.is_news: not news (kind=opinion): The headline highlights a possible difference between the review build and the launched game.; The article gives examples of additions and changes."
+  },
+  {
+   "story_id": "a1e7c83c966566e6",
+   "outlets": [
+    "Wccftech"
+   ],
+   "score": 1.36,
+   "headline_prefix": "Multiple Intel CPU Families Witness 15-20% Price Hike While AMD Is Also Expected To Raise",
+   "facts": {
+    "claims": 6,
+    "usable": 6,
+    "contradictions": 0
+   },
+   "decision": "REJECTED | sources.reliability: core claim(s) not reliably sourced: C1 only Wccftech (authority 2 < required 3); C2 only Wccftech (authority 2 < required 3); C3 only Wccftech (authority 2 < required 3); C4 only Wccftech (authority 2 < required 3); C5 only Wccftech (authority 2 < required 3); policy.rumors: rumor claim(s) without 2 independent origins: C5 (1)"
+  },
+  {
+   "story_id": "99a2ac6d45156431",
+   "outlets": [
+    "DSOGaming"
+   ],
+   "score": 1.36,
+   "headline": "Splinter Cell: Double Agent Xbox Version Gets an Unofficial Native PC Port",
+   "facts": {
+    "claims": 3,
+    "usable": 3,
+    "contradictions": 0
+   },
+   "decision": "REJECTED | sources.reliability: core claim(s) not reliably sourced: C1 only DSOGaming (authority 2 < required 3)"
+  }
+ ],
+ "workflow_env_missing": [
+  "NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY",
+  "NEWSBOT_MAX_CANDIDATES"
+ ]
+}

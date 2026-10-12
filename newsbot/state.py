@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS stories (
     last_seen_at TEXT, status TEXT, wp_post_id INTEGER, wp_link TEXT, published_at TEXT,
     fact_values_json TEXT, attempts INTEGER DEFAULT 0, transient_failures INTEGER DEFAULT 0,
     next_retry_at TEXT, last_reasons_json TEXT, source_count_at_decision INTEGER DEFAULT 0,
-    parent_story_id TEXT
+    parent_story_id TEXT, policy_version TEXT DEFAULT '', decision_mode TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_stories_last_seen ON stories(last_seen_at);
 CREATE TABLE IF NOT EXISTS facts_cache (
@@ -117,6 +117,12 @@ class StateStore:
         columns = {row[1] for row in self.conn.execute("PRAGMA table_info(wp_recent)").fetchall()}
         if "categories_json" not in columns:
             self.conn.execute("ALTER TABLE wp_recent ADD COLUMN categories_json TEXT DEFAULT '[]'")
+        columns = {row[1] for row in self.conn.execute("PRAGMA table_info(stories)").fetchall()}
+        # Which editorial policy/prompt version and run mode decided the story (reconsideration, dry-run safety).
+        if "policy_version" not in columns:
+            self.conn.execute("ALTER TABLE stories ADD COLUMN policy_version TEXT DEFAULT ''")
+        if "decision_mode" not in columns:
+            self.conn.execute("ALTER TABLE stories ADD COLUMN decision_mode TEXT DEFAULT ''")
 
     def prune(self, content_hours: int = 96, keep_days: int = 60) -> None:
         """Drop feed bodies outside the clustering window and forget very old rows."""

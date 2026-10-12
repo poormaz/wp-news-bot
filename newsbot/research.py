@@ -202,7 +202,9 @@ class Researcher:
             if appid:
                 break
         name = story.primary_display
-        if not appid and name and story.primary_entity:
+        # No Steam link in the coverage: look the game up by its exact name (official store data and the
+        # developer's own Steam announcements are the cheapest official confirmation available).
+        if not appid and name and story.primary_entity and self.settings.steam_search:
             search = self.http.get("https://store.steampowered.com/api/storesearch/",
                                    params={"term": name, "l": "english", "cc": "US"}, accept="application/json")
             if search.ok:
@@ -223,7 +225,9 @@ class Researcher:
             doc = steam_store_doc(appid, details.text, self._make_doc)
             if doc:
                 result.docs.append(doc)
-        if story.event_type in ("patch_update", "dlc_expansion", "content_update", "launch", "beta_playtest"):
+        # The developer's own Steam announcements can confirm any kind of news; steam_news_doc only accepts
+        # one whose title matches this story and that is at most 10 days old.
+        if appid:
             news = self.http.get("https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/",
                                  params={"appid": str(appid), "count": "5", "maxlength": "4000", "format": "json"},
                                  accept="application/json")

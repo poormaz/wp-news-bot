@@ -234,7 +234,22 @@ def rule_checks(article: Article, story: Story, sheet: FactSheet, docs: list[Sou
     if status == "rumor":
         add(CheckResult("status.rumor_framed_in_title", bool(TITLE_HEDGE_FA.search(article.title_fa)), True,
                         "title presents a rumor as confirmed"))
-    if reported_used:
+    # Core news that rests on ONE publication's own reporting (the balanced single-source policy) must
+    # be attributed in the text to that outlet and signalled in the headline; otherwise this stays a hint.
+    by_doc = {d.doc_id: d for d in docs}
+    single_reported = [c for c in sheet.core_claims
+                       if c.id in used and c.verification == "single_source" and c.status == "reported"]
+    if single_reported:
+        outlets = sorted({by_doc[sid].outlet for c in single_reported for sid in c.verified_sources if sid in by_doc})
+        named = [o for o in outlets if o and o.lower() in text.lower()]
+        ok = bool(ATTRIBUTION_FA.search(text)) and len(named) == len(outlets)
+        add(CheckResult("status.reported_attributed", ok, True,
+                        "" if ok else f"single-source reporting must be attributed in the text to {', '.join(outlets)}"))
+        title_ok = bool(TITLE_HEDGE_FA.search(article.title_fa)) or any(
+            o.lower() in article.title_fa.lower() for o in outlets if o)
+        add(CheckResult("status.title_attributed", title_ok, True,
+                        "" if title_ok else "the headline presents one outlet's report as established fact"))
+    elif reported_used:
         add(CheckResult("status.reported_attributed", bool(ATTRIBUTION_FA.search(text)), False,
                         "reported claims used without explicit attribution"))
 
@@ -350,6 +365,10 @@ FIXABLE = {
     "fabrication.quotes": "Remove quotations that are not verified quote claims.",
     "status.rumor_framed_in_text": "Frame speculative claims clearly as unconfirmed rumors.",
     "status.rumor_framed_in_title": "The title must signal that the story is a rumor or report.",
+    "status.reported_attributed": "Attribute the reported news in the lead to the outlet that reported it "
+                                  "(for example «به گزارش DSOGaming»).",
+    "status.title_attributed": "The headline must show this is one outlet's report (for example start with "
+                               "«گزارش:» or name the outlet); do not present it as established fact.",
     "persian.untranslated_english": "Translate leftover English sentences into Persian.",
     "persian.no_cliche_lead": "Rewrite the lead without clichés; state the news directly.",
     "persian.no_repetition": "Remove repeated sentences.",

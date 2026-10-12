@@ -68,6 +68,17 @@ def test_prefilter_rejects_non_news(extractor, title, reason):
     assert prefilter(item, 36, {}, NOW) == reason
 
 
+@pytest.mark.parametrize("category,reason", [
+    ("Features", ""), ("Interviews", ""), ("Analysis", ""),  # judged by content, not by format
+    ("Opinion", "non-news:feed-category"), ("Deals", "non-news:feed-category"),
+])
+def test_prefilter_feed_categories(extractor, category, reason):
+    item = parse_feed(rss([{"title": "The Witcher 3 Next-Gen Update Adds Ray Tracing", "link": "https://x.example/c"}]),
+                      SOURCE, extractor, now=NOW)[0]
+    item.categories = [category]
+    assert prefilter(item, 36, {}, NOW) == reason
+
+
 def test_prefilter_stale_blocked_and_ok(extractor):
     old = parse_feed(rss([{"title": "Crimson Desert Gets Release Date", "link": "https://x.example/o",
                            "published": NOW - timedelta(hours=50)}]), SOURCE, extractor, now=NOW)[0]

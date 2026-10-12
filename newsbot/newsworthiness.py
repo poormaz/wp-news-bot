@@ -100,13 +100,28 @@ def apply_triage(story: Story, verdict: dict | None) -> bool:
     return True
 
 
+# Formats that can carry news: an interview or technical feature is reported on when it contains a new,
+# verifiable development (the writer's opinions never become claims - see the extraction prompt).
+NEWS_KINDS = ("news", "rumor", "interview", "feature")
+
+
 def assess(sheet: FactSheet, story: Story, settings: Settings) -> list[CheckResult]:
     news = sheet.newsworthiness or {}
     checks = []
-    is_news = bool(news.get("is_news", True)) and sheet.kind in ("news", "rumor")
-    checks.append(CheckResult("newsworthiness.is_news", is_news, True,
-                              "" if is_news else f"not news (kind={sheet.kind}): "
-                              + "; ".join(news.get("reasons") or [])[:200]))
+    model_says_news = bool(news.get("is_news", True))
+    developments = [c for c in sheet.core_claims if c.status in ("confirmed", "reported")]
+    if sheet.kind in NEWS_KINDS:
+        is_news = model_says_news
+    elif sheet.kind == "opinion":
+        # A column can still report a verifiable development (a developer statement, a confirmed change);
+        # only that is written up. Opinion whose core is speculation or evaluation stays rejected.
+        is_news = model_says_news and bool(developments)
+    else:
+        is_news = False
+    detail = "" if is_news else f"not news (kind={sheet.kind}): " + "; ".join(news.get("reasons") or [])[:200]
+    if is_news and sheet.kind in ("interview", "feature", "opinion"):
+        detail = f"news development reported in a {sheet.kind} ({len(developments)} verified core claim(s))"
+    checks.append(CheckResult("newsworthiness.is_news", is_news, True, detail))
     significance = news.get("significance", "medium")
     meaningful = significance != "low" or len(story.outlets) >= 3 or story.manual
     checks.append(CheckResult("newsworthiness.significance", meaningful, True,
