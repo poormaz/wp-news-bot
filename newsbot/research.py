@@ -25,10 +25,12 @@ from .httpclient import HttpClient
 from .models import SourceConfig, SourceDoc, Story
 from .prompts import scrub_untrusted
 from .textutil import (
+    clean_source_title,
     clean_text,
     collapse_ws,
     entity_key,
     host_matches,
+    outlet_display,
     overlap_coefficient,
     url_identity,
     word_shingles,
@@ -124,7 +126,7 @@ class Researcher:
                   ) -> SourceDoc:
         text, removed = scrub_untrusted(_trim(text, self.settings.max_doc_chars))
         doc = SourceDoc(doc_id="", url=url, outlet=outlet, source_type=source_type, authority=authority,
-                        title=clean_text(title), text=text, published_at=published, fetch_status=status,
+                        title=clean_source_title(title, outlet), text=text, published_at=published, fetch_status=status,
                         links=list(links or []), image_url=image_url, image_rights=image_rights)
         if removed:
             doc.notes.append(f"removed {removed} instruction-like sentence(s) from untrusted text")
@@ -148,8 +150,9 @@ class Researcher:
         if fetched.ok:
             page = extract_page(fetched.text, fetched.final_url or item.url)
             if len(page.text) >= 200:
+                # The feed headline is the outlet's own clean title; <title> often carries page chrome.
                 return self._make_doc(item.url, item.source, item.source_type, item.authority,
-                                      page.title or item.title, page.text, "ok", page.published_at or published,
+                                      item.title or page.title, page.text, "ok", page.published_at or published,
                                       page.links, page.image_url, rights)
         fallback = feed_page.text if feed_page and len(feed_page.text) > len(item.summary) else item.summary
         status = "feed_only" if len(fallback) >= 200 else (fetched.classification if not fetched.ok else "error")
@@ -181,7 +184,7 @@ class Researcher:
             page = extract_page(fetched.text, fetched.final_url or href)
             if len(page.text) < 200:
                 continue
-            outlet = page.site_name or href.split("/")[2]
+            outlet = outlet_display(href, page.site_name)
             doc = self._make_doc(href, outlet, "official", "high", page.title or anchor, page.text, "ok",
                                  page.published_at, page.links)
             doc.notes.append("official page linked from coverage")

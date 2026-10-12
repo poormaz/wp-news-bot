@@ -167,8 +167,8 @@ class WordPressClient:
 
     def get_media(self, media_id: int) -> dict | None:
         try:
-            return self._get(f"wp/v2/media/{int(media_id)}", {"_fields": "id,source_url,media_type,alt_text"},
-                             auth=False).json()
+            return self._get(f"wp/v2/media/{int(media_id)}", {"_fields": "id,source_url,media_type,mime_type,alt_text"},
+                             auth=self.authenticated).json()
         except WordPressError:
             return None
 

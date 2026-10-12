@@ -35,7 +35,7 @@ variables → Actions). Validate with `python bot.py --validate-config --mode <m
 | `NEWSBOT_MAX_OUTPUT_TOKENS_{TRIAGE,EXTRACT,COMPOSE,CHECK}` | 2500 / 9000 / 9000 / 4000 | per-call caps (reasoning tokens count) |
 | `NEWSBOT_MAX_RUN_COST_USD` | `0.10` | checked before each call against the worst case of that call |
 | `NEWSBOT_MAX_DAILY_COST_USD` | `1.00` | rolling 24 h, from the state DB |
-| `NEWSBOT_MAX_LLM_REQUESTS` | `16` | API requests per run (retries count) |
+| `NEWSBOT_MAX_LLM_REQUESTS` | `16` | API requests per run (retries count). A `--samples N` run raises it to `1 + N × (3 + 2 × NEWSBOT_MAX_REVISIONS)` (max 60) so every sample gets its full revision budget; the cost ceilings are unchanged and the raise is reported as a warning |
 | `NEWSBOT_OPENAI_MAX_RETRIES` | `3` | retries for 429/5xx/timeouts |
 | `NEWSBOT_OPENAI_TIMEOUT` | `90` | seconds per request |
 | `NEWSBOT_PRICING_JSON` | empty | override pricing without a commit |
@@ -45,14 +45,14 @@ variables → Actions). Validate with `python bot.py --validate-config --mode <m
 | Variable | Default | Meaning |
 |---|---|---|
 | `NEWSBOT_MIN_VERIFIED_CLAIMS` | `3` | minimum verified claims to write an article |
-| `NEWSBOT_MIN_WORDS` / `NEWSBOT_MAX_WORDS` | `130` / `900` | bounds; the actual budget is `120 + 75 × verified claims` |
+| `NEWSBOT_MIN_WORDS` / `NEWSBOT_MAX_WORDS` | `130` / `900` | there is **no word quota**: `NEWSBOT_MIN_WORDS` is only a soft target (warning `length.target`); only articles under 60 words (truncated output) are rejected. The ceiling is `min(NEWSBOT_MAX_WORDS, 120 + 75 × verified claims)` |
 | `NEWSBOT_WORDS_PER_CLAIM` | `75` | words allowed per verified claim (anti-padding) |
 | `NEWSBOT_ALLOW_SINGLE_SOURCE` | `1` | allow one non-official source if authority suffices |
 | `NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY` | `high` | `high` / `medium` / `low` (see `sources.yaml`) |
 | `NEWSBOT_RUMOR_POLICY` | `corroborated` | `reject` or require ≥ 2 independent origins |
 | `NEWSBOT_TRIAGE_LLM` | `1` | batched headline triage before research |
-| `NEWSBOT_LLM_FACTCHECK` | `1` | model fact check after rule checks |
-| `NEWSBOT_MAX_REVISIONS` | `1` | rewrite attempts after failed checks |
+| `NEWSBOT_LLM_FACTCHECK` | `1` | model fact check after rule checks. **Required in `draft`/`publish`** (validation fails otherwise): an article reaches WordPress only after the checker returns verdict `pass` with no high/medium issue |
+| `NEWSBOT_MAX_REVISIONS` | `2` (0–3) | corrective rewrites after failed rule checks or a `revise` verdict; after each rewrite the rule checks **and** the model check run again. Still failing after the last one → the story is rejected (re-evaluated only when new sources join). A `reject` verdict is final (no rewrite) |
 | `NEWSBOT_MAX_STORY_AGE_HOURS` | `36` | older stories are not written |
 | `NEWSBOT_CLUSTER_WINDOW_HOURS` | `72` | clustering window |
 | `NEWSBOT_CLUSTER_THRESHOLD` | `0.55` | similarity needed to merge coverage |
@@ -87,7 +87,8 @@ variables → Actions). Validate with `python bot.py --validate-config --mode <m
 | `NEWSBOT_RANKMATH` | `1` | set Rank Math title/description/focus keyword |
 | `NEWSBOT_SOURCE_LINKS_NOFOLLOW` | `1` | `rel=nofollow` on source links (v1 behaviour) |
 | `NEWSBOT_IMAGE_POLICY` | `safe` | `safe` (press kits / Poormaz artwork / fallback), `none`, `legacy` (v1 copying; not recommended) |
-| `NEWSBOT_FALLBACK_MEDIA_ID` | `0` | site-owned featured image used when nothing licensed is available |
+| `NEWSBOT_FALLBACK_MEDIA_IDS` | empty | Poormaz-owned artwork already in the media library, used when nothing licensed is available: `123,456` or `gaming=123,456; hardware=789; default=321`. Rotated per story; each ID is checked (`GET /wp/v2/media/{id}` must return an image) before use. See `docs/IMAGES.md` |
+| `NEWSBOT_FALLBACK_MEDIA_ID` | `0` | single fallback ID (older setting; added to `default`) |
 | `NEWSBOT_REUSE_LOCALIZATION_IMAGE` | `1` | reuse `featured_media` of the matching localization page |
 | `NEWSBOT_WP_RECENT_POSTS` | `40` | posts fingerprinted for dedup/recovery |
 
@@ -110,7 +111,10 @@ variables → Actions). Validate with `python bot.py --validate-config --mode <m
 * `localization_pages.yaml` — see the comments in the file.
 * `config/editorial.yaml` — overrides: `force_include_urls`, `block_entities`,
   `block_url_patterns`, `block_title_patterns`, `allow_single_source_entities`,
-  `allow_rumor_entities`, `priority_entities`. Overrides never relax fact verification.
+  `allow_rumor_entities`, `priority_entities`. Overrides never relax fact verification and
+  can never bypass the model fact-check verdict. `display_names` maps spellings to the one
+  used in articles (`XBOX: Xbox`); it is applied to the model's text and the fact sheet it
+  reads, never to the source quotes that verification uses.
 * `config/entities.yaml` — platforms, companies, franchises, games (with aliases), events,
   hardware patterns, generic words.
 * `config/official_domains.yaml` — official and press-wire domains followed during research.

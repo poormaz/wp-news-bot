@@ -90,9 +90,10 @@ ANCHOR_TEMPLATES = {
     "subtitle": ["زیرنویس فارسی {name}", "نسخه زیرنویس فارسی {name}", "صفحه زیرنویس فارسی {name}"],
     "full": ["فارسی‌ساز {name}", "نسخه فارسی‌شده {name}", "صفحه فارسی‌ساز {name}"],
 }
+# Plain statements of fact about Poormaz's own page (no "see also" phrasing, no claims about the news).
 SENTENCE_TEMPLATES = [
-    "برای تجربه {name} به زبان فارسی، {link} در پورماز در دسترس است.",
-    "اگر قصد دارید {name} را با متن فارسی بازی کنید، می‌توانید به {link} سر بزنید.",
+    "{link} در پورماز در دسترس است.",
+    "پورماز پیش‌تر {link} را منتشر کرده است.",
     "{link} پیش‌تر در پورماز منتشر شده است.",
 ]
 

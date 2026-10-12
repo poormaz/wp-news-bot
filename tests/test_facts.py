@@ -138,3 +138,28 @@ def test_ids_are_renumbered_consistently():
                                  contradictions=[{"topic": "t", "claim_ids": ["x", "y"], "explanation": ""}]))
     assert [cl.id for cl in sheet.claims] == ["C1", "C2"]
     assert sheet.contradictions[0]["claim_ids"] == ["C1", "C2"]
+
+
+def test_reported_claim_stated_by_an_official_page_becomes_confirmed():
+    """Live run 37851559690, Forza Horizon 6 C6: pre-orders quoted from the PlayStation Store stayed "reported",
+    so the writer's plain statement was flagged as a status upgrade."""
+    store = SourceDoc("S4", "https://store.playstation.com/en-us/concept/1", "PlayStation Store", "official", "high",
+                      "Ironvale Chronicles", "Ironvale Chronicles. Pre-order now and get the Founders Pack.",
+                      origin_group=4)
+    outlet = SourceDoc("S2", "https://a.example/x", "Outlet A", "publication", "medium", "Ironvale",
+                       "Ironvale Chronicles is available to pre-order on the PlayStation Store now.", origin_group=2)
+    sheet = verify_fact_sheet(parse_fact_sheet(raw([
+        c("C1", "", "reported", {"S2": "Ironvale Chronicles is available to pre-order on the PlayStation Store",
+                                 "S4": "Pre-order now and get the Founders Pack"}, category="availability"),
+        c("C2", "", "reported", {"S2": "Ironvale Chronicles is available to pre-order on the PlayStation Store"},
+          category="availability"),
+        c("C3", "", "reported", {"S1": "Northlight Forge today announced that Ironvale Chronicles will launch"}),
+    ])), [OFFICIAL, store, outlet])
+    assert sheet.claim("C1").status == "confirmed" and sheet.claim("C1").verification == "official"
+    assert sheet.claim("C2").status == "reported"            # an outlet alone does not confirm
+    assert sheet.claim("C3").status == "confirmed"
+    hedged = verify_fact_sheet(parse_fact_sheet(raw([
+        c("C1", "", "reported", {"S4": "A Founders Pack may be offered to early buyers"}, category="availability"),
+    ])), [SourceDoc("S4", "https://store.playstation.com/x", "PlayStation Store", "official", "high", "t",
+                    "Ironvale Chronicles store page. A Founders Pack may be offered to early buyers.", origin_group=4)])
+    assert hedged.claim("C1").status == "reported"            # hedged official wording is not confirmation

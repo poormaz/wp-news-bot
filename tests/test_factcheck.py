@@ -68,7 +68,7 @@ def test_reference_article_passes(ctx):
     article, results = ctx(IRONVALE_ARTICLE)
     assert failed(results) == []
     assert article.word_count >= 130
-    assert article.links_used and article.links_used[0]["anchor"] == "زیرنویس فارسی این بازی"
+    assert article.links_used == []          # the localization page is linked by code, never by the model
 
 
 def variant(**changes):

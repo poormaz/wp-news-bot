@@ -103,6 +103,7 @@ class FakeWordPress:
         self.fail_create = None
         self.fail_publish = None
         self.media: dict[int, dict] = {}
+        self.library: dict[int, str] = {}      # media id -> media_type of existing library items
         for post in existing_posts or []:
             self.posts[post["id"]] = post
         web.handler(self.handle)
@@ -181,6 +182,12 @@ class FakeWordPress:
             media_id = 9000 + len(self.media)
             self.media[media_id] = {"id": media_id}
             return 201, {"id": media_id, "source_url": f"{self.base}/m/{media_id}.jpg"}, {}
+        if path.startswith("/wp-json/wp/v2/media/") and request.method == "GET":
+            media_id = int(path.rsplit("/", 1)[-1])
+            if media_id not in self.library:
+                return 404, {"code": "rest_post_invalid_id"}, {}
+            return 200, {"id": media_id, "media_type": self.library[media_id],
+                         "source_url": f"{self.base}/m/{media_id}.jpg"}, {}
         if path.startswith("/wp-json/wp/v2/media/"):
             return 200, {"id": int(path.rsplit("/", 1)[-1])}, {}
         for post in self.posts.values():
@@ -382,10 +389,9 @@ IRONVALE_ARTICLE = {
             {"text": "Northlight Forge همراه با تاریخ انتشار، تریلر تازه‌ای هم منتشر کرده که شهر Ashmere را نشان "
                      "می‌دهد. این نخستین بار است که بخش بزرگی از این شهر در ویدیوهای رسمی بازی دیده می‌شود.",
              "claim_ids": ["C4"]},
-            {"text": "Ironvale Chronicles نخستین بار در سال ۲۰۲۴ معرفی شد و یک بازی نقش‌آفرینی جهان‌باز است. "
-                     "با قطعی شدن تاریخ عرضه، بازیکنانی که روی هر سه پلتفرم اعلام‌شده منتظر این عنوان بودند حالا "
-                     "می‌توانند برنامه خرید خود را دقیق‌تر تنظیم کنند. برای آشنایی بیشتر می‌توانید "
-                     "[[L1|زیرنویس فارسی این بازی]] را هم ببینید.",
+            {"text": "Ironvale Chronicles نخستین بار در سال ۲۰۲۴ معرفی شد. نسخه‌های PC، PlayStation 5 و "
+                     "Xbox Series X|S هر سه در همان روز ۱۹ مارس ۲۰۲۷ عرضه می‌شوند و سازنده تاریخ جداگانه‌ای برای "
+                     "هیچ‌یک از این پلتفرم‌ها اعلام نکرده است.",
              "claim_ids": ["C5", "C1", "C2"]},
         ]},
     ],

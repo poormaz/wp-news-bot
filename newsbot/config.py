@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -167,7 +168,7 @@ class Settings:
     single_source_min_authority: str = "high"
     triage_llm: bool = True
     llm_factcheck: bool = True
-    max_revisions: int = 1
+    max_revisions: int = 2
     cluster_window_hours: int = 72
     cluster_threshold: float = 0.55
     story_dedup_days: int = 10
@@ -183,6 +184,8 @@ class Settings:
     # Images
     image_policy: str = "safe"
     fallback_featured_media_id: int = 0
+    # Poormaz-owned artwork already in the media library, by content type ("default" for any).
+    fallback_featured_media_ids: dict = field(default_factory=dict)
     reuse_localization_image: bool = True
 
     # State / output
@@ -230,14 +233,45 @@ class Settings:
                     problems.append(f"{name} is missing (required in {self.mode} mode)")
             if not (self.cat_all or self.cat_gaming or self.cat_default):
                 problems.append("No WordPress category configured (CAT_ALL / CAT_GAMING / WP_CATEGORY_ID)")
+            if not self.llm_factcheck:
+                problems.append("NEWSBOT_LLM_FACTCHECK must stay enabled in draft/publish mode (an article may "
+                                "only reach WordPress after the model fact check returns verdict \"pass\")")
         if self.wp_base_url and not self.wp_base_url.startswith("https://"):
             problems.append("WP_BASE_URL must start with https://")
         if needs_llm and self.openai_model and self.price_for(self.openai_model) is None:
             problems.append(f"No pricing configured for model {self.openai_model!r} in config/pricing.yaml "
                             "(budget limits need it)")
+        unknown = sorted(k for k in self.fallback_featured_media_ids if k not in MEDIA_KINDS)
+        if unknown:
+            problems.append(f"NEWSBOT_FALLBACK_MEDIA_IDS: unknown content type(s) {', '.join(unknown)} "
+                            f"(use {', '.join(MEDIA_KINDS)})")
         if not self.sources_file.exists():
             problems.append(f"Sources file not found: {self.sources_file.name}")
         return problems
+
+
+MEDIA_KINDS = ("gaming", "hardware", "general", "default")
+
+
+def parse_media_ids(value: str, single: int = 0) -> dict[str, list[int]]:
+    """"123,456" or "gaming=123,456; hardware=789; default=321" -> {kind: [ids]}.
+
+    Unknown kinds are kept under their own name so validate() can report them.
+    """
+    out: dict[str, list[int]] = {}
+    for part in re.split(r"[;\n]", value or ""):
+        part = part.strip()
+        if not part:
+            continue
+        kind, ids = (part.split("=", 1) if "=" in part else ("default", part))
+        kind = kind.strip().lower() or "default"
+        numbers = [int(n) for n in re.findall(r"\d+", ids) if int(n) > 0]
+        if numbers:
+            out.setdefault(kind, [])
+            out[kind].extend(n for n in numbers if n not in out[kind])
+    if single and single not in out.get("default", []):
+        out.setdefault("default", []).append(single)
+    return out
 
 
 def load_pricing(path: Path) -> dict[str, ModelPrice]:
@@ -335,7 +369,7 @@ def load_settings(mode: str | None = None, repo_root: Path | None = None) -> Set
                                                ("high", "medium", "low"))
     s.triage_llm = env_bool("NEWSBOT_TRIAGE_LLM", True)
     s.llm_factcheck = env_bool("NEWSBOT_LLM_FACTCHECK", True)
-    s.max_revisions = env_int("NEWSBOT_MAX_REVISIONS", 1, 0, 2)
+    s.max_revisions = env_int("NEWSBOT_MAX_REVISIONS", 2, 0, 3)
     s.cluster_window_hours = env_int("NEWSBOT_CLUSTER_WINDOW_HOURS", 72, 12, 240)
     s.cluster_threshold = env_float("NEWSBOT_CLUSTER_THRESHOLD", 0.55, minimum=0.2)
     s.story_dedup_days = env_int("NEWSBOT_STORY_DEDUP_DAYS", 10, 1, 60)
@@ -349,6 +383,7 @@ def load_settings(mode: str | None = None, repo_root: Path | None = None) -> Set
 
     s.image_policy = env_choice("NEWSBOT_IMAGE_POLICY", "safe", ("none", "safe", "legacy"))
     s.fallback_featured_media_id = env_int("NEWSBOT_FALLBACK_MEDIA_ID", 0, 0)
+    s.fallback_featured_media_ids = parse_media_ids(_env("NEWSBOT_FALLBACK_MEDIA_IDS"), s.fallback_featured_media_id)
     s.reuse_localization_image = env_bool("NEWSBOT_REUSE_LOCALIZATION_IMAGE", True)
 
     s.sources_file = root / _env("SOURCES_FILE", "sources.yaml")

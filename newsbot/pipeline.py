@@ -19,8 +19,8 @@ from datetime import timedelta
 from pathlib import Path
 
 from . import __version__
-from .cluster import Clusterer, assign_story_ids, story_title_tokens
-from .compose import Composer, render_article, word_budget
+from .cluster import Clusterer, assign_story_ids, stored_story_similarity, story_title_tokens
+from .compose import Composer, display_names, normalize_view, render_article, word_budget
 from .config import ConfigError, Settings
 from .enrich import (
     LinkBuilder,
@@ -33,7 +33,7 @@ from .enrich import (
     resolve_tags,
 )
 from .entities import EntityExtractor, Gazetteer, classify_persian_event, events_compatible, latin_entity_keys
-from .factcheck import llm_check, revision_feedback, rule_checks
+from .factcheck import llm_check, revisable, revision_feedback, rule_checks
 from .facts import FactDesk, compose_view, story_status
 from .httpclient import HttpClient
 from .images import choose_featured_image
@@ -96,6 +96,7 @@ class Pipeline:
         # Set as soon as a WordPress post write is attempted. A write that fails with a timeout or 5xx
         # may still have been applied, so no other story may reach WordPress in the same run.
         self.wp_write_attempted = False
+        self._media_cache: dict[int, bool] = {}
 
     # ------------------------------------------------------------------
     def run(self) -> RunReport:
@@ -134,6 +135,15 @@ class Pipeline:
         problems = self.s.validate(needs_llm=needs_llm)
         if problems:
             raise ConfigError("; ".join(problems))
+        if self.samples:
+            # Samples are an explicit manual request: allow every sample its full revision budget.
+            # The per-run and 24-hour cost ceilings stay unchanged and still stop the run.
+            needed = min(1 + self.samples * (3 + 2 * self.s.max_revisions), 60)
+            if needed > self.s.max_llm_requests_per_run:
+                self.report.warnings.append(
+                    f"samples mode: request cap raised from {self.s.max_llm_requests_per_run} to {needed} for "
+                    f"{self.samples} sample(s); cost ceiling unchanged (${self.s.max_run_cost_usd:.2f} per run)")
+                self.s.max_llm_requests_per_run = needed
         if self.store is None:
             self.store = open_state(self.s.state_db, self.report)
         if self.s.legacy_sync:
@@ -207,11 +217,11 @@ class Pipeline:
         for item in pool:
             if item.item_id in manual_ids:
                 item.manual = True
-        clusters = Clusterer(s.cluster_threshold, s.cluster_window_hours).cluster(pool)
+        clusters = Clusterer(s.cluster_threshold, s.cluster_window_hours, gazetteer).cluster(pool)
         item_story = {r["item_id"]: r["story_id"] for r in self.store.conn.execute(
             "SELECT item_id, story_id FROM articles WHERE story_id != ''").fetchall()}
         stories = assign_story_ids(clusters, item_story, self.store.recent_stories(s.story_dedup_days),
-                                   s.cluster_threshold)
+                                   s.cluster_threshold, gazetteer)
         for story in stories:
             self.store.save_story(story, story_title_tokens(story.items))
         self.report.counts.update({"clusters": len(stories),
@@ -477,6 +487,13 @@ class Pipeline:
                 continue
             if self.s.cat_reviews and self.s.cat_reviews in (post.get("categories") or []):
                 continue  # review-bot posts/drafts are not news coverage
+            known = self.store.get_story(post["story_id"]) if post.get("story_id") else None
+            if known and known.get("title_tokens_json") and stored_story_similarity(
+                    story.items, known, getattr(self, "gazetteer", None)) < self.s.cluster_threshold:
+                # The state DB knows that post's story and it is a different development of the same
+                # subject (e.g. a merch drop after a radio reveal): not a duplicate. The entity/event
+                # heuristic below remains for legacy posts and after a state-cache loss.
+                continue
             post_event = post.get("event_type") or "other"
             # Same event: duplicate within the whole dedup window. Merely compatible or unknown
             # events (e.g. a trailer after a release-date post): only within 48 hours.
@@ -492,6 +509,19 @@ class Pipeline:
                 return (f"duplicate: WordPress post {post['post_id']} already covers "
                         f"{story.primary_display or story.primary_entity} ({post.get('event_type')})")
         return ""
+
+    def _media_ok(self, media_id: int) -> bool:
+        """A media-library ID may be used only if WordPress returns it as an image (cached per run)."""
+        cache = self._media_cache
+        if media_id not in cache:
+            if self.wp is None:
+                cache[media_id] = False
+            else:
+                media = self.wp.get_media(media_id) or {}
+                cache[media_id] = int(media.get("id") or 0) == media_id and media.get("media_type") == "image"
+                if not cache[media_id]:
+                    self.report.warnings.append(f"featured image: media {media_id} not found or not an image")
+        return cache[media_id]
 
     # -- per story --------------------------------------------------------------------
     def process_story(self, story: Story) -> str:
@@ -523,7 +553,7 @@ class Pipeline:
 
             localization = find_localization(story, self.localizations, sheet.entities.get("games"))
             links = LinkBuilder(s, self.http, self.wp, self.store).candidates(story, localization)
-            view = compose_view(sheet, docs)
+            view = normalize_view(compose_view(sheet, docs), display_names(s))
             min_words, max_words = word_budget(sheet, s)
             composer = Composer(s, self.llm, self.store)
             recent_openings = self.store.recent_openings(30)
@@ -532,25 +562,40 @@ class Pipeline:
             article = composer.compose(story, sheet, view, links)
             article = self._render(article, story, sheet, docs, links, localization, recent_anchors)
             checks = rule_checks(article, story, sheet, docs, s, min_words, max_words, recent_openings,
-                                 self.platform_names)
+                                 self.platform_names, links)
             llm_checks: list[CheckResult] = []
             revisions = 0
+            link_rows = [{"id": c.id, "kind": c.kind, "page_title": c.title} for c in links]
+            # Bounded loop: every pass either spends one of max_revisions, runs the model check once on
+            # the current text, or stops. A revision always invalidates the earlier model check, so the
+            # rule checks AND the model check run again on the revised article.
             while True:
                 failed = [c for c in checks + llm_checks if c.blocking and not c.passed]
-                if failed and revisions < s.max_revisions and revision_feedback(failed):
-                    revisions += 1
-                    log.info("REVISION %d for %s: %s", revisions, story.story_id, [c.name for c in failed])
-                    article = composer.compose(story, sheet, view, links, revision_feedback(failed), revisions)
-                    article = self._render(article, story, sheet, docs, links, localization, recent_anchors)
-                    checks = rule_checks(article, story, sheet, docs, s, min_words, max_words, recent_openings,
-                                         self.platform_names)
-                    llm_checks = []
-                    continue
-                if not failed and s.llm_factcheck and not llm_checks:
-                    llm_checks, raw_check = llm_check(article, view, self.llm, s)
+                if failed:
+                    if revisions < s.max_revisions and revisable(failed):
+                        revisions += 1
+                        feedback = revision_feedback(failed)
+                        log.info("REVISION %d for %s: %s", revisions, story.story_id, [c.name for c in failed])
+                        record.setdefault("revisions", []).append(
+                            {"revision": revisions, "failed": [c.name for c in failed], "feedback": feedback})
+                        article = composer.compose(story, sheet, view, links, feedback, revisions)
+                        article = self._render(article, story, sheet, docs, links, localization, recent_anchors)
+                        checks = rule_checks(article, story, sheet, docs, s, min_words, max_words, recent_openings,
+                                             self.platform_names, links)
+                        llm_checks = []
+                        continue
+                    break  # not fixable, or the revision budget is spent: the gate rejects the story
+                if s.llm_factcheck and not llm_checks:
+                    llm_checks, raw_check = llm_check(article, view, self.llm, s, link_rows)
                     record["model_factcheck"] = raw_check
+                    record.setdefault("model_factcheck_history", []).append(
+                        {"revision": revisions, "verdict": raw_check.get("verdict"),
+                         "issues": len(raw_check.get("issues") or [])})
                     continue
                 break
+            if s.llm_factcheck and not llm_checks:
+                llm_checks = [CheckResult("factcheck.model_completed", False, True,
+                                          "the model fact check did not run on the final text")]
             decision = decide(pre_checks + checks + llm_checks)
             record["article"] = article_summary(article)
             record["article_html"] = article.html
@@ -670,7 +715,8 @@ class Pipeline:
         tag_ids, tag_notes = resolve_tags(article.entity_tags or [story.primary_display], self.wp, s,
                                           dry_run=s.mode == "dry-run")
         image = choose_featured_image(s.image_policy, research.usable_docs, localization,
-                                      s.fallback_featured_media_id, s.reuse_localization_image, self.http)
+                                      s.fallback_featured_media_ids, s.reuse_localization_image, self.http,
+                                      content_type=content_type, seed=story.story_id, media_ok=self._media_ok)
         meta_title = article.meta_title_fa[:65]
         meta_desc = article.meta_description_fa[:160]
         record.update({"categories": categories, "content_type": content_type, "slug": slug, "tags": tag_ids,

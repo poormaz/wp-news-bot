@@ -29,3 +29,11 @@ overrides:
 
   # Ranking boost for games Poormaz cares about most (localization pages get a boost automatically).
   priority_entities: []
+
+# Official spellings enforced in names written in Latin script (applied to the model's text and to the
+# fact sheet it reads; source quotes are verified before this and are never changed). Some press
+# material styles names in capitals ("XBOX"); Poormaz articles use one consistent form.
+display_names:
+  XBOX: Xbox
+  PLAYSTATION: PlayStation
+  NINTENDO: Nintendo

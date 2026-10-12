@@ -18,11 +18,16 @@ def test_check_mode_is_read_only_and_discovers_localization_pages(repo):
         {"id": 56, "title": "فارسی ساز Old Game", "url": f"{SITE}/old-game-fa/", "subtype": "product"},
         {"id": 57, "title": "اخبار هفته", "url": f"{SITE}/weekly/", "subtype": "post"},
     ], {}) if "/wp-json/wp/v2/search" in r.url else None)
-    FakeWordPress(web)
+    fake_wp = FakeWordPress(web, existing_posts=[
+        {"id": 90, "title": "خبر با تصویر", "content": "<p>x</p>", "status": "publish", "slug": "a",
+         "link": f"{SITE}/a/", "categories": [2], "featured_media": 12, "date_gmt": "2026-10-01T00:00:00"},
+        {"id": 91, "title": "خبر بدون تصویر", "content": "<p>y</p>", "status": "publish", "slug": "b",
+         "link": f"{SITE}/b/", "categories": [2], "featured_media": 0, "date_gmt": "2026-10-02T00:00:00"}])
+    fake_wp.library = {12: "image"}
     standard_web(web)
     web.add(f"{SITE}/ironvale-fa/", "<h1>زیرنویس فارسی Ironvale Chronicles</h1>")
     web.add(f"{SITE}/old-game-fa/", "", status=301, headers={"Location": f"{SITE}/new/"})
-    s = make_settings(repo)
+    s = make_settings(repo, fallback_featured_media_ids={"gaming": [12, 13]})
     session = web.session()
     http = HttpClient(s.user_agent, 5, True, session=session)
     wp = WordPressClient(SITE, "bot", "abcd efgh ijkl mnop", "dry-run", s.user_agent, session=session,
@@ -40,6 +45,11 @@ def test_check_mode_is_read_only_and_discovers_localization_pages(repo):
     assert result["post_audit"].get("error") or "h1_count" in result["post_audit"]
     assert {f["source"] for f in result["feeds"]} == {"Gamingbolt", "Wccftech", "PC Gamer"}
     assert result["feed_snapshot"] and "entities" in result["feed_snapshot"][0]
+    images = result["featured_images"]
+    assert [(c["id"], c["found"], c["is_image"]) for c in images["configured"]] == [(12, True, True),
+                                                                                   (13, False, False)]
+    assert images["recent_without_featured_image"] == [f"{SITE}/b/"]
+    assert images["example_without_image"]["url"] == f"{SITE}/b/"
 
 
 def test_samples_mode_writes_reviewable_files(repo, tmp_path):

@@ -1,0 +1,2067 @@
+{
+ "_about": "SAMPLE_JSON records printed by the live `samples` run of GitHub Actions run 37851559690 (job 113565435900, mode=samples, model gpt-6-luna, no WordPress writes). Copied verbatim from the job log; WP_BASE_URL appears masked as *** by GitHub. Used as regression fixtures: records 2-4 carried model fact-check verdict 'revise' yet passed the old gate; record 1's cluster wrongly contained the GTA 6 merch and PC Gamer Jason articles.",
+ "run_id": 37851559690,
+ "head_sha": "65bcee1e55a81fe0115b479232fe86dc966427e6",
+ "records": [
+  {
+   "story_id": "ff3d4110724dc075",
+   "headline": "GTA 6 Reveals 6 Radio Stations, Plus Podcasts You Can Listen To On Foot",
+   "outlets": [
+    "GameSpot",
+    "Gamingbolt",
+    "PC Gamer"
+   ],
+   "items": [
+    {
+     "source": "GameSpot",
+     "title": "GTA 6 Reveals 6 Radio Stations, Plus Podcasts You Can Listen To On Foot",
+     "url": "https://www.gamespot.com/articles/gta-6-reveals-6-radio-stations-plus-podcasts-you-can-listen-to-on-foot/"
+    },
+    {
+     "source": "Gamingbolt",
+     "title": "GTA 6 Features Bad Bunny and Lana Del Rey as Radio Station Hosts",
+     "url": "https://gamingbolt.com/gta-6-features-bad-bunny-and-lana-del-rey-as-radio-station-hosts"
+    },
+    {
+     "source": "GameSpot",
+     "title": "GTA 6 Merch Revealed, Including T-Shirt With Alligator Wearing Sunglasses And Drinking A Cocktail",
+     "url": "https://www.gamespot.com/articles/gta-6-merch-revealed-including-t-shirt-with-alligator-wearing-sunglasses-and-drinking-a-cocktail/"
+    },
+    {
+     "source": "PC Gamer",
+     "title": "Jason may or may not appear fully nude in GTA 6, but either way we've now seen his dong",
+     "url": "https://www.pcgamer.com/games/grand-theft-auto/jason-may-or-may-not-appear-fully-nude-in-gta-6-but-either-way-weve-now-seen-his-dong/"
+    }
+   ],
+   "event_type": "announcement",
+   "kind": "news",
+   "score": 2.737,
+   "score_reasons": [
+    "event announcement (0.90)",
+    "3 outlets (+0.50)",
+    "age 8h (+0.34)",
+    "triage significance=high relevance=high"
+   ],
+   "decision": "dry_run_pass",
+   "reasons": [
+    "passed the quality gate; dry-run made no WordPress writes"
+   ],
+   "development": false,
+   "research": {
+    "documents": [
+     {
+      "id": "S1",
+      "outlet": "GameSpot",
+      "type": "publication",
+      "url": "https://www.gamespot.com/articles/gta-6-reveals-6-radio-stations-plus-podcasts-you-can-listen-to-on-foot/",
+      "status": "feed_only",
+      "chars": 699,
+      "group": 1,
+      "notes": [
+       "page blocked (HTTP 403); using feed text"
+      ]
+     },
+     {
+      "id": "S2",
+      "outlet": "PC Gamer",
+      "type": "publication",
+      "url": "https://www.pcgamer.com/games/grand-theft-auto/jason-may-or-may-not-appear-fully-nude-in-gta-6-but-either-way-weve-now-seen-his-dong/",
+      "status": "ok",
+      "chars": 3213,
+      "group": 2,
+      "notes": []
+     },
+     {
+      "id": "S3",
+      "outlet": "Gamingbolt",
+      "type": "publication",
+      "url": "https://gamingbolt.com/gta-6-features-bad-bunny-and-lana-del-rey-as-radio-station-hosts",
+      "status": "ok",
+      "chars": 1626,
+      "group": 3,
+      "notes": []
+     }
+    ],
+    "attempts": [
+     {
+      "url": "https://www.gamespot.com/articles/gta-6-reveals-6-radio-stations-plus-podcasts-you-can-listen-to-on-foot/",
+      "outlet": "GameSpot",
+      "status": "blocked",
+      "http": 403
+     },
+     {
+      "url": "https://www.pcgamer.com/games/grand-theft-auto/jason-may-or-may-not-appear-fully-nude-in-gta-6-but-either-way-weve-now-seen-his-dong/",
+      "outlet": "PC Gamer",
+      "status": "feed_fulltext"
+     },
+     {
+      "url": "https://gamingbolt.com/gta-6-features-bad-bunny-and-lana-del-rey-as-radio-station-hosts",
+      "outlet": "Gamingbolt",
+      "status": "feed_fulltext"
+     }
+    ],
+    "independent_groups": 3,
+    "steam_appid": null
+   },
+   "facts": {
+    "status": "confirmed",
+    "claims_total": 9,
+    "claims_usable": 9,
+    "core_claims": 3,
+    "independent_groups": 3,
+    "contradictions": [],
+    "from_cache": false,
+    "injection_detected": false,
+    "newsworthiness": {
+     "is_news": true,
+     "significance": "medium",
+     "reader_value": "Players get details about the game's radio and podcast features, including listening on foot, and several named station hosts.",
+     "reasons": [
+      "The announcement gives new information about in-game audio features.",
+      "The ability to listen on foot and the announced hosts may interest GTA 6 players."
+     ]
+    },
+    "claims": [
+     {
+      "id": "C1",
+      "text": "Rockstar Games revealed six of Grand Theft Auto 6's radio stations.",
+      "category": "content",
+      "value": "six",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "single_source",
+      "sources": [
+       "GameSpot"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C2",
+      "text": "Grand Theft Auto 6 will include on-demand podcasts.",
+      "category": "feature",
+      "value": "",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "corroborated",
+      "sources": [
+       "GameSpot",
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C3",
+      "text": "Jason and Lucia can listen to radio stations and podcasts on foot using their smartphones.",
+      "category": "feature",
+      "value": "",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "corroborated",
+      "sources": [
+       "GameSpot",
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C4",
+      "text": "Benito Antonio Martínez Ocasio, better known as Bad Bunny, voices El Martillo on Cocoteo FM.",
+      "category": "people",
+      "value": "Bad Bunny",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C5",
+      "text": "Naomi Ramírez Rivera, aka singer RaiNao, voices La Gata on Cocoteo FM.",
+      "category": "people",
+      "value": "RaiNao",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C6",
+      "text": "Lana Del Rey voices MW on Back Country Radio.",
+      "category": "people",
+      "value": "Lana Del Rey",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C7",
+      "text": "Morgan Wallen voices Delta Dawne on Back Country Radio.",
+      "category": "people",
+      "value": "Morgan Wallen",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C8",
+      "text": "Robyn and Alex Consani are associated with Flash FM.",
+      "category": "people",
+      "value": "",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C9",
+      "text": "Kerry King and Tom Araya are associated with The Chamber 106.6.",
+      "category": "people",
+      "value": "",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Gamingbolt"
+      ],
+      "problems": []
+     }
+    ]
+   },
+   "model_factcheck": {
+    "issues": [],
+    "language": {
+     "fluent": true,
+     "translationese": false,
+     "problems": []
+    },
+    "verdict": "pass"
+   },
+   "article": {
+    "title": "Grand Theft Auto 6 شش ایستگاه رادیویی و پادکست‌های درخواستی دارد",
+    "meta_title": "جزئیات رادیو و پادکست‌های Grand Theft Auto 6",
+    "meta_description": "Rockstar Games شش ایستگاه رادیویی از Grand Theft Auto 6 را معرفی کرده است؛ Jason و Lucia همچنین می‌توانند هنگام پیاده‌روی به رادیو و پادکست گوش دهند.",
+    "focus_keyword": "رادیو Grand Theft Auto 6",
+    "slug_suggestion": "gta-6-radio-podcasts",
+    "words": 251,
+    "links": [
+     {
+      "id": "L2",
+      "url": "***/grand-theft-auto-6-%d8%a8%d8%a7-%d9%86%d9%85%d8%b1%d9%87-%d8%af%db%8c%d9%86%d8%a7%d9%85%db%8c%da%a9-%d9%88-%d8%aa%da%a9%d8%a7%d9%85%d9%84-%d8%a8%d8%b9%d8%af%db%8c-%d8%b1%d8%a7%d8%af/",
+      "anchor": "جزئیات پیشین Grand Theft Auto 6",
+      "kind": "related_coverage"
+     }
+    ],
+    "sections": 1,
+    "headings": [],
+    "uncertainties": [
+     "نام همه شش ایستگاه رادیویی اعلام نشده است.",
+     "عنوان پادکست‌ها و نام میزبان‌های آن‌ها مشخص نیست."
+    ],
+    "entity_tags": [
+     "Grand Theft Auto 6",
+     "Rockstar Games"
+    ],
+    "revision": 1,
+    "plain_text": "Rockstar Games شش ایستگاه رادیویی از Grand Theft Auto 6 را معرفی کرده و این بازی پادکست‌های درخواستی هم خواهد داشت. Jason و Lucia می‌توانند با گوشی هوشمندشان، هنگام پیاده‌روی نیز به ایستگاه‌های رادیویی و پادکست‌ها گوش دهند.\nقابلیت شنیدن محتوا در حال پیاده‌روی یعنی دسترسی به رادیو و پادکست‌ها به زمان رانندگی محدود نمی‌شود؛ هر دو شخصیت می‌توانند از گوشی هوشمندشان برای این کار استفاده کنند. این جزئیات، یکی از بخش‌های تازه اعلام‌شده درباره تجربه صوتی بازی است و در کنار جزئیات پیشین Grand Theft Auto 6 قرار می‌گیرد.\nاز ایستگاه‌هایی که در گزارش‌ها نام برده شده‌اند، Cocoteo FM و Back Country Radio هستند. همچنین Flash FM و The Chamber 106.6 در میان ایستگاه‌های مرتبط با اعلام جزئیات دیده می‌شوند؛ بااین‌حال، اطلاعات موجود فهرست کامل هر شش ایستگاه را مشخص نمی‌کند.\nبه گزارش Gamingbolt، Bad Bunny صداپیشگی El Martillo در Cocoteo FM را بر عهده دارد و RaiNao نیز صدای La Gata در همین ایستگاه است. طبق همین گزارش، Lana Del Rey صداپیشه MW و Morgan Wallen صداپیشه Delta Dawne در Back Country Radio هستند. Gamingbolt همچنین Robyn و Alex Consani را با Flash FM و Kerry King و Tom Araya را با The Chamber 106.6 مرتبط دانسته است.\nجزئیات منتشرشده هنوز عنوان پادکست‌ها یا نام میزبان‌های آن‌ها را روشن نمی‌کند. در نتیجه، فعلاً مشخص نیست محتوای پادکست‌ها چه خواهد بود و کدام‌یک از شش ایستگاه معرفی‌شده هنوز نامش اعلام نشده است.\nنام همه شش ایستگاه رادیویی اعلام نشده است.\nعنوان پادکست‌ها و نام میزبان‌های آن‌ها مشخص نیست."
+   },
+   "article_html": "<!-- wp:paragraph -->\n<p>Rockstar Games شش ایستگاه رادیویی از Grand Theft Auto 6 را معرفی کرده و این بازی پادکست‌های درخواستی هم خواهد داشت. Jason و Lucia می‌توانند با گوشی هوشمندشان، هنگام پیاده‌روی نیز به ایستگاه‌های رادیویی و پادکست‌ها گوش دهند.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>قابلیت شنیدن محتوا در حال پیاده‌روی یعنی دسترسی به رادیو و پادکست‌ها به زمان رانندگی محدود نمی‌شود؛ هر دو شخصیت می‌توانند از گوشی هوشمندشان برای این کار استفاده کنند. این جزئیات، یکی از بخش‌های تازه اعلام‌شده درباره تجربه صوتی بازی است و در کنار <a href=\"***/grand-theft-auto-6-%d8%a8%d8%a7-%d9%86%d9%85%d8%b1%d9%87-%d8%af%db%8c%d9%86%d8%a7%d9%85%db%8c%da%a9-%d9%88-%d8%aa%da%a9%d8%a7%d9%85%d9%84-%d8%a8%d8%b9%d8%af%db%8c-%d8%b1%d8%a7%d8%af/\">جزئیات پیشین Grand Theft Auto 6</a> قرار می‌گیرد.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>از ایستگاه‌هایی که در گزارش‌ها نام برده شده‌اند، Cocoteo FM و Back Country Radio هستند. همچنین Flash FM و The Chamber 106.6 در میان ایستگاه‌های مرتبط با اعلام جزئیات دیده می‌شوند؛ بااین‌حال، اطلاعات موجود فهرست کامل هر شش ایستگاه را مشخص نمی‌کند.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>به گزارش Gamingbolt، Bad Bunny صداپیشگی El Martillo در Cocoteo FM را بر عهده دارد و RaiNao نیز صدای La Gata در همین ایستگاه است. طبق همین گزارش، Lana Del Rey صداپیشه MW و Morgan Wallen صداپیشه Delta Dawne در Back Country Radio هستند. Gamingbolt همچنین Robyn و Alex Consani را با Flash FM و Kerry King و Tom Araya را با The Chamber 106.6 مرتبط دانسته است.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>جزئیات منتشرشده هنوز عنوان پادکست‌ها یا نام میزبان‌های آن‌ها را روشن نمی‌کند. در نتیجه، فعلاً مشخص نیست محتوای پادکست‌ها چه خواهد بود و کدام‌یک از شش ایستگاه معرفی‌شده هنوز نامش اعلام نشده است.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">آنچه هنوز مشخص نیست</h2>\n<!-- /wp:heading -->\n\n<!-- wp:list -->\n<ul class=\"wp-block-list\">\n<!-- wp:list-item -->\n<li>نام همه شش ایستگاه رادیویی اعلام نشده است.</li>\n<!-- /wp:list-item -->\n<!-- wp:list-item -->\n<li>عنوان پادکست‌ها و نام میزبان‌های آن‌ها مشخص نیست.</li>\n<!-- /wp:list-item -->\n</ul>\n<!-- /wp:list -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">منابع خبر</h2>\n<!-- /wp:heading -->\n\n<!-- wp:list -->\n<ul class=\"wp-block-list\">\n<!-- wp:list-item -->\n<li>گزارش: <a href=\"https://www.gamespot.com/articles/gta-6-reveals-6-radio-stations-plus-podcasts-you-can-listen-to-on-foot/\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">GameSpot</a> — GTA 6 Reveals 6 Radio Stations, Plus Podcasts You Can Listen To On Foot</li>\n<!-- /wp:list-item -->\n<!-- wp:list-item -->\n<li>گزارش: <a href=\"https://gamingbolt.com/gta-6-features-bad-bunny-and-lana-del-rey-as-radio-station-hosts\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">Gamingbolt</a> — GTA 6 Features Bad Bunny and Lana Del Rey as Radio Station Hosts</li>\n<!-- /wp:list-item -->\n</ul>\n<!-- /wp:list -->\n\n<!-- wp:html -->\n<!-- poormaz-newsbot v2 nbstory-ff3d4110724dc075 -->\n<!-- /wp:html -->",
+   "legacy_comparison": {
+    "model_requested": "gpt-4o-mini",
+    "source_outlets_used": 1,
+    "source": "GameSpot",
+    "error": "ValueError: Article quality failed: appears incomplete: final sentence has no ending punctuation",
+    "elapsed_seconds": 13.43,
+    "api_requests": 2,
+    "models_served": [
+     "gpt-4o-mini-2024-07-18"
+    ],
+    "input_tokens": 2204,
+    "output_tokens": 1398,
+    "cost_usd": 0.001093
+   },
+   "gate": {
+    "passed": true,
+    "retryable": false,
+    "reasons": [],
+    "warnings": [],
+    "checks": [
+     {
+      "name": "newsworthiness.is_news",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "newsworthiness.significance",
+      "passed": true,
+      "blocking": true,
+      "detail": "significance=medium, outlets=3"
+     },
+     {
+      "name": "sources.available",
+      "passed": true,
+      "blocking": true,
+      "detail": "3 document(s)"
+     },
+     {
+      "name": "claims.enough_verified",
+      "passed": true,
+      "blocking": true,
+      "detail": "9 verified claim(s) (minimum 3)"
+     },
+     {
+      "name": "claims.core_verified",
+      "passed": true,
+      "blocking": true,
+      "detail": "3 core claim(s)"
+     },
+     {
+      "name": "sources.reliability",
+      "passed": true,
+      "blocking": true,
+      "detail": "core news corroborated by independent sources"
+     },
+     {
+      "name": "claims.no_unresolved_core_contradiction",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "timeliness",
+      "passed": true,
+      "blocking": true,
+      "detail": "first reported 8h ago"
+     },
+     {
+      "name": "duplicate.not_published",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.lead",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.paragraphs",
+      "passed": true,
+      "blocking": true,
+      "detail": "5 paragraph(s)"
+     },
+     {
+      "name": "length.minimum",
+      "passed": true,
+      "blocking": true,
+      "detail": "251 words"
+     },
+     {
+      "name": "length.no_padding",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.headings",
+      "passed": true,
+      "blocking": false,
+      "detail": "0 heading(s) for 1 section(s)"
+     },
+     {
+      "name": "citations.verified_only",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "citations.every_paragraph",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "citations.core_claim_used",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "facts.numbers_supported",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "facts.names_supported",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "fabrication.first_hand",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "fabrication.quotes",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "status.reported_attributed",
+      "passed": true,
+      "blocking": false,
+      "detail": "reported claims used without explicit attribution"
+     },
+     {
+      "name": "persian.script_ratio",
+      "passed": true,
+      "blocking": true,
+      "detail": "Persian letter ratio 0.77"
+     },
+     {
+      "name": "persian.untranslated_english",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_cliche_lead",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_cliches",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_repetition",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_exclamations",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "seo.title_length",
+      "passed": true,
+      "blocking": true,
+      "detail": "title length 64"
+     },
+     {
+      "name": "seo.title_no_clickbait",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "seo.title_names_subject",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "seo.meta_description",
+      "passed": true,
+      "blocking": false,
+      "detail": "meta description length 149"
+     },
+     {
+      "name": "seo.no_keyword_stuffing",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_high_severity",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_medium_severity",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "language.fluent",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_verdict",
+      "passed": true,
+      "blocking": true,
+      "detail": "verdict=pass"
+     }
+    ]
+   },
+   "categories": [
+    2,
+    18
+   ],
+   "content_type": "gaming",
+   "slug": "grand-theft-auto-6-gta-radio-podcasts",
+   "tags": [
+    461,
+    473
+   ],
+   "tag_notes": [
+    "Grand Theft Auto 6: existing tag 461",
+    "Rockstar Games: existing tag 473"
+   ],
+   "image": {
+    "media_id": 0,
+    "basis": "no licensed image available; theme default",
+    "upload_from": ""
+   },
+   "llm_cost_usd": 0.00375
+  },
+  {
+   "story_id": "b308fdc3076e9cc8",
+   "headline": "Forza Horizon 6 Is Finally Coming to PS5 in January Alongside First Expansion",
+   "outlets": [
+    "Gamingbolt",
+    "IGN"
+   ],
+   "items": [
+    {
+     "source": "Gamingbolt",
+     "title": "Forza Horizon 6 Launches on January 26th, 2027 for PS5, Pre-Orders Now Available",
+     "url": "https://gamingbolt.com/forza-horizon-6-launches-on-january-26th-2027-for-ps5-pre-orders-now-available"
+    },
+    {
+     "source": "IGN",
+     "title": "Forza Horizon 6 Is Finally Coming to PS5 in January Alongside First Expansion",
+     "url": "https://www.ign.com/articles/forza-horizon-6-is-finally-coming-to-ps5-in-january-alongside-first-expansion"
+    }
+   ],
+   "event_type": "release_date",
+   "kind": "news",
+   "score": 2.612,
+   "score_reasons": [
+    "event release_date (1.00)",
+    "2 outlets (+0.25)",
+    "age 5h (+0.36)",
+    "triage significance=high relevance=high"
+   ],
+   "decision": "dry_run_pass",
+   "reasons": [
+    "passed the quality gate; dry-run made no WordPress writes"
+   ],
+   "development": false,
+   "research": {
+    "documents": [
+     {
+      "id": "S1",
+      "outlet": "IGN",
+      "type": "publication",
+      "url": "https://www.ign.com/articles/forza-horizon-6-is-finally-coming-to-ps5-in-january-alongside-first-expansion",
+      "status": "ok",
+      "chars": 1512,
+      "group": 1,
+      "notes": []
+     },
+     {
+      "id": "S2",
+      "outlet": "Gamingbolt",
+      "type": "publication",
+      "url": "https://gamingbolt.com/forza-horizon-6-launches-on-january-26th-2027-for-ps5-pre-orders-now-available",
+      "status": "ok",
+      "chars": 1251,
+      "group": 2,
+      "notes": []
+     },
+     {
+      "id": "S3",
+      "outlet": "store.playstation.com",
+      "type": "official",
+      "url": "https://store.playstation.com/en-us/concept/10016335",
+      "status": "ok",
+      "chars": 4175,
+      "group": 3,
+      "notes": [
+       "official page linked from coverage"
+      ]
+     },
+     {
+      "id": "S4",
+      "outlet": "Steam",
+      "type": "official_store",
+      "url": "https://store.steampowered.com/app/2483190/",
+      "status": "ok",
+      "chars": 472,
+      "group": 4,
+      "notes": [
+       "official Steam store data (background)"
+      ]
+     }
+    ],
+    "attempts": [
+     {
+      "url": "https://www.ign.com/articles/forza-horizon-6-is-finally-coming-to-ps5-in-january-alongside-first-expansion",
+      "outlet": "IGN",
+      "status": "feed_fulltext"
+     },
+     {
+      "url": "https://gamingbolt.com/forza-horizon-6-launches-on-january-26th-2027-for-ps5-pre-orders-now-available",
+      "outlet": "Gamingbolt",
+      "status": "feed_fulltext"
+     },
+     {
+      "url": "https://store.playstation.com/en-us/concept/10016335",
+      "outlet": "official",
+      "status": "ok",
+      "http": 200
+     },
+     {
+      "url": "https://store.steampowered.com/news/app/1551360/view/704407559937722104",
+      "outlet": "official",
+      "status": "ok",
+      "http": 200
+     },
+     {
+      "url": "steam:appdetails:2483190",
+      "outlet": "Steam",
+      "status": "ok"
+     }
+    ],
+    "independent_groups": 4,
+    "steam_appid": 2483190
+   },
+   "facts": {
+    "status": "reported",
+    "claims_total": 6,
+    "claims_usable": 6,
+    "core_claims": 2,
+    "independent_groups": 4,
+    "contradictions": [],
+    "from_cache": false,
+    "injection_detected": false,
+    "newsworthiness": {
+     "is_news": true,
+     "significance": "high",
+     "reader_value": "The PS5 release date and simultaneous first expansion are useful news for players considering the PS5 version. The pre-order bonus and reported edition prices add practical details.",
+     "reasons": [
+      "The PS5 release date is specified.",
+      "The first expansion is reported to launch on the same day.",
+      "Pre-order and edition details are included."
+     ]
+    },
+    "claims": [
+     {
+      "id": "C1",
+      "text": "Forza Horizon 6 will launch on PS5 on January 26th, 2027.",
+      "category": "release_date",
+      "value": "January 26th, 2027",
+      "status": "reported",
+      "importance": "core",
+      "verification": "single_source",
+      "sources": [
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C2",
+      "text": "The first major expansion for Forza Horizon 6 will launch on the same day as the game’s PS5 release.",
+      "category": "release_date",
+      "value": "same day as the PS5 release",
+      "status": "reported",
+      "importance": "core",
+      "verification": "corroborated",
+      "sources": [
+       "IGN",
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C3",
+      "text": "PS5 players who pre-order any version of Forza Horizon 6 will receive a pre-tuned Ferrari J50 in-game.",
+      "category": "availability",
+      "value": "pre-tuned Ferrari J50",
+      "status": "confirmed",
+      "importance": "supporting",
+      "verification": "official",
+      "sources": [
+       "IGN",
+       "store.playstation.com"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C4",
+      "text": "The PS5 Premium Edition includes five days of early access.",
+      "category": "feature",
+      "value": "five days",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "corroborated",
+      "sources": [
+       "IGN",
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C5",
+      "text": "Gamingbolt reports that the PS5 version costs $69.99, the Deluxe Edition costs $99.99, and the Premium Edition costs $119.99.",
+      "category": "price",
+      "value": "$69.99; $99.99; $119.99",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "single_source",
+      "sources": [
+       "Gamingbolt"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C6",
+      "text": "The PS5 version is available to pre-order on the PlayStation Store.",
+      "category": "availability",
+      "value": "PlayStation Store",
+      "status": "reported",
+      "importance": "supporting",
+      "verification": "official",
+      "sources": [
+       "Gamingbolt",
+       "store.playstation.com"
+      ],
+      "problems": []
+     }
+    ]
+   },
+   "model_factcheck": {
+    "issues": [
+     {
+      "paragraph": 1,
+      "excerpt_fa": "نسخه PS5 بازی هم‌اکنون برای پیش‌خرید در PlayStation Store در دسترس است.",
+      "problem": "status_upgrade",
+      "severity": "medium",
+      "explanation": "در برگهٔ اطلاعات، در دسترس بودن پیش‌خرید به‌عنوان گزارشی ذکر شده است؛ متن آن را بدون انتساب یا قید گزارش، قطعی بیان می‌کند."
+     }
+    ],
+    "language": {
+     "fluent": true,
+     "translationese": false,
+     "problems": []
+    },
+    "verdict": "revise"
+   },
+   "article": {
+    "title": "گزارش: Forza Horizon 6 در ۲۶ ژانویه ۲۰۲۷ برای PS5 عرضه می‌شود",
+    "meta_title": "گزارش عرضه Forza Horizon 6 برای PS5",
+    "meta_description": "طبق گزارش Gamingbolt، Forza Horizon 6 در ۲۶ ژانویه ۲۰۲۷ برای PS5 عرضه می‌شود؛ Gamingbolt و IGN از انتشار هم‌زمان نخستین بسته‌الحاقی خبر داده‌اند.",
+    "focus_keyword": "تاریخ عرضه Forza Horizon 6",
+    "slug_suggestion": "forza-horizon-6-ps5-release",
+    "words": 204,
+    "links": [],
+    "sections": 2,
+    "headings": [
+     "پیش‌خرید و مزایای نسخه‌ها",
+     "قیمت‌های گزارش‌شده و ابهام‌های باقی‌مانده"
+    ],
+    "uncertainties": [
+     "محتوای نخستین بسته‌الحاقی، قیمت آن و امکان خرید جداگانه‌اش مشخص نیست.",
+     "قیمت‌های گزارش‌شده برای نسخه‌های PS5 هنوز تأیید رسمی نشده‌اند."
+    ],
+    "entity_tags": [
+     "Forza Horizon 6"
+    ],
+    "revision": 1,
+    "plain_text": "به گزارش Gamingbolt، نسخه PS5 بازی Forza Horizon 6 در ۲۶ ژانویه ۲۰۲۷ منتشر می‌شود. Gamingbolt و IGN همچنین گزارش کرده‌اند نخستین بسته‌الحاقی بزرگ بازی در همان روز عرضه خواهد شد.\nنسخه PS5 بازی هم‌اکنون برای پیش‌خرید در PlayStation Store در دسترس است. طبق اطلاعات تأییدشده، خریداران PS5 که هر نسخه‌ای از بازی را پیش‌خرید کنند، یک Ferrari J50 با تنظیمات از پیش آماده‌شده درون‌بازی دریافت می‌کنند.\nدسترسی زودهنگام نیز بخشی از پیشنهاد نسخه Premium Edition خواهد بود؛ Gamingbolt و IGN گزارش داده‌اند که این نسخه پنج روز دسترسی زودتر به بازی را فراهم می‌کند. بنابراین تفاوت نسخه‌ها برای خریداران PS5 فقط به محتوای بازی محدود نیست و زمان شروع بازی را هم دربرمی‌گیرد.\nGamingbolt قیمت نسخه PS5 را $69.99، نسخه Deluxe Edition را $99.99 و نسخه Premium Edition را $119.99 گزارش کرده است. بااین‌حال، تأیید رسمی این قیمت‌ها در اطلاعات موجود مشخص نیست.\nجزئیات محتوای نخستین بسته‌الحاقی، قیمت آن و امکان خرید جداگانه‌اش هنوز اعلام نشده است. در نتیجه، با وجود گزارش درباره هم‌زمانی انتشار بسته و نسخه PS5، خریداران فعلاً اطلاعاتی درباره محتوای اضافه یا هزینه احتمالی آن ندارند.\nمحتوای نخستین بسته‌الحاقی، قیمت آن و امکان خرید جداگانه‌اش مشخص نیست.\nقیمت‌های گزارش‌شده برای نسخه‌های PS5 هنوز تأیید رسمی نشده‌اند."
+   },
+   "article_html": "<!-- wp:paragraph -->\n<p>به گزارش Gamingbolt، نسخه PS5 بازی Forza Horizon 6 در ۲۶ ژانویه ۲۰۲۷ منتشر می‌شود. Gamingbolt و IGN همچنین گزارش کرده‌اند نخستین بسته‌الحاقی بزرگ بازی در همان روز عرضه خواهد شد.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">پیش‌خرید و مزایای نسخه‌ها</h2>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>نسخه PS5 بازی هم‌اکنون برای پیش‌خرید در PlayStation Store در دسترس است. طبق اطلاعات تأییدشده، خریداران PS5 که هر نسخه‌ای از بازی را پیش‌خرید کنند، یک Ferrari J50 با تنظیمات از پیش آماده‌شده درون‌بازی دریافت می‌کنند.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>دسترسی زودهنگام نیز بخشی از پیشنهاد نسخه Premium Edition خواهد بود؛ Gamingbolt و IGN گزارش داده‌اند که این نسخه پنج روز دسترسی زودتر به بازی را فراهم می‌کند. بنابراین تفاوت نسخه‌ها برای خریداران PS5 فقط به محتوای بازی محدود نیست و زمان شروع بازی را هم دربرمی‌گیرد.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">قیمت‌های گزارش‌شده و ابهام‌های باقی‌مانده</h2>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>Gamingbolt قیمت نسخه PS5 را $69.99، نسخه Deluxe Edition را $99.99 و نسخه Premium Edition را $119.99 گزارش کرده است. بااین‌حال، تأیید رسمی این قیمت‌ها در اطلاعات موجود مشخص نیست.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>جزئیات محتوای نخستین بسته‌الحاقی، قیمت آن و امکان خرید جداگانه‌اش هنوز اعلام نشده است. در نتیجه، با وجود گزارش درباره هم‌زمانی انتشار بسته و نسخه PS5، خریداران فعلاً اطلاعاتی درباره محتوای اضافه یا هزینه احتمالی آن ندارند.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">آنچه هنوز مشخص نیست</h2>\n<!-- /wp:heading -->\n\n<!-- wp:list -->\n<ul class=\"wp-block-list\">\n<!-- wp:list-item -->\n<li>محتوای نخستین بسته‌الحاقی، قیمت آن و امکان خرید جداگانه‌اش مشخص نیست.</li>\n<!-- /wp:list-item -->\n<!-- wp:list-item -->\n<li>قیمت‌های گزارش‌شده برای نسخه‌های PS5 هنوز تأیید رسمی نشده‌اند.</li>\n<!-- /wp:list-item -->\n</ul>\n<!-- /wp:list -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">منابع خبر</h2>\n<!-- /wp:heading -->\n\n<!-- wp:list -->\n<ul class=\"wp-block-list\">\n<!-- wp:list-item -->\n<li>منبع رسمی: <a href=\"https://store.playstation.com/en-us/concept/10016335\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">store.playstation.com</a> — Forza Horizon 6Add to WishlistAdd to WishlistAdd to WishlistAdd to WishlistAdd to WishlistAdd to WishlistAdd to WishlistAdd to WishlistPlayS</li>\n<!-- /wp:list-item -->\n<!-- wp:list-item -->\n<li>گزارش: <a href=\"https://www.ign.com/articles/forza-horizon-6-is-finally-coming-to-ps5-in-january-alongside-first-expansion\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">IGN</a> — Forza Horizon 6 Is Finally Coming to PS5 in January Alongside First Expansion</li>\n<!-- /wp:list-item -->\n<!-- wp:list-item -->\n<li>گزارش: <a href=\"https://gamingbolt.com/forza-horizon-6-launches-on-january-26th-2027-for-ps5-pre-orders-now-available\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">Gamingbolt</a> — Forza Horizon 6 Launches on January 26th, 2027 for PS5, Pre-Orders Now Available</li>\n<!-- /wp:list-item -->\n</ul>\n<!-- /wp:list -->\n\n<!-- wp:html -->\n<!-- poormaz-newsbot v2 nbstory-b308fdc3076e9cc8 -->\n<!-- /wp:html -->",
+   "legacy_comparison": {
+    "model_requested": "gpt-4o-mini",
+    "source_outlets_used": 1,
+    "source": "IGN",
+    "title": "Forza Horizon 6 در ژانویه به PS5 می‌آید",
+    "words": 308,
+    "persian_ratio": 0.901,
+    "unsupported_numbers": [],
+    "unsupported_names": [],
+    "fabrication_phrases": [],
+    "plain_text": "بازی Forza Horizon 6 بالاخره در ژانویه به کنسول PS5 می‌آید و قرار است به همراه یک گسترش بزرگ برای این بازی عرضه شود. این خبر از سوی IGN منتشر شده و در یک تریلر جدید تأیید شده است که Forza Horizon 6 در تاریخ 26 ژانویه به PS5 خواهد رسید. این بازی در همان روز و تاریخ با اولین گسترش بزرگ خود عرضه خواهد شد، هرچند که جزئیات خاصی درباره این گسترش هنوز فاش نشده است. مشابه نسخه‌های Xbox و PC این بازی، بازیکنان می‌توانند نسخه پریمیوم بازی را پیش‌خرید کنند که شامل مزایای اضافی از جمله پنج روز دسترسی زودهنگام به بازی در PS5 خواهد بود. همچنین، بازیکنانی که هر نسخه‌ای از بازی را بر روی PS5 پیش‌خرید کنند، یک فراری J50 از پیش تنظیم شده دریافت خواهند کرد. خبر تاریخ انتشار این بازی پس از شایعاتی مبنی بر اینکه Forza Horizon 6 ممکن است نتواند زمان‌بندی اولیه خود برای سال 2026 را برای PS5 رعایت کند، منتشر شده است. این خبر تأیید می‌کند که بازی در زمان مناسب خود عرضه خواهد شد و می‌تواند از تأثیرات منفی بازی GTA 6 دور بماند. این موضوع باید به عملکرد خوب بازی بر روی PS5 کمک کند و جمعیت بازیکنان سالمی برای آن فراهم آورد. Forza Horizon 5 در سال گذشته هنگام عرضه بر روی PS5 موفقیت بزرگی به دست آورد و بنابراین تقاضای زیادی برای دنباله آن وجود دارد. IGN در بررسی خود به Forza Horizon 6 نمره 10 از 10 داده و آن را به خاطر نقشه متراکم، دستاوردهای فنی و کمپین با ریتم خوب ستوده است. در بخشی از این بررسی آمده است: \"Forza Horizon 3 ممکن است همیشه مورد علاقه من باشد، اما Forza Horizon 6 بدون شک بهترین است.\" به نظر می‌رسد که این بازی استاندارد جدیدی در مسابقات دنیای باز معرفی کرده است و به عنوان یک اثر هنری شگفت‌انگیز شناخته می‌شود.",
+    "error": "",
+    "elapsed_seconds": 5.5,
+    "api_requests": 1,
+    "models_served": [
+     "gpt-4o-mini-2024-07-18"
+    ],
+    "input_tokens": 1183,
+    "output_tokens": 620,
+    "cost_usd": 0.000549
+   },
+   "gate": {
+    "passed": true,
+    "retryable": false,
+    "reasons": [],
+    "warnings": [],
+    "checks": [
+     {
+      "name": "newsworthiness.is_news",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "newsworthiness.significance",
+      "passed": true,
+      "blocking": true,
+      "detail": "significance=high, outlets=2"
+     },
+     {
+      "name": "sources.available",
+      "passed": true,
+      "blocking": true,
+      "detail": "4 document(s)"
+     },
+     {
+      "name": "claims.enough_verified",
+      "passed": true,
+      "blocking": true,
+      "detail": "6 verified claim(s) (minimum 3)"
+     },
+     {
+      "name": "claims.core_verified",
+      "passed": true,
+      "blocking": true,
+      "detail": "2 core claim(s)"
+     },
+     {
+      "name": "sources.reliability",
+      "passed": true,
+      "blocking": true,
+      "detail": "core news corroborated by independent sources"
+     },
+     {
+      "name": "claims.no_unresolved_core_contradiction",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "timeliness",
+      "passed": true,
+      "blocking": true,
+      "detail": "first reported 5h ago"
+     },
+     {
+      "name": "duplicate.not_published",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.lead",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.paragraphs",
+      "passed": true,
+      "blocking": true,
+      "detail": "5 paragraph(s)"
+     },
+     {
+      "name": "length.minimum",
+      "passed": true,
+      "blocking": true,
+      "detail": "204 words"
+     },
+     {
+      "name": "length.no_padding",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.headings",
+      "passed": true,
+      "blocking": false,
+      "detail": "2 heading(s) for 2 section(s)"
+     },
+     {
+      "name": "citations.verified_only",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "citations.every_paragraph",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "citations.core_claim_used",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "facts.numbers_supported",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "facts.names_supported",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "fabrication.first_hand",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "fabrication.quotes",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "status.reported_attributed",
+      "passed": true,
+      "blocking": false,
+      "detail": "reported claims used without explicit attribution"
+     },
+     {
+      "name": "persian.script_ratio",
+      "passed": true,
+      "blocking": true,
+      "detail": "Persian letter ratio 0.85"
+     },
+     {
+      "name": "persian.untranslated_english",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_cliche_lead",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_cliches",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_repetition",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_exclamations",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "seo.title_length",
+      "passed": true,
+      "blocking": true,
+      "detail": "title length 61"
+     },
+     {
+      "name": "seo.title_no_clickbait",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "seo.title_names_subject",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "seo.meta_description",
+      "passed": true,
+      "blocking": false,
+      "detail": "meta description length 145"
+     },
+     {
+      "name": "seo.no_keyword_stuffing",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_high_severity",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_medium_severity",
+      "passed": true,
+      "blocking": true,
+      "detail": "[status_upgrade] در برگهٔ اطلاعات، در دسترس بودن پیش‌خرید به‌عنوان گزارشی ذکر شده است؛ متن آن را بدون انتساب یا قید گزارش، قطعی بیان می‌کند."
+     },
+     {
+      "name": "language.fluent",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_verdict",
+      "passed": true,
+      "blocking": true,
+      "detail": "verdict=revise"
+     }
+    ]
+   },
+   "categories": [
+    2,
+    18
+   ],
+   "content_type": "gaming",
+   "slug": "forza-horizon-6-ps5-release",
+   "tags": [
+    233
+   ],
+   "tag_notes": [
+    "Forza Horizon 6: existing tag 233"
+   ],
+   "image": {
+    "media_id": 0,
+    "basis": "no licensed image available; theme default",
+    "upload_from": ""
+   },
+   "llm_cost_usd": 0.004354
+  },
+  {
+   "story_id": "ea744748efbf8244",
+   "headline": "Coming to XBOX Game Pass: Battlefield 6, Valor Mortis, Forever Ago, and More",
+   "outlets": [
+    "Xbox Wire"
+   ],
+   "items": [
+    {
+     "source": "Xbox Wire",
+     "title": "Coming to XBOX Game Pass: Battlefield 6, Valor Mortis, Forever Ago, and More",
+     "url": "https://news.xbox.com/en-us/2026/10/07/xbox-game-pass-october-2026-wave-1/"
+    }
+   ],
+   "event_type": "port_platform",
+   "kind": "news",
+   "score": 2.349,
+   "score_reasons": [
+    "event port_platform (0.90)",
+    "official source (+0.30)",
+    "age 30h (+0.15)",
+    "triage significance=high relevance=high"
+   ],
+   "decision": "dry_run_pass",
+   "reasons": [
+    "passed the quality gate; dry-run made no WordPress writes"
+   ],
+   "development": false,
+   "research": {
+    "documents": [
+     {
+      "id": "S1",
+      "outlet": "Xbox Wire",
+      "type": "official",
+      "url": "https://news.xbox.com/en-us/2026/10/07/xbox-game-pass-october-2026-wave-1/",
+      "status": "ok",
+      "chars": 6532,
+      "group": 1,
+      "notes": []
+     },
+     {
+      "id": "S2",
+      "outlet": "Steam",
+      "type": "official_store",
+      "url": "https://store.steampowered.com/app/2807960/",
+      "status": "ok",
+      "chars": 429,
+      "group": 2,
+      "notes": [
+       "official Steam store data (background)"
+      ]
+     }
+    ],
+    "attempts": [
+     {
+      "url": "https://news.xbox.com/en-us/2026/10/07/xbox-game-pass-october-2026-wave-1/",
+      "outlet": "Xbox Wire",
+      "status": "feed_fulltext"
+     },
+     {
+      "url": "https://news.xbox.com/en-us",
+      "outlet": "official",
+      "status": "ok",
+      "http": 200
+     },
+     {
+      "url": "steam:appdetails:2807960",
+      "outlet": "Steam",
+      "status": "ok"
+     }
+    ],
+    "independent_groups": 2,
+    "steam_appid": 2807960
+   },
+   "facts": {
+    "status": "confirmed",
+    "claims_total": 10,
+    "claims_usable": 10,
+    "core_claims": 9,
+    "independent_groups": 2,
+    "contradictions": [],
+    "from_cache": false,
+    "injection_detected": false,
+    "newsworthiness": {
+     "is_news": true,
+     "significance": "medium",
+     "reader_value": "The announcement gives Game Pass subscribers the dates and listed platform availability for a set of upcoming games, including Battlefield 6 and Valor Mortis, and identifies games leaving the service.",
+     "reasons": [
+      "Provides the scheduled arrival dates of multiple Game Pass games.",
+      "Lists games scheduled to leave the Game Pass library on October 15."
+     ]
+    },
+    "claims": [
+     {
+      "id": "C1",
+      "text": "Xbox announced that Echo Weaver is coming to Game Pass on October 8.",
+      "category": "availability",
+      "value": "October 8",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C2",
+      "text": "Xbox announced that Forever Ago is coming to Game Pass on October 8.",
+      "category": "availability",
+      "value": "October 8",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C3",
+      "text": "Xbox announced that Neon Abyss 2 is coming to Game Pass on October 8.",
+      "category": "availability",
+      "value": "October 8",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C4",
+      "text": "Xbox announced that Battlefield 6 is coming to Game Pass on October 13.",
+      "category": "availability",
+      "value": "October 13",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C5",
+      "text": "Xbox announced that Deep Dish Dungeon is coming to Game Pass on October 13.",
+      "category": "availability",
+      "value": "October 13",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C6",
+      "text": "Xbox announced that Valor Mortis is coming to Game Pass on October 13.",
+      "category": "availability",
+      "value": "October 13",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C7",
+      "text": "Xbox announced that Bluey’s Happy Snaps is coming to Game Pass on October 15.",
+      "category": "availability",
+      "value": "October 15",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C8",
+      "text": "Xbox announced that Chained Beasts is coming to Game Pass on October 15.",
+      "category": "availability",
+      "value": "October 15",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C9",
+      "text": "Xbox announced that Beyond These Stars is coming to Game Pass on October 16.",
+      "category": "availability",
+      "value": "October 16",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C10",
+      "text": "Xbox stated that A Plague Tale: Requiem, Clair Obscur: Expedition 33, Crime Scene Cleaner, Donut County, Evil West, Nova Roma, Pacific Drive, Superball, and The Casting of Frank Stone are leaving Game Pass on October 15.",
+      "category": "availability",
+      "value": "October 15",
+      "status": "confirmed",
+      "importance": "supporting",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     }
+    ]
+   },
+   "model_factcheck": {
+    "issues": [
+     {
+      "paragraph": 2,
+      "excerpt_fa": "علاقه‌مندان می‌توانند برای مرور پوشش پیشین ما، [[L1|تریلر Battlefield 6]] را ببینند.",
+      "problem": "unsupported",
+      "severity": "medium",
+      "explanation": "برگهٔ اطلاعاتی به وجود یا محتوای تریلر Battlefield 6 و پوشش پیشین رسانه اشاره‌ای ندارد؛ بنابراین این ارجاع در این بررسی پشتوانه ندارد."
+     }
+    ],
+    "language": {
+     "fluent": true,
+     "translationese": false,
+     "problems": []
+    },
+    "verdict": "revise"
+   },
+   "article": {
+    "title": "بازی‌های تازه Game Pass در اکتبر ۲۰۲۶؛ از Battlefield 6 تا Valor Mortis",
+    "meta_title": "بازی‌های تازه Game Pass در اکتبر ۲۰۲۶",
+    "meta_description": "Xbox فهرست بازی‌های تازه Game Pass برای اکتبر ۲۰۲۶ را اعلام کرد؛ Battlefield 6 و Valor Mortis به سرویس می‌آیند و ۹ بازی نیز خارج می‌شوند.",
+    "focus_keyword": "بازی‌های اکتبر Game Pass",
+    "slug_suggestion": "game-pass-october-2026-additions",
+    "words": 199,
+    "links": [
+     {
+      "id": "L1",
+      "url": "***/%d8%aa%d8%b1%db%8c%d9%84%d8%b1-battlefield-6-%d9%86%d8%a8%d8%b1%d8%af%d9%87%d8%a7%db%8c-%d8%af%d8%b1%db%8c%d8%a7%db%8c%db%8c-%d9%88-%d9%85%da%a9%d8%a7%d9%86%d9%87%d8%a7%db%8c-%d8%ac%d8%af/",
+      "anchor": "تریلر Battlefield 6",
+      "kind": "related_coverage"
+     }
+    ],
+    "sections": 2,
+    "headings": [
+     "بازی‌هایی که به Game Pass اضافه می‌شوند",
+     "۹ بازی در ۱۵ اکتبر خارج می‌شوند"
+    ],
+    "uncertainties": [
+     "Xbox قیمت بازی‌های تازه را برای خرید خارج از Game Pass اعلام نکرده است.",
+     "مشخص نیست تاریخ‌های اعلام‌شده در همه مناطق یکسان باشند."
+    ],
+    "entity_tags": [
+     "Game Pass",
+     "Battlefield 6",
+     "Valor Mortis"
+    ],
+    "revision": 0,
+    "plain_text": "Xbox فهرست بازی‌های تازه Game Pass برای اکتبر ۲۰۲۶ را اعلام کرد. در میان عناوین این ماه، Battlefield 6 و Valor Mortis در ۱۳ اکتبر به سرویس اضافه می‌شوند و چند بازی دیگر نیز در تاریخ‌های ۸، ۱۵ و ۱۶ اکتبر از راه می‌رسند.\nدر ۸ اکتبر، Echo Weaver، Forever Ago و Neon Abyss 2 به Game Pass می‌آیند. فهرست ۱۳ اکتبر شامل Battlefield 6، Deep Dish Dungeon و Valor Mortis است.\nورود Battlefield 6 یکی از موارد برجسته این فهرست است؛ علاقه‌مندان می‌توانند برای مرور پوشش پیشین ما، تریلر Battlefield 6 را ببینند.\nدر ادامه، Bluey’s Happy Snaps و Chained Beasts در ۱۵ اکتبر و Beyond These Stars در ۱۶ اکتبر به سرویس اضافه خواهند شد.\nهم‌زمان با اضافه‌شدن بازی‌های تازه، Xbox اعلام کرده است A Plague Tale: Requiem، Clair Obscur: Expedition 33، Crime Scene Cleaner، Donut County، Evil West، Nova Roma، Pacific Drive، Superball و The Casting of Frank Stone در ۱۵ اکتبر از Game Pass خارج می‌شوند. مشترکانی که قصد تجربه این عناوین را دارند باید این تاریخ را در نظر بگیرند.\nXbox قیمت بازی‌های تازه را برای خرید خارج از Game Pass اعلام نکرده است.\nمشخص نیست تاریخ‌های اعلام‌شده در همه مناطق یکسان باشند."
+   },
+   "article_html": "<!-- wp:paragraph -->\n<p>Xbox فهرست بازی‌های تازه Game Pass برای اکتبر ۲۰۲۶ را اعلام کرد. در میان عناوین این ماه، Battlefield 6 و Valor Mortis در ۱۳ اکتبر به سرویس اضافه می‌شوند و چند بازی دیگر نیز در تاریخ‌های ۸، ۱۵ و ۱۶ اکتبر از راه می‌رسند.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">بازی‌هایی که به Game Pass اضافه می‌شوند</h2>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>در ۸ اکتبر، Echo Weaver، Forever Ago و Neon Abyss 2 به Game Pass می‌آیند. فهرست ۱۳ اکتبر شامل Battlefield 6، Deep Dish Dungeon و Valor Mortis است.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>ورود Battlefield 6 یکی از موارد برجسته این فهرست است؛ علاقه‌مندان می‌توانند برای مرور پوشش پیشین ما، <a href=\"***/%d8%aa%d8%b1%db%8c%d9%84%d8%b1-battlefield-6-%d9%86%d8%a8%d8%b1%d8%af%d9%87%d8%a7%db%8c-%d8%af%d8%b1%db%8c%d8%a7%db%8c%db%8c-%d9%88-%d9%85%da%a9%d8%a7%d9%86%d9%87%d8%a7%db%8c-%d8%ac%d8%af/\">تریلر Battlefield 6</a> را ببینند.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>در ادامه، Bluey’s Happy Snaps و Chained Beasts در ۱۵ اکتبر و Beyond These Stars در ۱۶ اکتبر به سرویس اضافه خواهند شد.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">۹ بازی در ۱۵ اکتبر خارج می‌شوند</h2>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>هم‌زمان با اضافه‌شدن بازی‌های تازه، Xbox اعلام کرده است A Plague Tale: Requiem، Clair Obscur: Expedition 33، Crime Scene Cleaner، Donut County، Evil West، Nova Roma، Pacific Drive، Superball و The Casting of Frank Stone در ۱۵ اکتبر از Game Pass خارج می‌شوند. مشترکانی که قصد تجربه این عناوین را دارند باید این تاریخ را در نظر بگیرند.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">آنچه هنوز مشخص نیست</h2>\n<!-- /wp:heading -->\n\n<!-- wp:list -->\n<ul class=\"wp-block-list\">\n<!-- wp:list-item -->\n<li>Xbox قیمت بازی‌های تازه را برای خرید خارج از Game Pass اعلام نکرده است.</li>\n<!-- /wp:list-item -->\n<!-- wp:list-item -->\n<li>مشخص نیست تاریخ‌های اعلام‌شده در همه مناطق یکسان باشند.</li>\n<!-- /wp:list-item -->\n</ul>\n<!-- /wp:list -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">منابع خبر</h2>\n<!-- /wp:heading -->\n\n<!-- wp:list -->\n<ul class=\"wp-block-list\">\n<!-- wp:list-item -->\n<li>منبع رسمی: <a href=\"https://news.xbox.com/en-us/2026/10/07/xbox-game-pass-october-2026-wave-1/\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">Xbox Wire</a> — Coming to XBOX Game Pass: Battlefield 6, Valor Mortis, Forever Ago, and More</li>\n<!-- /wp:list-item -->\n</ul>\n<!-- /wp:list -->\n\n<!-- wp:html -->\n<!-- poormaz-newsbot v2 nbstory-ea744748efbf8244 -->\n<!-- /wp:html -->",
+   "legacy_comparison": {
+    "model_requested": "gpt-4o-mini",
+    "source_outlets_used": 1,
+    "source": "Xbox Wire",
+    "title": "بازی‌های جدیدی که به XBOX Game Pass می‌آیند: Battlefield 6 و Valor Mortis",
+    "words": 322,
+    "persian_ratio": 0.884,
+    "unsupported_numbers": [],
+    "unsupported_names": [],
+    "fabrication_phrases": [],
+    "plain_text": "به تازگی اعلام شده است که چندین بازی جدید به سرویس XBOX Game Pass اضافه خواهند شد. این خبر از سوی Xbox Wire منتشر شده و شامل عناوینی است که بسیاری از گیمرها منتظر آن‌ها بودند. از جمله این بازی‌ها می‌توان به Battlefield 6، Valor Mortis و Forever Ago اشاره کرد که به زودی در دسترس کاربران قرار خواهند گرفت. یکی از بازی‌های مورد انتظار، Battlefield 6 است که قرار است تجربه‌ای بی‌نظیر از جنگ‌های تمام عیار و نبردهای نزدیک و تاکتیکی را به بازیکنان ارائه دهد. این بازی به‌ویژه برای طرفداران سری Battlefield جذاب خواهد بود، زیرا شامل عناصر جدیدی از جمله تخریب محیط و گیم‌پلی سریع است. همچنین، اعضای EA Play می‌توانند از بسته‌های ویژه‌ای بهره‌مند شوند که شامل جوایز فصلی نیز می‌شود. دیگر عنوان جالب، Valor Mortis است که یک بازی اکشن اول شخص و Soulslike به شمار می‌رود. این بازی توسط سازندگان Ghostrunner ساخته شده و بازیکنان را در نقش یک سرباز سابق ارتش ناپلئون قرار می‌دهد که باید با استفاده از قدرت‌های ماورایی خود با موجودات ترسناک مبارزه کند و توطئه‌ای را که بشریت را تهدید می‌کند، کشف کند. به علاوه، Forever Ago یک ماجراجویی تک‌نفره است که در آن بازیکنان به سفر در مکان‌های زیبا می‌پردازند و با شخصیت‌های جالبی آشنا می‌شوند. این بازی به گیمرها اجازه می‌دهد تا با دوربین خود لحظات را ثبت کنند و دوستان جدیدی پیدا کنند. همچنین، Neon Abyss 2 و Deep Dish Dungeon از دیگر بازی‌هایی هستند که به زودی به این سرویس اضافه خواهند شد و هر یک تجربه‌های منحصر به فردی را ارائه می‌دهند. با توجه به تنوع بازی‌های جدیدی که به XBOX Game Pass اضافه می‌شوند، این سرویس به یکی از بهترین گزینه‌ها برای گیمرها تبدیل شده است. این عناوین نه تنها سرگرمی را برای بازیکنان فراهم می‌کنند، بلکه تجربه‌های جدیدی را نیز به ارمغان می‌آورند. بنابراین، اگر شما هم از طرفداران بازی‌های ویدیویی هستید، حتماً این عناوین را امتحان کنید و از تجربه‌های جدید لذت ببرید.",
+    "error": "",
+    "elapsed_seconds": 11.14,
+    "api_requests": 2,
+    "models_served": [
+     "gpt-4o-mini-2024-07-18"
+    ],
+    "input_tokens": 4862,
+    "output_tokens": 1419,
+    "cost_usd": 0.001408
+   },
+   "gate": {
+    "passed": true,
+    "retryable": false,
+    "reasons": [],
+    "warnings": [],
+    "checks": [
+     {
+      "name": "newsworthiness.is_news",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "newsworthiness.significance",
+      "passed": true,
+      "blocking": true,
+      "detail": "significance=medium, outlets=1"
+     },
+     {
+      "name": "sources.available",
+      "passed": true,
+      "blocking": true,
+      "detail": "2 document(s)"
+     },
+     {
+      "name": "claims.enough_verified",
+      "passed": true,
+      "blocking": true,
+      "detail": "10 verified claim(s) (minimum 3)"
+     },
+     {
+      "name": "claims.core_verified",
+      "passed": true,
+      "blocking": true,
+      "detail": "9 core claim(s)"
+     },
+     {
+      "name": "sources.reliability",
+      "passed": true,
+      "blocking": true,
+      "detail": "core news confirmed by an official source"
+     },
+     {
+      "name": "claims.no_unresolved_core_contradiction",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "timeliness",
+      "passed": true,
+      "blocking": true,
+      "detail": "first reported 30h ago"
+     },
+     {
+      "name": "duplicate.not_published",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.lead",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.paragraphs",
+      "passed": true,
+      "blocking": true,
+      "detail": "5 paragraph(s)"
+     },
+     {
+      "name": "length.minimum",
+      "passed": true,
+      "blocking": true,
+      "detail": "199 words"
+     },
+     {
+      "name": "length.no_padding",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.headings",
+      "passed": true,
+      "blocking": false,
+      "detail": "2 heading(s) for 2 section(s)"
+     },
+     {
+      "name": "citations.verified_only",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "citations.every_paragraph",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "citations.core_claim_used",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "facts.numbers_supported",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "facts.names_supported",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "fabrication.first_hand",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "fabrication.quotes",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.script_ratio",
+      "passed": true,
+      "blocking": true,
+      "detail": "Persian letter ratio 0.62"
+     },
+     {
+      "name": "persian.untranslated_english",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_cliche_lead",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_cliches",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_repetition",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_exclamations",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "seo.title_length",
+      "passed": true,
+      "blocking": true,
+      "detail": "title length 71"
+     },
+     {
+      "name": "seo.title_no_clickbait",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "seo.title_names_subject",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "seo.meta_description",
+      "passed": true,
+      "blocking": false,
+      "detail": "meta description length 137"
+     },
+     {
+      "name": "seo.no_keyword_stuffing",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_high_severity",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_medium_severity",
+      "passed": true,
+      "blocking": true,
+      "detail": "[unsupported] برگهٔ اطلاعاتی به وجود یا محتوای تریلر Battlefield 6 و پوشش پیشین رسانه اشاره‌ای ندارد؛ بنابراین این ارجاع در این بررسی پشتوانه ندارد."
+     },
+     {
+      "name": "language.fluent",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_verdict",
+      "passed": true,
+      "blocking": true,
+      "detail": "verdict=revise"
+     }
+    ]
+   },
+   "categories": [
+    2,
+    18
+   ],
+   "content_type": "gaming",
+   "slug": "battlefield-6-game-pass-october-2026-additions",
+   "tags": [
+    135,
+    222
+   ],
+   "tag_notes": [
+    "Game Pass: existing tag 135",
+    "Battlefield 6: existing tag 222",
+    "Valor Mortis: no tag created (policy covered)"
+   ],
+   "image": {
+    "media_id": 0,
+    "basis": "no licensed image available; theme default",
+    "upload_from": ""
+   },
+   "llm_cost_usd": 0.002854
+  },
+  {
+   "story_id": "18422241a4f24dec",
+   "headline": "Monster Hunter Stories 3: Twisted Reflection Heading to XBOX on PC November 18",
+   "outlets": [
+    "Xbox Wire"
+   ],
+   "items": [
+    {
+     "source": "Xbox Wire",
+     "title": "Monster Hunter Stories 3: Twisted Reflection Heading to XBOX on PC November 18",
+     "url": "https://news.xbox.com/en-us/2026/10/07/monster-hunter-stories-3-xbox-px-xbox-play-anywhere-announce/"
+    }
+   ],
+   "event_type": "port_platform",
+   "kind": "news",
+   "score": 1.949,
+   "score_reasons": [
+    "event port_platform (0.90)",
+    "official source (+0.30)",
+    "age 18h (+0.25)",
+    "triage significance=medium relevance=high"
+   ],
+   "decision": "dry_run_pass",
+   "reasons": [
+    "passed the quality gate; dry-run made no WordPress writes"
+   ],
+   "development": false,
+   "research": {
+    "documents": [
+     {
+      "id": "S1",
+      "outlet": "Xbox Wire",
+      "type": "official",
+      "url": "https://news.xbox.com/en-us/2026/10/07/monster-hunter-stories-3-xbox-px-xbox-play-anywhere-announce/",
+      "status": "ok",
+      "chars": 6899,
+      "group": 1,
+      "notes": []
+     }
+    ],
+    "attempts": [
+     {
+      "url": "https://news.xbox.com/en-us/2026/10/07/monster-hunter-stories-3-xbox-px-xbox-play-anywhere-announce/",
+      "outlet": "Xbox Wire",
+      "status": "feed_fulltext"
+     },
+     {
+      "url": "https://news.xbox.com/en-us",
+      "outlet": "official",
+      "status": "ok",
+      "http": 200
+     }
+    ],
+    "independent_groups": 1,
+    "steam_appid": null
+   },
+   "facts": {
+    "status": "confirmed",
+    "claims_total": 4,
+    "claims_usable": 4,
+    "core_claims": 1,
+    "independent_groups": 1,
+    "contradictions": [],
+    "from_cache": false,
+    "injection_detected": false,
+    "newsworthiness": {
+     "is_news": true,
+     "significance": "medium",
+     "reader_value": "Players can learn when the game arrives on XBOX on PC and which Xbox Play Anywhere features are described.",
+     "reasons": [
+      "The announcement gives a specific PC launch date.",
+      "It identifies supported devices and cross-device progression features."
+     ]
+    },
+    "claims": [
+     {
+      "id": "C1",
+      "text": "Monster Hunter Stories 3: Twisted Reflection will launch on XBOX on PC on November 18, 2026.",
+      "category": "release_date",
+      "value": "November 18, 2026",
+      "status": "confirmed",
+      "importance": "core",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C2",
+      "text": "The XBOX on PC release will support Xbox Play Anywhere.",
+      "category": "feature",
+      "value": "Xbox Play Anywhere",
+      "status": "confirmed",
+      "importance": "supporting",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C3",
+      "text": "Xbox Play Anywhere lets players play on XBOX Series X|S, Windows 11 PCs, and compatible handheld gaming devices at no additional cost.",
+      "category": "platform",
+      "value": "XBOX Series X|S, Windows 11 PCs, and compatible handheld gaming devices",
+      "status": "confirmed",
+      "importance": "supporting",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     },
+     {
+      "id": "C4",
+      "text": "Save data, additional game content, and achievements carry over between supported devices.",
+      "category": "feature",
+      "value": "",
+      "status": "confirmed",
+      "importance": "supporting",
+      "verification": "official",
+      "sources": [
+       "Xbox Wire"
+      ],
+      "problems": []
+     }
+    ]
+   },
+   "model_factcheck": {
+    "issues": [
+     {
+      "paragraph": 2,
+      "excerpt_fa": "برای خبر مرتبط با این مجموعه، [[L1|محتوای تازه بازی]] را هم ببینید.",
+      "problem": "unsupported",
+      "severity": "low",
+      "explanation": "فکت‌شیت وجود محتوای تازه یا خبر مرتبط دیگری درباره این مجموعه را تأیید نمی‌کند."
+     },
+     {
+      "paragraph": 3,
+      "excerpt_fa": "همچنین جزئیات دیگری درباره این نسخه در اطلاعات اعلام‌شده ارائه نشده است.",
+      "problem": "unsupported",
+      "severity": "medium",
+      "explanation": "فکت‌شیت فقط می‌گوید اعلامیه درباره عرضه در فروشگاه‌های رایانه‌ای دیگر اظهارنظر نکرده است؛ ادعای کلی‌ترِ نبودِ هرگونه جزئیات دیگر را تأیید نمی‌کند."
+     }
+    ],
+    "language": {
+     "fluent": true,
+     "translationese": false,
+     "problems": []
+    },
+    "verdict": "revise"
+   },
+   "article": {
+    "title": "Monster Hunter Stories 3: Twisted Reflection در ۱۸ نوامبر برای XBOX on PC عرضه می‌شود",
+    "meta_title": "تاریخ عرضه Monster Hunter Stories 3 برای XBOX on PC",
+    "meta_description": "Monster Hunter Stories 3: Twisted Reflection در ۱۸ نوامبر ۲۰۲۶ برای XBOX on PC عرضه می‌شود و از Xbox Play Anywhere برای جابه‌جایی میان دستگاه‌های پشتیبانی‌شده بهره می‌برد.",
+    "focus_keyword": "Monster Hunter Stories 3",
+    "slug_suggestion": "monster-hunter-stories-xbox-pc",
+    "words": 177,
+    "links": [
+     {
+      "id": "L1",
+      "url": "***/%d8%a8%d8%a7%d8%b2%da%af%d8%b4%d8%aa-%da%a9%d9%be%d8%b3%d9%88%d9%84-%da%a9%d8%a7%d9%be%da%a9%d8%a7%d9%85-%d8%af%d8%b1-25-%da%98%d9%88%d8%a6%d9%86-%d8%a8%d8%a7-%d9%85%d8%ad%d8%aa%d9%88%d8%a7%db%8c/",
+      "anchor": "محتوای تازه بازی",
+      "kind": "related_coverage"
+     }
+    ],
+    "sections": 2,
+    "headings": [
+     "جزئیات عرضه و پشتیبانی",
+     "وضعیت انتشار روی رایانه"
+    ],
+    "uncertainties": [
+     "هنوز مشخص نیست نسخه XBOX on PC در فروشگاه‌های رایانه‌ای دیگری هم عرضه خواهد شد یا نه."
+    ],
+    "entity_tags": [
+     "Monster Hunter Stories 3: Twisted Reflection",
+     "Xbox Play Anywhere"
+    ],
+    "revision": 0,
+    "plain_text": "Monster Hunter Stories 3: Twisted Reflection در ۱۸ نوامبر ۲۰۲۶ برای XBOX on PC عرضه می‌شود. نسخه جدید از Xbox Play Anywhere پشتیبانی می‌کند و امکان ادامه بازی روی دستگاه‌های سازگار را فراهم می‌آورد.\nتاریخ عرضه این نسخه را Xbox Wire اعلام کرده است. پشتیبانی از Xbox Play Anywhere به بازیکنان اجازه می‌دهد بازی را روی XBOX Series X|S، رایانه‌های Windows 11 و دستگاه‌های دستی سازگار اجرا کنند؛ این دسترسی هزینه اضافه‌ای ندارد.\nاطلاعات ذخیره‌شده، محتوای اضافی بازی و دستاوردها میان دستگاه‌های پشتیبانی‌شده منتقل می‌شوند. بنابراین بازیکنانی که از این دستگاه‌ها استفاده می‌کنند می‌توانند بدون خرید دوباره بازی برای هر دستگاه، پیشرفت و محتوای خود را میان آن‌ها همراه داشته باشند. برای خبر مرتبط با این مجموعه، محتوای تازه بازی را هم ببینید.\nاعلام رسمی درباره عرضه XBOX on PC است، اما مشخص نکرده که بازی در فروشگاه‌های رایانه‌ای دیگری نیز در دسترس قرار می‌گیرد یا نه. همچنین جزئیات دیگری درباره این نسخه در اطلاعات اعلام‌شده ارائه نشده است.\nهنوز مشخص نیست نسخه XBOX on PC در فروشگاه‌های رایانه‌ای دیگری هم عرضه خواهد شد یا نه."
+   },
+   "article_html": "<!-- wp:paragraph -->\n<p>Monster Hunter Stories 3: Twisted Reflection در ۱۸ نوامبر ۲۰۲۶ برای XBOX on PC عرضه می‌شود. نسخه جدید از Xbox Play Anywhere پشتیبانی می‌کند و امکان ادامه بازی روی دستگاه‌های سازگار را فراهم می‌آورد.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">جزئیات عرضه و پشتیبانی</h2>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>تاریخ عرضه این نسخه را Xbox Wire اعلام کرده است. پشتیبانی از Xbox Play Anywhere به بازیکنان اجازه می‌دهد بازی را روی XBOX Series X|S، رایانه‌های Windows 11 و دستگاه‌های دستی سازگار اجرا کنند؛ این دسترسی هزینه اضافه‌ای ندارد.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>اطلاعات ذخیره‌شده، محتوای اضافی بازی و دستاوردها میان دستگاه‌های پشتیبانی‌شده منتقل می‌شوند. بنابراین بازیکنانی که از این دستگاه‌ها استفاده می‌کنند می‌توانند بدون خرید دوباره بازی برای هر دستگاه، پیشرفت و محتوای خود را میان آن‌ها همراه داشته باشند. برای خبر مرتبط با این مجموعه، <a href=\"***/%d8%a8%d8%a7%d8%b2%da%af%d8%b4%d8%aa-%da%a9%d9%be%d8%b3%d9%88%d9%84-%da%a9%d8%a7%d9%be%da%a9%d8%a7%d9%85-%d8%af%d8%b1-25-%da%98%d9%88%d8%a6%d9%86-%d8%a8%d8%a7-%d9%85%d8%ad%d8%aa%d9%88%d8%a7%db%8c/\">محتوای تازه بازی</a> را هم ببینید.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">وضعیت انتشار روی رایانه</h2>\n<!-- /wp:heading -->\n\n<!-- wp:paragraph -->\n<p>اعلام رسمی درباره عرضه XBOX on PC است، اما مشخص نکرده که بازی در فروشگاه‌های رایانه‌ای دیگری نیز در دسترس قرار می‌گیرد یا نه. همچنین جزئیات دیگری درباره این نسخه در اطلاعات اعلام‌شده ارائه نشده است.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:paragraph -->\n<p>هنوز مشخص نیست نسخه XBOX on PC در فروشگاه‌های رایانه‌ای دیگری هم عرضه خواهد شد یا نه.</p>\n<!-- /wp:paragraph -->\n\n<!-- wp:heading -->\n<h2 class=\"wp-block-heading\">منابع خبر</h2>\n<!-- /wp:heading -->\n\n<!-- wp:list -->\n<ul class=\"wp-block-list\">\n<!-- wp:list-item -->\n<li>منبع رسمی: <a href=\"https://news.xbox.com/en-us/2026/10/07/monster-hunter-stories-3-xbox-px-xbox-play-anywhere-announce/\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">Xbox Wire</a> — Monster Hunter Stories 3: Twisted Reflection Heading to XBOX on PC November 18</li>\n<!-- /wp:list-item -->\n</ul>\n<!-- /wp:list -->\n\n<!-- wp:html -->\n<!-- poormaz-newsbot v2 nbstory-18422241a4f24dec -->\n<!-- /wp:html -->",
+   "legacy_comparison": {
+    "model_requested": "gpt-4o-mini",
+    "source_outlets_used": 1,
+    "source": "Xbox Wire",
+    "title": "انتشار Monster Hunter Stories 3: Twisted Reflection برای XBOX در PC در 18 نوامبر",
+    "words": 352,
+    "persian_ratio": 0.885,
+    "unsupported_numbers": [],
+    "unsupported_names": [],
+    "fabrication_phrases": [],
+    "plain_text": "بازی محبوب نقش‌آفرینی Monster Hunter Stories 3: Twisted Reflection که در حال حاضر برای کنسول XBOX Series X|S در دسترس است، در تاریخ 18 نوامبر 2026 برای XBOX در PC منتشر خواهد شد. این نسخه از بازی از قابلیت Xbox Play Anywhere پشتیبانی می‌کند، که به بازیکنان این امکان را می‌دهد تا بدون هزینه اضافی، از بازی در کنسول‌های XBOX Series X|S، کامپیوترهای ویندوز 11 و دستگاه‌های دستی سازگار لذت ببرند. در این بازی، بازیکنان می‌توانند از جایی که قبلاً بازی را ترک کرده‌اند، ادامه دهند و تمام داده‌های ذخیره‌شده، محتوای اضافی، دستاوردها و موارد دیگر به‌صورت یکپارچه منتقل می‌شود. Monster Hunter Stories 3: Twisted Reflection یک بازی RPG نوبتی است که در دنیای Monster Hunter جریان دارد و به بازیکنان این امکان را می‌دهد تا یک ماجراجویی بزرگتر از همیشه را تجربه کنند. داستان بازی حول شخصیت‌های اصلی، یک شاهزاده یا شاهزاده خانم از آذوریا و الینور، شاهزاده خانم ورمیل، می‌چرخد که هر کدام با امیدها و اعتقادات خود به سرزمین‌های ممنوعه می‌روند تا حقیقت جهان را کشف کنند. این بازی شامل ویژگی‌های متنوعی است، از جمله نبردهای نوبتی در حال تحول و احیای زیستگاه، که به بازیکنان اجازه می‌دهد تا هیولاها را به طبیعت بازگردانند و رتبه اکوسیستم خود را تغییر دهند. حتی پس از اینکه بازیکنان وقت خود را برای لذت بردن از داستان اصلی صرف کردند، هنوز چیزهای بیشتری برای تجربه وجود دارد. پس از به‌روزرسانی بازی به آخرین نسخه و بارگذاری داده‌های ذخیره‌شده، می‌توانند با نسخه‌ای با دشواری بالا از نبرد نهایی روبرو شوند. اگر بتوانید این چالش را شکست دهید، نسخه‌های سلطنتی تقریباً تمام هیولاها در مناطق مختلف نقشه ظاهر خواهند شد. به علاوه، هیولاهای سلطنتی مهاجم و اژدهایان بزرگ فاجعه‌بار سلطنتی نیز ظاهر خواهند شد که نبردهای بسیار چالش‌برانگیزی را ارائه می‌دهند. بازیکنان می‌توانند با استفاده از لیست هیولاهای خوب تربیت‌شده خود، با این دشمنان قدرتمند روبرو شوند. همچنین، DLC داستان جانبی به نام Rudy نیز هم‌اکنون در دسترس است و این محتوا در نسخه‌های Deluxe Edition و Premium Deluxe Edition گنجانده شده است، بنابراین اگر یکی از این نسخه‌ها را دارید، می‌توانید این DLC را بدون هزینه اضافی دانلود و تجربه کنید.",
+    "error": "",
+    "elapsed_seconds": 6.83,
+    "api_requests": 1,
+    "models_served": [
+     "gpt-4o-mini-2024-07-18"
+    ],
+    "input_tokens": 2342,
+    "output_tokens": 764,
+    "cost_usd": 0.00081
+   },
+   "gate": {
+    "passed": true,
+    "retryable": false,
+    "reasons": [],
+    "warnings": [
+     "seo.meta_description: meta description length 171"
+    ],
+    "checks": [
+     {
+      "name": "newsworthiness.is_news",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "newsworthiness.significance",
+      "passed": true,
+      "blocking": true,
+      "detail": "significance=medium, outlets=1"
+     },
+     {
+      "name": "sources.available",
+      "passed": true,
+      "blocking": true,
+      "detail": "1 document(s)"
+     },
+     {
+      "name": "claims.enough_verified",
+      "passed": true,
+      "blocking": true,
+      "detail": "4 verified claim(s) (minimum 3)"
+     },
+     {
+      "name": "claims.core_verified",
+      "passed": true,
+      "blocking": true,
+      "detail": "1 core claim(s)"
+     },
+     {
+      "name": "sources.reliability",
+      "passed": true,
+      "blocking": true,
+      "detail": "core news confirmed by an official source"
+     },
+     {
+      "name": "claims.no_unresolved_core_contradiction",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "timeliness",
+      "passed": true,
+      "blocking": true,
+      "detail": "first reported 18h ago"
+     },
+     {
+      "name": "duplicate.not_published",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.lead",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.paragraphs",
+      "passed": true,
+      "blocking": true,
+      "detail": "4 paragraph(s)"
+     },
+     {
+      "name": "length.minimum",
+      "passed": true,
+      "blocking": true,
+      "detail": "177 words"
+     },
+     {
+      "name": "length.no_padding",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "structure.headings",
+      "passed": true,
+      "blocking": false,
+      "detail": "2 heading(s) for 2 section(s)"
+     },
+     {
+      "name": "citations.verified_only",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "citations.every_paragraph",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "citations.core_claim_used",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "facts.numbers_supported",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "facts.names_supported",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "fabrication.first_hand",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "fabrication.quotes",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.script_ratio",
+      "passed": true,
+      "blocking": true,
+      "detail": "Persian letter ratio 0.85"
+     },
+     {
+      "name": "persian.untranslated_english",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_cliche_lead",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_cliches",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_repetition",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "persian.no_exclamations",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "seo.title_length",
+      "passed": true,
+      "blocking": true,
+      "detail": "title length 85"
+     },
+     {
+      "name": "seo.title_no_clickbait",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "seo.title_names_subject",
+      "passed": true,
+      "blocking": false,
+      "detail": ""
+     },
+     {
+      "name": "seo.meta_description",
+      "passed": false,
+      "blocking": false,
+      "detail": "meta description length 171"
+     },
+     {
+      "name": "seo.no_keyword_stuffing",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_high_severity",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_medium_severity",
+      "passed": true,
+      "blocking": true,
+      "detail": "[unsupported] فکت‌شیت فقط می‌گوید اعلامیه درباره عرضه در فروشگاه‌های رایانه‌ای دیگر اظهارنظر نکرده است؛ ادعای کلی‌ترِ نبودِ هرگونه جزئیات دیگر را تأیید نم"
+     },
+     {
+      "name": "language.fluent",
+      "passed": true,
+      "blocking": true,
+      "detail": ""
+     },
+     {
+      "name": "factcheck.model_verdict",
+      "passed": true,
+      "blocking": true,
+      "detail": "verdict=revise"
+     }
+    ]
+   },
+   "categories": [
+    2,
+    18
+   ],
+   "content_type": "gaming",
+   "slug": "monster-hunter-stories-3-twisted-xbox-pc",
+   "tags": [],
+   "tag_notes": [
+    "Monster Hunter Stories 3: Twisted Reflection: no tag created (policy covered)",
+    "Xbox Play Anywhere: no tag created (policy covered)"
+   ],
+   "image": {
+    "media_id": 0,
+    "basis": "no licensed image available; theme default",
+    "upload_from": ""
+   },
+   "llm_cost_usd": 0.002038
+  }
+ ]
+}

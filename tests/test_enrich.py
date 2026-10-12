@@ -2,7 +2,7 @@
 
 from conftest import SITE, FakeWeb, FakeWordPress, make_settings
 
-from newsbot.compose import render_article, valid_anchor
+from newsbot.compose import anchor_grounded, render_article, ungrounded_links, valid_anchor
 from newsbot.enrich import (
     LinkBuilder,
     build_slug,
@@ -113,15 +113,26 @@ def test_related_coverage_requires_entity_match_and_no_duplicates(repo):
 
 def test_rendered_links_no_self_no_duplicates_and_anchor_rules(repo):
     s = make_settings(repo)
-    links = [LinkCandidate("L1", f"{SITE}/loc/", "t", "localization")]
+    links = [LinkCandidate("L1", f"{SITE}/loc/", "Ironvale Chronicles - زیرنویس فارسی", "localization"),
+             LinkCandidate("L2", f"{SITE}/trailer/", "تریلر تازه Ironvale Chronicles شهر Ashmere را نشان می‌دهد",
+                           "related_coverage")]
     sheet = parse_fact_sheet({"claims": []})
-    art = Article("t", "m", "d", "k", "s", {"text": "لید [[L1|لینک در لید]]", "claim_ids": []},
+    art = Article("t", "m", "d", "k", "s", {"text": "لید [[L2|Ironvale Chronicles]]", "claim_ids": []},
                   [{"heading_fa": "", "paragraphs": [
-                      {"text": "اول [[L1|زیرنویس فارسی بازی]] و دوباره [[L1|باز هم همان لینک]]", "claim_ids": []},
-                      {"text": "لینک ناشناخته [[L7|ساختگی]]", "claim_ids": []}]}], [], [], "gaming", {})
-    out = render_article(art, story(), sheet, [], links, s, {f"{SITE}/loc/": []})
-    assert out.html.count(f'href="{SITE}/loc/"') == 1        # once, never in the lead
-    assert "لینک در لید" in out.html and "ساختگی" in out.html
+                      {"text": "اول [[L2|Ironvale Chronicles]] و دوباره [[L2|Ironvale Chronicles]]", "claim_ids": []},
+                      {"text": "مدل نمی‌تواند [[L1|Ironvale Chronicles]] را لینک کند", "claim_ids": []},
+                      {"text": "لینک ناشناخته [[L7|ساختگی]] و [[L2|محتوای تازه بازی]]", "claim_ids": []}]}],
+                  [], [], "gaming", {})
+    out = render_article(art, story(), sheet, [], links, s, {f"{SITE}/trailer/": []})
+    assert out.html.count(f'href="{SITE}/trailer/"') == 1    # once, never in the lead
+    assert f'href="{SITE}/loc/"' not in out.html              # localization: fixed sentence in code only
+    assert "ساختگی" in out.html and "محتوای تازه بازی" in out.html   # shown as plain text
+    assert out.links_used == [{"id": "L2", "url": f"{SITE}/trailer/", "anchor": "Ironvale Chronicles",
+                               "kind": "related_coverage"}]
+    assert ungrounded_links(art, links) == ["Ironvale Chronicles", "ساختگی", "محتوای تازه بازی"]
+    assert anchor_grounded("Ironvale Chronicles", links[1])
+    assert not anchor_grounded("محتوای تازه بازی", links[1])    # a description, not a name in the target title
+    assert not anchor_grounded("Starfield", links[1])
     assert valid_anchor("زیرنویس فارسی بازی", []) and not valid_anchor("زیرنویس فارسی بازی", ["زیرنویس فارسی بازی"])
     assert not valid_anchor("x " * 12, [])
 

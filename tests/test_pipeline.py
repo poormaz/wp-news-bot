@@ -99,10 +99,11 @@ def test_model_fact_check_can_veto(repo):
                         "explanation": "presents rumor as fact"}],
             "language": {"fluent": True, "translationese": False, "problems": []}, "verdict": "reject"}
     ai = FakeOpenAI({"fact_check": lambda kw: veto})
-    pipeline, _, fake_wp, _ = build(repo, "publish", openai_client=ai, max_revisions=0)
+    pipeline, _, fake_wp, _ = build(repo, "publish", openai_client=ai, max_revisions=2)
     report = pipeline.run()
     assert fake_wp.posts == {}
-    assert any("factcheck.model_high_severity" in r for s in report.stories for r in s["reasons"])
+    assert any("factcheck.model_rejected" in r for s in report.stories for r in s["reasons"])
+    assert ai.schema_calls().count("article") == 1               # "reject" is final: no revision is attempted
 
 
 def test_wordpress_create_failure_is_recorded_and_retryable(repo):
@@ -346,3 +347,50 @@ def WordPressClientFor(pipeline, mode):
     wp = pipeline.wp
     return WordPressClient(wp.base_url, "bot", "abcd efgh ijkl mnop", mode, wp.user_agent, session=wp.session,
                            sleep=lambda s: None)
+
+
+def test_other_development_of_same_game_is_not_a_wordpress_duplicate(repo):
+    """A known v2 story about the game's merch must not suppress its release-date story."""
+    from datetime import timedelta
+
+    from conftest import NOW
+
+    from newsbot.cluster import story_title_tokens
+    from newsbot.models import FeedItem, Story
+    from newsbot.state import StateStore
+    merch_item = FeedItem("old1", "GameSpot", "publication", "high", "primary", "https://gamespot.example/statue",
+                          "gamespot.example/statue", "Ironvale Chronicles Collector's Edition Statue Revealed", "",
+                          NOW - timedelta(hours=20))
+    store = StateStore(repo / "newsbot_state.db")
+    store.save_story(Story("a0c1d2e3f4a5b6c7", [merch_item], primary_entity="ironvale chronicles",
+                           primary_display="Ironvale Chronicles", event_type="announcement"),
+                     story_title_tokens([merch_item]))
+    store.update_story("a0c1d2e3f4a5b6c7", status="published", wp_post_id=504)
+    store.close()
+    merch_post = _existing(504, "مجسمه نسخه کلکسیونی Ironvale Chronicles معرفی شد", 0.2,
+                           content="<p>متن</p><!-- wp:html -->\n<!-- poormaz-newsbot v2 nbstory-a0c1d2e3f4a5b6c7 -->\n"
+                                   "<!-- /wp:html -->")
+    pipeline, _, fake_wp, _ = build(repo, "publish", wp_existing=[merch_post])
+    report = pipeline.run()
+    assert len(report.published) == 1
+    assert report.published[0]["post_id"] != 504
+
+
+def test_localization_link_is_placed_by_code_not_by_the_writer(repo):
+    pipeline, _, fake_wp, ai = build(repo, "publish")
+    report = pipeline.run()
+    assert len(report.published) == 1
+    compose_input = next(c["input"] for c in ai.calls if c["text"]["format"]["name"] == "article")
+    assert '"kind": "localization"' not in compose_input
+    post = next(iter(fake_wp.posts.values()))
+    assert post["content"].count("ironvale-chronicles-persian-subtitles") == 1
+    assert "را هم ببینید" not in post["content"] and "سر بزنید" not in post["content"]
+
+
+def test_samples_mode_raises_request_cap_but_not_cost_ceiling(repo):
+    pipeline, *_ = build(repo, "dry-run", max_llm_requests_per_run=16, max_revisions=2)   # --samples implies dry-run
+    pipeline.samples = 4
+    report = pipeline.run()
+    assert pipeline.s.max_llm_requests_per_run == 1 + 4 * (3 + 2 * 2)
+    assert pipeline.s.max_run_cost_usd == 0.10
+    assert any("request cap raised" in w for w in report.warnings)

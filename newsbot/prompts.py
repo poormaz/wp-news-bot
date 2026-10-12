@@ -10,7 +10,7 @@ import re
 
 from .entities import EVENT_TYPES
 
-PROMPT_VERSION = "2.0.0"
+PROMPT_VERSION = "2.1.0"
 
 KINDS = ["news", "rumor", "opinion", "guide", "deal", "review", "list", "sponsored", "other"]
 CLAIM_CATEGORIES = ["release_date", "release_window", "price", "platform", "version", "spec", "feature",
@@ -85,7 +85,7 @@ CHECK_SCHEMA = _obj({
         "paragraph": {"type": "integer"},
         "excerpt_fa": _STR,
         "problem": {"type": "string", "enum": ["unsupported", "altered_fact", "status_upgrade", "fabrication",
-                                               "contradiction_merged", "wrong_attribution", "other"]},
+                                               "contradiction_merged", "wrong_attribution", "filler", "other"]},
         "severity": _LEVEL,
         "explanation": _STR,
     })},
@@ -161,10 +161,13 @@ Hard rules:
    experience, testing, benchmarks, interviews, exclusives or quotations. Only quote text that appears as a
    quote in a claim, with attribution.
 5. Write a NEW article for Persian readers. Do not translate or mirror the structure of any source article.
-6. Length must follow the available information: between {{min_words}} and {{max_words}} Persian words. Short
-   and useful beats long and padded. Never repeat information or add generic filler to gain length.
-7. Where the facts allow, cover: what happened; why it matters for players; which games, platforms or players
-   are affected; useful verified background; what is still unknown. Skip any part without facts.
+6. Length must follow the available information: at most {{max_words}} Persian words, and as short as the facts
+   allow (there is no minimum). Short and useful beats long and padded. Say each point exactly once. No filler: no restating an earlier sentence
+   in other words, no comments about the information itself («اطلاعات موجود ...»، «جزئیات منتشرشده ...»، «طبق
+   اطلاعات تأییدشده»), no advice to readers («مشترکان باید ...»), and no conclusions, implications or
+   consequences («بنابراین ...»، «در نتیجه ...») unless a claim states them.
+7. Where the facts allow, cover: what happened; which games, platforms or players are affected; useful verified
+   background. Skip any part without facts.
 8. Style: natural, fluent, professional Persian newsroom prose. Short paragraphs of 2 to 4 sentences. No hype,
    no clickbait, no exclamation marks, no rhetorical questions, no clichéd openers such as «در دنیای
    بازی‌های ویدیویی»، «همان‌طور که می‌دانید»، «در این مقاله» or «خبر خوب برای طرفداران». Do not open with the
@@ -173,17 +176,23 @@ Hard rules:
 9. The lead (first paragraph, no heading) states the news itself in one to three sentences.
 10. Section headings: use heading_fa only when the article has at least three distinct parts; otherwise leave
    every heading_fa empty. Headings are specific (not «مقدمه» or «نتیجه‌گیری»).
-11. Internal links: LINK_CANDIDATES lists existing Poormaz pages. Where one is genuinely relevant, use it once
-   inside a body sentence (not in the lead or a heading) with the exact syntax [[L1|anchor text]] where the
-   anchor is a short natural Persian phrase (2 to 6 words) describing the target page. Avoid anchors listed in
-   avoid_anchors. Never write URLs or invent links.
-12. uncertainties_fa: short Persian sentences about what remains unknown or disputed (empty if nothing).
+11. Internal links (optional): LINK_CANDIDATES lists existing Poormaz pages with their page_title. A link may
+   only wrap a game, product or company name that your sentence already contains and that the candidate's
+   page_title also contains, written exactly: [[L2|Battlefield 6]]. The sentence must read the same without
+   the link. Never write a sentence to point to another page («... را هم ببینید»، «پوشش پیشین ما»، «خبر
+   مرتبط»), never describe the linked page, never mention Poormaz, never link in the lead or a heading, and
+   use each candidate at most once. Skip links that do not fit. Never write URLs or invent links.
+12. uncertainties_fa: at most three short Persian sentences, each a distinct open question taken from the fact
+   sheet's open_questions or contradictions (empty if none). State each unknown once, in one place: whatever
+   is in uncertainties_fa must NOT also be said in the body.
 13. SEO: title_fa is a natural Persian headline (max ~80 characters) that includes the main game or product
    name in English when the story is about one and reflects claim status (rumor => «شایعه» or «گزارش»).
    meta_title_fa max 60 characters. meta_description_fa 110 to 155 characters summarizing the key fact.
    focus_keyword_fa: a natural 2 to 5 word Persian/English search phrase used naturally, not repeated.
    slug_en: 3 to 7 lowercase English words joined by hyphens. entity_tags: at most 3 official English names of
-   the specific games/products/companies central to the story (no generic words like Gaming, PC, Trailer)."""
+   the specific games/products/companies central to the story (no generic words like Gaming, PC, Trailer).
+14. Names: use exactly one spelling for each game, platform and company throughout (as in the fact sheet,
+   e.g. «Xbox»، not «XBOX»); never switch between a full name and an abbreviation."""
 
 CHECK_SYSTEM = f"""You are the fact-checking editor of Poormaz. Compare a Persian news ARTICLE with the verified
 FACT SHEET it was written from. {UNTRUSTED_NOTICE}
@@ -195,11 +204,17 @@ Report every statement in the article that:
   wrong_attribution),
 - claims testing, playing, benchmarks, interviews, exclusives or quotations not in the fact sheet (fabrication),
 - merges contradictory claims into one statement (contradiction_merged).
-Connective or explanatory sentences that add no new factual claim are acceptable. Severity: high = a reader
-would be misinformed; medium = noticeable inaccuracy or missing attribution; low = minor wording.
-Also judge the Persian: fluent professional prose (not machine translation), natural word order.
-verdict: "pass" if there are no high or medium issues and the Persian is fluent; "revise" if fixable;
-"reject" if the article is fundamentally unreliable."""
+- adds filler: restates an earlier sentence, comments on the available information («اطلاعات موجود ...»),
+  gives readers advice, draws conclusions or implications that no claim states, or points readers to other
+  pages (filler, severity medium).
+Uncertainty sentences are acceptable only when they match the fact sheet's open_questions or contradictions.
+[[Lx|name]] marks an internal link placed on a name; INTERNAL_LINKS gives each target's page_title. Judge the
+sentence as written; a sentence that describes the linked page or exists only to point to it is filler.
+Severity: high = a reader would be misinformed; medium = noticeable inaccuracy, missing attribution or filler;
+low = minor wording. Also judge the Persian: fluent professional prose (not machine translation), natural word
+order, consistent spelling of names.
+verdict: "pass" only if there is no high or medium issue and the Persian is fluent; "revise" if fixable;
+"reject" if the article is fundamentally unreliable. Every issue you list must quote its excerpt_fa exactly."""
 
 
 INJECTION_PATTERNS = re.compile(
@@ -267,8 +282,12 @@ def build_compose_input(fact_sheet: dict, link_candidates: list[dict], editorial
     return (json.dumps(payload, ensure_ascii=False, indent=1) + "\n<fact_sheet>\n" + sheet + "\n</fact_sheet>")
 
 
-def build_check_input(fact_sheet: dict, paragraphs: list[str], title: str) -> str:
+def build_check_input(fact_sheet: dict, paragraphs: list[str], title: str, links: list[dict] | None = None) -> str:
     article = {"title": title, "paragraphs": [{"paragraph": i, "text": p} for i, p in enumerate(paragraphs)]}
+    payload = "ARTICLE:\n" + json.dumps(article, ensure_ascii=False, indent=1)
+    if links:
+        rows = [{"id": r.get("id"), "kind": r.get("kind"), "page_title": r.get("page_title")} for r in links]
+        payload += "\nINTERNAL_LINKS:\n" + json.dumps(rows, ensure_ascii=False, indent=1).replace(
+            "<", "‹").replace(">", "›")
     sheet = json.dumps(fact_sheet, ensure_ascii=False, indent=1).replace("<", "‹").replace(">", "›")
-    return ("ARTICLE:\n" + json.dumps(article, ensure_ascii=False, indent=1) + "\n<fact_sheet>\n" + sheet
-            + "\n</fact_sheet>")
+    return payload + "\n<fact_sheet>\n" + sheet + "\n</fact_sheet>"

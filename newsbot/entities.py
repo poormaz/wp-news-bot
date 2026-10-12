@@ -128,6 +128,26 @@ class Gazetteer:
             found.extend(e for e in self._match(stripped, confidence) if e.key not in keys)
         return found
 
+    def subject_tokens(self, text: str, kinds: set[str]) -> set[str]:
+        """entity_key tokens of `text` covered by a name (or alias, e.g. "GTA 6") of the given kinds."""
+        out: set[str] = set()
+        for source in {text, strip_possessives(text)}:
+            tokens = entity_key(source).split()
+            i = 0
+            while i < len(tokens):
+                step = 1
+                for n in range(min(self.max_tokens, len(tokens) - i), 0, -1):
+                    phrase = " ".join(tokens[i : i + n])
+                    entry = self.index.get(phrase)
+                    if not entry or (phrase in self.ambiguous and not self._capitalized_in(source, phrase)):
+                        continue
+                    if entry.kind in kinds:
+                        out.update(tokens[i : i + n])
+                    step = n
+                    break
+                i += step
+        return out
+
     def _match(self, text: str, confidence: float) -> list[Entity]:
         tokens = entity_key(text).split()
         found: list[Entity] = []

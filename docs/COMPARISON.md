@@ -1,15 +1,16 @@
 # Bot v1 vs News Bot 2.0
 
-Status of the evidence (2026-10-08):
+Status of the evidence (2026-10-12):
 
 * **Measured** — bot v1 behaviour in production, from the public GitHub Actions logs of runs
   #2140–#2145 (2026-10-06 → 2026-10-08), recorded in `tests/fixtures/v1_production_sample.json`.
 * **Measured offline** — v2 behaviour in the automated test suite (mocked feeds, pages,
   WordPress and OpenAI; no live data).
-* **Pending** — live v2 measurements (real GPT-6 Luna output, tokens, cost, runtime, Persian
-  quality). These require a `check`/`samples`/`dry-run` workflow run, which could not be
-  started from the development session (see "Validation status" below). The `samples` mode
-  with `--compare-legacy` produces the side-by-side live numbers automatically.
+* **Measured live** — the first v2 `samples` run (GitHub Actions run 37851559690, 2026-10-08):
+  GPT-6 Luna, 16 requests, ≈ $0.01346 estimated, no WordPress writes. Its four `SAMPLE_JSON`
+  records are kept as regression fixtures (`tests/fixtures/live_samples_37851559690.json`);
+  the defects they revealed are listed in §4 and fixed.
+* **Pending** — `dry-run` and the WordPress draft canary with the fixed pipeline.
 
 ## 1. What bot v1 actually published (measured)
 
@@ -33,12 +34,12 @@ token usage, so v1 token/cost figures below are estimates.
 | Criterion | bot v1 | News Bot 2.0 | Evidence |
 |---|---|---|---|
 | Factual accuracy | model rewrites one page; only a word count and final punctuation were validated | claims carry verbatim quotes checked in code; altered numbers are rejected; every number and Latin name in the Persian text must exist in verified sources; model fact check; rumors must be framed | `test_facts.py`, `test_factcheck.py`, `test_pipeline.py::test_model_fact_check_can_veto` |
-| Duplicate prevention | fuzzy English-title similarity vs. DB; WordPress check compares the **English** headline with **Persian** titles (rarely matches) | multi-signal clustering, persistent story IDs, WordPress fingerprints (marker, cited URLs, entities, event), crash adoption | `test_cluster.py` (5 outlets → 1 story; same game/different event stays separate), `test_state.py::test_cache_loss_is_recovered_from_wordpress`, `test_pipeline.py::test_crash_after_create_is_adopted_not_duplicated` |
+| Duplicate prevention | fuzzy English-title similarity vs. DB; WordPress check compares the **English** headline with **Persian** titles (rarely matches) | event-level clustering (topic words, not just the game), persistent story IDs, WordPress fingerprints (marker, cited URLs, entities, event), crash adoption | `test_cluster.py` (5 outlets → 1 story; GTA 6 radio/merch/column → 3 stories), `test_state.py::test_cache_loss_is_recovered_from_wordpress`, `test_pipeline.py::test_crash_after_create_is_adopted_not_duplicated` |
 | Usefulness | 2/5 recent posts were a guide and an opinion column | non-news filtered for free; triage + newsworthiness gate; developments allowed, repeats rejected | §1, `test_ingest.py`, `test_v1_regression.py` |
-| Readability | fixed 450–650-word target encouraged padding (and failed short stories) | length proportional to verified facts; padding, repetition, clichés, untranslated English, keyword stuffing and repeated openings are rejected | `test_factcheck.py` |
+| Readability | fixed 450–650-word target encouraged padding (and failed short stories) | no word quota (ceiling proportional to verified facts); padding, repetition, restated points, filler about "the available information", "see also" sentences, clichés, untranslated English, keyword stuffing and repeated openings are rejected; one spelling per name | `test_factcheck.py`, `test_live_regressions.py` |
 | Source diversity | 1 source per article; round-robin over 4 publications | all outlets covering a story, official pages linked from coverage, Steam data; official first-party feeds added; IGN/GameSpot for corroboration | `test_research.py`, `sources.yaml` |
 | Internal links | generic "مطالب مرتبط" list (often empty), localization link for 3 games | links inside the text, only validated targets (200, no redirect, page mentions the game), varied anchors, no self/duplicate links, earlier coverage for developments | `test_enrich.py` |
-| Images | copies the publisher's og:image (rights not established) | no publisher images; press-kit sources (opt-in), Poormaz's own localization artwork, or a site fallback | `test_pipeline.py::test_publish_flow…` (`media_id == 0`) |
+| Images | copies the publisher's og:image (rights not established) | no publisher images; press-kit sources (opt-in), Poormaz's own localization artwork, or validated Poormaz fallback artwork (`NEWSBOT_FALLBACK_MEDIA_IDS`, see `docs/IMAGES.md`) | `test_images.py` |
 | Tags | a new tag for every new entity | existing tags; new tags only for entities already covered by ≥ 2 posts | `test_enrich.py::test_tag_policy_avoids_thin_archives` |
 | Safety | publishes directly | dry-run / draft canary / publish (draft → verify → publish); write guard in code; branches cannot publish | `test_wordpress.py`, `test_workflow.py` |
 | API cost control | none | per-run and 24 h budgets, request cap, usage and cost from every response | `test_llm.py` |
@@ -65,10 +66,25 @@ hard ceiling is `NEWSBOT_MAX_RUN_COST_USD` ($0.10). Observed scheduling is ~5–
 (GitHub delays the two-hourly cron), i.e. roughly $0.03–0.09 per day for v2 vs. ≈ $0.02–0.03
 for v1. v2 spends more per run but less per *useful* article, and publishes fewer posts.
 
-## 4. Open weaknesses
+## 4. Live samples run 37851559690: defects found and fixed
 
-1. **Live validation outstanding** — GPT-6 Luna availability for this API key, real Persian
-   quality, real token usage/cost and runtime have not been observed yet (blocked; see below).
+| Defect (live evidence) | Fix | Regression test |
+|---|---|---|
+| Forza Horizon 6, Game Pass and Monster Hunter Stories 3 got fact-check verdict `revise` but **passed** (the gate allowed one medium issue and treated anything but `reject` as a pass) | only verdict `pass` with no high/medium issue passes; `revise` → corrective rewrite → rule checks and model check run again; still failing after `NEWSBOT_MAX_REVISIONS` → rejected; `reject` final; fact check mandatory in draft/publish | `test_live_regressions.py` (the three live verdicts can never pass; revise→revise rejected; revise→pass publishes only the re-checked text; overrides cannot bypass) |
+| GTA 6 radio story clustered with the GTA 6 merch article and the PC Gamer Jason column (3 "independent" groups) | event-level clustering by topic words; "other" no longer a wildcard; anti-chaining; stale mixed story IDs split | `test_cluster.py` (exact four headlines, any arrival order), `test_live_regressions.py::test_gta6_live_cluster_is_split_by_event` |
+| "Forza Horizon 6Add to Wishlist…" as a source title; outlet shown as `store.playstation.com` | only the document's own `<title>` (not SVG icon titles); page chrome stripped; feed headline preferred; readable outlet names | `test_live_store_page_title_chrome_is_removed` |
+| Uncertainties repeated what the body already said, under their own H2 | open questions already in the body are dropped; one paragraph unless ≥ 3 distinct | `test_live_uncertainties_…`, `test_live_forza_render_…` |
+| Filler («اطلاعات موجود …», «طبق اطلاعات تأییدشده») and "see also" sentences («… را هم ببینید», «پوشش پیشین ما») around internal links; anchor «محتوای تازه بازی» | blocking, fixable rule checks; links only on a name contained in the target page's title; localization link is a fixed factual sentence; checker sees link targets | `test_live_filler_and_see_also_…`, `test_enrich.py` |
+| «XBOX» and «Xbox» mixed in one article | `display_names` in `config/editorial.yaml` applied to the model's text and the fact sheet it reads | `test_live_name_spelling_is_made_consistent` |
+| Pre-orders quoted from the PlayStation Store stayed "reported" | a claim stated verbatim (unhedged) by an official page is "confirmed" | `test_facts.py::test_reported_claim_stated_by_an_official_page_becomes_confirmed` |
+| All four samples `media_id = 0` | validated, rotated Poormaz-owned fallback artwork (`NEWSBOT_FALLBACK_MEDIA_IDS`); check-mode image audit | `test_images.py`, `test_checks.py` |
+
+## 5. Open weaknesses
+
+1. **Live validation partly done** — the samples run confirmed GPT-6 Luna works with this key
+   and measured cost (16 requests, ≈ $0.01346 for four samples). The stricter gate will reject
+   more drafts and spend more on rewrites (up to 1 + 2 rewrites, each re-checked); this needs a
+   repeat `samples` run, then `dry-run` and the draft canary.
 2. **Lower volume by design** — Gamingbolt, DSOGaming and Wccftech items alone (medium
    authority) are only published with official confirmation or corroboration. Some runs, and
    possibly some days, will publish nothing. Tune with `NEWSBOT_SINGLE_SOURCE_MIN_AUTHORITY`,
@@ -78,9 +94,10 @@ for v1. v2 spends more per run but less per *useful* article, and publishes fewe
    not infallible. Human review of the canary and early posts is recommended.
 4. **Entity extraction is heuristic** — unknown new titles in Title Case headlines can be
    mis-segmented; mitigated by text similarity, aliases and learned names.
-5. **Featured images** — with the safe policy most posts will have no featured image unless
-   `NEWSBOT_FALLBACK_MEDIA_ID` is set to a site-owned image or `featured_media` is added to
-   localization entries. How the Gamxo theme renders posts without one is unverified.
+5. **Featured images** — until Poormaz-owned covers are uploaded and listed in
+   `NEWSBOT_FALLBACK_MEDIA_IDS` (or `featured_media` is added to localization entries), posts
+   have no featured image; the live samples all had `media_id = 0`. How the Gamxo theme renders
+   that is unverified; `check` mode and the canary preview now show it (`docs/IMAGES.md`).
 6. **Localization map** — still the 3 owner-provided entries; expansion requires one `check`
    run and review of `LOCALIZATION_DISCOVERY_JSON` (pages could not be reached from the
    development environment, and no URL was guessed).
@@ -95,8 +112,9 @@ for v1. v2 spends more per run but less per *useful* article, and publishes fewe
 
 | Step | Status |
 |---|---|
-| Unit + mocked integration tests (209) | passing locally (Python 3.11, same dependency versions as CI) |
+| Unit + mocked integration tests (258, incl. regressions built from the live samples) | passing locally (Python 3.11, same dependency versions as CI) |
 | ruff, compileall, actionlint, config validation | passing locally |
 | `tests` workflow on the pull request | runs automatically on GitHub |
-| `check` / `samples` / `dry-run` / `draft` workflow runs | **blocked**: dispatching workflows returned `403 Resource not accessible by integration` (the GitHub App lacks Actions write permission). Run them from the Actions tab as described in `docs/OPERATIONS.md`. |
+| `samples` workflow run | run 37851559690 by the owner (before these fixes): succeeded; revealed the defects in §4 |
+| `samples` (repeat) / `dry-run` / `draft` workflow runs | pending — to be started by the owner from the Actions tab (the development session cannot dispatch workflows: `403 Resource not accessible by integration`) |
 | Live feeds, poormaz.com, OpenAI from the development container | **blocked** by the container's network policy |

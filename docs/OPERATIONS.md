@@ -25,7 +25,10 @@ and the legacy engine is refused.
    * `post_audit`: `h1_count`, `canonical_count`, `og_title_count` — record the theme's baseline
      (the bot adds no H1, canonical, OpenGraph or schema of its own);
    * `LOCALIZATION_DISCOVERY_JSON` → copy entries with `"valid": true` into
-     `localization_pages.yaml` (see below).
+     `localization_pages.yaml` (see below);
+   * `FEATURED_IMAGE_AUDIT_JSON` → the active theme, whether recent posts lack a featured
+     image and how such a page renders, and whether every `NEWSBOT_FALLBACK_MEDIA_IDS` entry
+     exists as an image (see `docs/IMAGES.md`).
 3. **Samples**: `mode = samples` (default 4). Read the samples in the job log or in the
    `newsbot-report-*` artifact: facts with sources, gate decisions, Persian article, and the
    bot v1 article for the same story with its cost and evidence findings.
@@ -33,7 +36,9 @@ and the legacy engine is refused.
    model, tokens, cost and elapsed time.
 5. **Canary**: `mode = draft`. Open the draft in WordPress and verify facts against the
    listed sources, formatting (Gutenberg blocks, H2 only, no H1), internal links, Rank Math
-   title/description/focus keyword, category and tags. Publish or delete it manually.
+   title/description/focus keyword, category and tags. Use *Preview* to see how the theme
+   shows the post's featured image (or its absence) on the single-post page and in lists.
+   Publish or delete it manually.
 6. **Production**: merge to `main`. Scheduled runs use `NEWSBOT_MODE` (default `publish`).
    To keep production in canary for a while, set the repository variable
    `NEWSBOT_MODE=draft`; remove it (or set `publish`) when satisfied.

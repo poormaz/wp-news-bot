@@ -5,20 +5,23 @@ from __future__ import annotations
 import logging
 import re
 
+from .compose import ungrounded_links
 from .config import Settings
 from .facts import story_status
 from .llm import LLMClient
-from .models import Article, CheckResult, FactSheet, SourceDoc, Story
+from .models import Article, CheckResult, FactSheet, LinkCandidate, SourceDoc, Story
 from .prompts import CHECK_SCHEMA, CHECK_SYSTEM, build_check_input
 from .textutil import (
     char_ngrams,
     collapse_ws,
     entity_key,
     extract_numbers,
+    fa_similarity,
     jaccard,
     latin_phrases,
     persian_ratio,
     split_sentences,
+    strip_link_markup,
     to_ascii_digits,
 )
 
@@ -40,7 +43,21 @@ HEDGE_FA = re.compile(r"(شایعه|گزارش|تأیید نشده|تایید ن
 TITLE_HEDGE_FA = re.compile(r"(شایعه|گزارش|احتمال|ادعا|لیک|فاش|افشا|ظاهراً|ظاهرا)")
 ATTRIBUTION_FA = re.compile(r"(به گزارش|طبق گزارش|بنا بر گزارش|به نقل از|گزارش داده|گزارش کرده|اعلام کرد|"
                             r"اعلام کرده|اعلام شد|منتشر کرده|به گفته|بر اساس|طبق اعلام|براساس)")
+ABSOLUTE_MIN_WORDS = 60
 PERSIAN_QUOTE = re.compile(r"«([^»]{3,400})»")
+# Sentences that only point readers elsewhere ("see our earlier coverage"); links belong on names instead.
+POINTER_FA = re.compile(
+    r"(را (?:هم |نیز )?(?:ببینید|ببینند|بخوانید|بخوانند|دنبال کنید|مطالعه کنید)|سر بزنید|سر بزنند|"
+    r"مراجعه کنید|مراجعه کنند|(?:پوشش|جزئیات|اخبار|خبرهای|گزارش|گزارش‌های|مطالب|مطلب)(?: ما)? "
+    r"(?:پیشین|قبلی|مرتبط)|خبر مرتبط|مطلب مرتبط|برای مطالعه بیشتر|برای آشنایی بیشتر|برای اطلاعات بیشتر|"
+    r"پورماز)"
+)
+# Comments about the information itself instead of news ("the available information does not say").
+META_FILLER_FA = re.compile(
+    r"((?:اطلاعات|جزئیات|داده‌های|منابع)(?:ی)? (?:موجود|اعلام‌شده|اعلام شده|منتشرشده|منتشر شده|تأییدشده|"
+    r"تاییدشده|تأیید شده|ارائه‌شده|فعلی|در دسترس)|فکت ?شیت|فکت‌شیت|برگه(?:ٔ|‌ی| ی)? (?:اطلاعات|حقایق)|"
+    r"در این (?:خبر|گزارش|مطلب|مقاله))"
+)
 ALLOWED_LATIN = {
     "pc", "dlc", "rpg", "fps", "aaa", "npc", "hdr", "4k", "8k", "vr", "ai", "dlss", "fsr", "ps5", "ps4", "xbox",
     "steam", "gpu", "cpu", "ram", "ssd", "mmo", "mmorpg", "moba", "pvp", "pve", "co op", "beta", "demo",
@@ -111,8 +128,44 @@ def _used_claim_ids(article: Article) -> list[str]:
     return ids
 
 
+def _model_sentences(article: Article) -> list[str]:
+    texts = [strip_link_markup(p.get("text", "")) for p in article.paragraphs()] + list(article.uncertainties)
+    return [collapse_ws(s) for t in texts for s in split_sentences(t) if s.strip()]
+
+
+def near_duplicates(sentences: list[str]) -> list[tuple[str, str]]:
+    pairs = []
+    for i, a in enumerate(sentences):
+        for b in sentences[i + 1:]:
+            ratio, shared = fa_similarity(a, b)
+            if shared >= 3 and ratio >= 0.75 and a != b:
+                pairs.append((a, b))
+    return pairs
+
+
+def presentation_checks(article: Article, links: list[LinkCandidate] | None) -> list[CheckResult]:
+    """Filler, "see also" sentences, restated points and links on anything but a name."""
+    sentences = _model_sentences(article)
+    pointers = [s for s in sentences if POINTER_FA.search(s)]
+    meta = [s for s in sentences if META_FILLER_FA.search(s)]
+    body = [collapse_ws(s) for p in article.paragraphs() for s in split_sentences(strip_link_markup(p.get("text", "")))]
+    dupes = near_duplicates(body)
+    bad_links = ungrounded_links(article, links or [])
+    return [
+        CheckResult("links.no_pointer_sentences", not pointers, True,
+                    "; ".join(f"«{s[:120]}»" for s in pointers[:3])),
+        CheckResult("style.no_meta_filler", not meta, True, "; ".join(f"«{s[:120]}»" for s in meta[:3])),
+        CheckResult("persian.no_near_duplicates", not dupes, True,
+                    "; ".join(f"«{a[:80]}» ≈ «{b[:80]}»" for a, b in dupes[:2])),
+        CheckResult("links.anchor_grounded", not bad_links, True,
+                    "link markup not on a name in the target page title: " + ", ".join(bad_links[:4])
+                    if bad_links else ""),
+    ]
+
+
 def rule_checks(article: Article, story: Story, sheet: FactSheet, docs: list[SourceDoc], settings: Settings,
-                min_words: int, max_words: int, recent_openings: list[str], platform_names: set[str]) -> list[CheckResult]:
+                min_words: int, max_words: int, recent_openings: list[str], platform_names: set[str],
+                links: list[LinkCandidate] | None = None) -> list[CheckResult]:
     checks: list[CheckResult] = []
     add = checks.append
     usable = {c.id: c for c in sheet.usable_claims}
@@ -124,9 +177,13 @@ def rule_checks(article: Article, story: Story, sheet: FactSheet, docs: list[Sou
     add(CheckResult("structure.lead", bool(article.lead.get("text")), True, "lead paragraph missing"
                     if not article.lead.get("text") else ""))
     add(CheckResult("structure.paragraphs", len(body_paragraphs) >= 2, True, f"{len(body_paragraphs)} paragraph(s)"))
-    add(CheckResult("length.minimum", article.word_count >= min_words, True,
-                    f"{article.word_count} words < {min_words}" if article.word_count < min_words else
-                    f"{article.word_count} words"))
+    # No word quota: a short article that states the verified facts once is the goal. Only output too short
+    # to be a news article at all (truncated or empty) is blocking; the soft target is a warning.
+    add(CheckResult("length.minimum", article.word_count >= ABSOLUTE_MIN_WORDS, True,
+                    f"{article.word_count} words < {ABSOLUTE_MIN_WORDS}" if article.word_count < ABSOLUTE_MIN_WORDS
+                    else f"{article.word_count} words"))
+    add(CheckResult("length.target", article.word_count >= min_words, False,
+                    f"{article.word_count} words (soft target {min_words})" if article.word_count < min_words else ""))
     add(CheckResult("length.no_padding", article.word_count <= int(max_words * 1.15), True,
                     f"{article.word_count} words > budget {max_words} for {len(usable)} verified claims"
                     if article.word_count > int(max_words * 1.15) else ""))
@@ -195,6 +252,7 @@ def rule_checks(article: Article, story: Story, sheet: FactSheet, docs: list[Sou
     sentences = [collapse_ws(s) for s in split_sentences(text) if len(s) > 25]
     dupes = len(sentences) - len(set(sentences))
     add(CheckResult("persian.no_repetition", dupes == 0, True, f"{dupes} repeated sentence(s)" if dupes else ""))
+    checks.extend(presentation_checks(article, links))
     excl = text.count("!")
     add(CheckResult("persian.no_exclamations", excl == 0, False, f"{excl} exclamation mark(s)" if excl else ""))
     lead_first = split_sentences(article.lead.get("text", ""))[:1]
@@ -225,29 +283,63 @@ def rule_checks(article: Article, story: Story, sheet: FactSheet, docs: list[Sou
     return checks
 
 
-def llm_check(article: Article, sheet_view: dict, llm: LLMClient, settings: Settings) -> tuple[list[CheckResult], dict]:
-    paragraphs = [p.get("text", "") for p in article.paragraphs()] + list(article.uncertainties)
-    data = llm.call_json("factcheck", CHECK_SYSTEM, build_check_input(sheet_view, paragraphs, article.title_fa),
-                         "fact_check", CHECK_SCHEMA, settings.max_output_tokens_check, settings.reasoning_effort)
+MODEL_BLOCKING_SEVERITIES = ("high", "medium")
+# A "reject" verdict is final: no revision is attempted (see pipeline.process_story).
+NO_REVISION_CHECKS = {"factcheck.model_rejected"}
+
+
+def _issue_line(issue: dict) -> str:
+    excerpt = collapse_ws(str(issue.get("excerpt_fa", "")))[:160]
+    explanation = collapse_ws(str(issue.get("explanation", "")))[:200]
+    where = f"paragraph {issue.get('paragraph')}" if issue.get("paragraph") is not None else "article"
+    text = f"[{issue.get('problem', 'other')}/{issue.get('severity', '?')}] {where}"
+    if excerpt:
+        text += f": «{excerpt}»"
+    if explanation:
+        text += f" — {explanation}"
+    return text
+
+
+def model_check_results(data: dict) -> list[CheckResult]:
+    """Turn the model fact check into blocking gate checks.
+
+    Only verdict "pass" with no high/medium issue and fluent Persian passes. "revise" fails
+    (and is fixable by a revision whose result is checked again); "reject" fails and is final.
+    A missing or unknown verdict counts as a failure, never as a pass.
+    """
+    data = data if isinstance(data, dict) else {}
     issues = [i for i in data.get("issues") or [] if isinstance(i, dict)]
-    high = [i for i in issues if i.get("severity") == "high"]
-    medium = [i for i in issues if i.get("severity") == "medium"]
+    blocking = [i for i in issues if str(i.get("severity", "")).lower() in MODEL_BLOCKING_SEVERITIES]
+    verdict = str(data.get("verdict") or "").strip().lower()
     language = data.get("language") or {}
-    checks = [
-        CheckResult("factcheck.model_high_severity", not high, True,
-                    "; ".join(f"[{i.get('problem')}] {i.get('explanation', '')[:140]}" for i in high[:3])),
-        CheckResult("factcheck.model_medium_severity", len(medium) <= 1, True,
-                    "; ".join(f"[{i.get('problem')}] {i.get('explanation', '')[:140]}" for i in medium[:3])),
-        CheckResult("language.fluent", bool(language.get("fluent", True)) and not language.get("translationese"),
-                    True, "; ".join(language.get("problems") or [])[:300]),
-        CheckResult("factcheck.model_verdict", data.get("verdict") != "reject", True,
-                    f"verdict={data.get('verdict')}"),
+    fluent = bool(language.get("fluent", True)) and not language.get("translationese")
+    # When the model asks for a revision, every issue it lists (also "low") is worth fixing.
+    to_fix = issues if verdict != "pass" else blocking
+    return [
+        CheckResult("factcheck.model_rejected", verdict != "reject", True,
+                    "fact checker rejected the article: " + "; ".join(_issue_line(i) for i in issues[:4])
+                    if verdict == "reject" else ""),
+        CheckResult("factcheck.model_issues", not blocking, True,
+                    "; ".join(_issue_line(i) for i in blocking[:5])),
+        CheckResult("language.fluent", fluent, True, "; ".join(str(p) for p in language.get("problems") or [])[:300]),
+        CheckResult("factcheck.model_verdict", verdict == "pass", True,
+                    "" if verdict == "pass" else
+                    f"verdict={verdict or 'missing'}: " + ("; ".join(_issue_line(i) for i in to_fix[:5])
+                                                           or "no issue listed")),
     ]
-    return checks, data
+
+
+def llm_check(article: Article, sheet_view: dict, llm: LLMClient, settings: Settings,
+              links: list[dict] | None = None) -> tuple[list[CheckResult], dict]:
+    paragraphs = [p.get("text", "") for p in article.paragraphs()] + list(article.uncertainties)
+    data = llm.call_json("factcheck", CHECK_SYSTEM, build_check_input(sheet_view, paragraphs, article.title_fa, links),
+                         "fact_check", CHECK_SCHEMA, settings.max_output_tokens_check, settings.reasoning_effort)
+    return model_check_results(data), data
 
 
 FIXABLE = {
-    "length.minimum": "The article is too short; use more of the verified claims (do not invent anything).",
+    "length.minimum": "The article is too short to be a news article; state the verified core claims "
+                      "(never invent anything or pad).",
     "length.no_padding": "The article is too long for the available facts; remove repetition and filler.",
     "citations.every_paragraph": "Every paragraph must list the claim ids it relies on.",
     "citations.verified_only": "Only cite claim ids that exist in the fact sheet.",
@@ -261,21 +353,41 @@ FIXABLE = {
     "persian.untranslated_english": "Translate leftover English sentences into Persian.",
     "persian.no_cliche_lead": "Rewrite the lead without clichés; state the news directly.",
     "persian.no_repetition": "Remove repeated sentences.",
+    "persian.no_near_duplicates": "State each point once; delete sentences that repeat an earlier one: ",
+    "links.no_pointer_sentences": "Delete sentences that only point readers to other pages or earlier coverage "
+                                  "(and never mention Poormaz); a link may only wrap a name inside a factual "
+                                  "sentence: ",
+    "style.no_meta_filler": "Delete comments about the available information or the article itself; state "
+                            "what is known, and put a genuinely open question once in uncertainties_fa: ",
+    "links.anchor_grounded": "Put [[Lx|...]] only around a game, product or company name that already appears "
+                             "in the sentence and in that candidate's page_title, or use no link. ",
     "persian.fresh_opening": "Use a different opening sentence than recent Poormaz articles.",
     "persian.script_ratio": "Write in Persian; keep only names in English.",
     "seo.title_length": "Write a clear headline of 30 to 80 characters.",
     "seo.title_no_clickbait": "Remove exclamation marks and hype from the title.",
     "seo.no_keyword_stuffing": "Use the focus keyword naturally, not repeatedly.",
-    "factcheck.model_high_severity": "Fix these fact-check findings: ",
-    "factcheck.model_medium_severity": "Fix these fact-check findings: ",
+    "factcheck.model_issues": "Fix every one of these fact-check findings (rewrite or delete the sentence; "
+                              "never keep an unsupported statement): ",
+    "factcheck.model_verdict": "The fact checker asked for a revision. Fix every one of these findings "
+                               "(rewrite or delete the sentence): ",
     "language.fluent": "Rewrite in natural, fluent Persian newsroom prose (not translationese): ",
 }
 
 
 def revision_feedback(failed: list[CheckResult]) -> list[str]:
-    out = []
+    out: list[str] = []
+    names = {c.name for c in failed}
     for check in failed:
+        if check.name == "factcheck.model_issues" and "factcheck.model_verdict" in names:
+            continue  # the verdict line already lists every finding
         hint = FIXABLE.get(check.name)
         if hint:
-            out.append(hint + (check.detail if hint.endswith(": ") else f" ({check.detail})" if check.detail else ""))
+            line = hint + (check.detail if hint.endswith(": ") else f" ({check.detail})" if check.detail else "")
+            if line not in out:
+                out.append(line)
     return out
+
+
+def revisable(failed: list[CheckResult]) -> bool:
+    """True when every failure can be addressed by rewriting (none is a final rejection)."""
+    return bool(failed) and not any(c.name in NO_REVISION_CHECKS for c in failed) and bool(revision_feedback(failed))

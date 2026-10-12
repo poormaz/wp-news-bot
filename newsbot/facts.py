@@ -138,7 +138,7 @@ def verify_fact_sheet(sheet: FactSheet, docs: list[SourceDoc]) -> FactSheet:
 
     for claim in sheet.claims:
         verified: list[str] = []
-        quotes: list[str] = []
+        quote_of: dict[str, str] = {}
         for sup in claim.support:
             sid = sup["source_id"]
             if sid not in by_id:
@@ -147,7 +147,7 @@ def verify_fact_sheet(sheet: FactSheet, docs: list[SourceDoc]) -> FactSheet:
             if quote_in_text(sup["quote"], texts[sid], tokens[sid]):
                 if sid not in verified:
                     verified.append(sid)
-                    quotes.append(sup["quote"])
+                    quote_of[sid] = sup["quote"]
             else:
                 claim.problems.append(f"quote not found in {sid}")
         if claim.value and verified:
@@ -155,6 +155,7 @@ def verify_fact_sheet(sheet: FactSheet, docs: list[SourceDoc]) -> FactSheet:
             if not kept:
                 claim.problems.append(f"value {claim.value!r} not present in cited sources")
             verified = kept
+        quotes = [quote_of[sid] for sid in verified]
         claim.verified_sources = verified
         groups = {by_id[sid].origin_group for sid in verified}
         claim.independent_groups = len(groups)
@@ -174,6 +175,11 @@ def verify_fact_sheet(sheet: FactSheet, docs: list[SourceDoc]) -> FactSheet:
                                   q, re.I) for q in quotes):
             # A publication stating something without attribution is its reporting, not confirmation.
             claim.status = "reported"
+        official_quotes = [quote_of[sid] for sid in verified if by_id[sid].is_official]
+        if claim.status == "reported" and official_quotes and not any(HEDGE_RE.search(q) for q in official_quotes):
+            # The developer's/platform's own page states it verbatim: confirmed, not merely reported.
+            claim.status = "confirmed"
+            claim.problems.append("status upgraded: stated verbatim by an official source")
     _detect_value_conflicts(sheet, by_id)
     unverified = sum(1 for c in sheet.claims if not c.usable)
     if unverified:

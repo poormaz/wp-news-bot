@@ -6,16 +6,21 @@ under the default "safe" policy:
      (official press material intended for media use), downloaded and size-checked;
   2. the featured image of Poormaz's own localization page for the same game (an asset
      already in the Poormaz media library, reused by ID - nothing is copied);
-  3. NEWSBOT_FALLBACK_MEDIA_ID (a site-owned generic news image);
+  3. Poormaz-owned fallback artwork from NEWSBOT_FALLBACK_MEDIA_IDS (per content type,
+     rotated by story so consecutive posts differ; NEWSBOT_FALLBACK_MEDIA_ID still works);
   4. no featured image (the theme's default applies).
+Every media-library ID (2 and 3) is checked to exist as an image before it is used, so a
+deleted or mistyped ID never ends up on a post.
 The "legacy" policy reproduces bot v1 (copy the source page's og:image) and exists
 only for an explicit, informed opt-in.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import struct
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from .httpclient import HttpClient
@@ -93,8 +98,24 @@ def download_image(http: HttpClient, url: str) -> tuple[bytes, str, str] | None:
     return result.content, ext, mime
 
 
-def choose_featured_image(policy: str, docs: list[SourceDoc], localization: dict | None, fallback_media_id: int,
-                          reuse_localization: bool, http: HttpClient | None) -> ImageChoice:
+def fallback_candidates(ids: dict[str, list[int]] | int, content_type: str, seed: str) -> list[int]:
+    """Configured fallback IDs for this content type (else "default"), starting at a per-story offset."""
+    if isinstance(ids, int):
+        ids = {"default": [ids]} if ids else {}
+    pool = list((ids or {}).get(content_type) or (ids or {}).get("default") or [])
+    if not pool:
+        return []
+    start = int(hashlib.sha256((seed or "").encode()).hexdigest(), 16) % len(pool)
+    return pool[start:] + pool[:start]
+
+
+def choose_featured_image(policy: str, docs: list[SourceDoc], localization: dict | None,
+                          fallback_ids: dict[str, list[int]] | int, reuse_localization: bool, http: HttpClient | None,
+                          *, content_type: str = "gaming", seed: str = "",
+                          media_ok: Callable[[int], bool] | None = None) -> ImageChoice:
+    def usable(media_id: int) -> bool:
+        return media_id > 0 and (media_ok is None or media_ok(media_id))
+
     if policy == "none":
         return ImageChoice(basis="disabled by policy")
     if policy == "legacy":
@@ -104,6 +125,7 @@ def choose_featured_image(policy: str, docs: list[SourceDoc], localization: dict
                 if data:
                     return ImageChoice(upload=data, source_url=doc.image_url,
                                        basis=f"legacy policy: copied og:image from {doc.outlet}")
+    skipped: list[int] = []
     if policy in ("safe", "legacy"):
         for doc in docs:
             if doc.image_rights == "press_kit" and doc.image_url and http is not None:
@@ -111,9 +133,16 @@ def choose_featured_image(policy: str, docs: list[SourceDoc], localization: dict
                 if data:
                     return ImageChoice(upload=data, source_url=doc.image_url,
                                        basis=f"press-kit image from {doc.outlet} (sources.yaml images: press_kit)")
-        if reuse_localization and localization and int(localization.get("featured_media") or 0):
-            return ImageChoice(media_id=int(localization["featured_media"]),
-                               basis=f"Poormaz localization page artwork ({localization.get('name')})")
-        if fallback_media_id:
-            return ImageChoice(media_id=fallback_media_id, basis="site fallback image (NEWSBOT_FALLBACK_MEDIA_ID)")
-    return ImageChoice(basis="no licensed image available; theme default")
+        loc_media = int((localization or {}).get("featured_media") or 0)
+        if reuse_localization and loc_media:
+            if usable(loc_media):
+                return ImageChoice(media_id=loc_media,
+                                   basis=f"Poormaz localization page artwork ({localization.get('name')})")
+            skipped.append(loc_media)
+        for media_id in fallback_candidates(fallback_ids, content_type, seed):
+            if usable(media_id):
+                return ImageChoice(media_id=media_id,
+                                   basis=f"Poormaz fallback artwork for {content_type} (NEWSBOT_FALLBACK_MEDIA_IDS)")
+            skipped.append(media_id)
+    note = f"; skipped media {skipped} (not found or not an image)" if skipped else ""
+    return ImageChoice(basis="no licensed image available; theme default" + note)

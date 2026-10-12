@@ -66,6 +66,7 @@ class _Parser(HTMLParser):
         self.meta: dict[str, str] = {}
         self.title_parts: list[str] = []
         self.in_title = False
+        self.title_done = False
         self.h1_count = 0
         self.json_ld: list[str] = []
         self.in_json_ld = False
@@ -106,7 +107,9 @@ class _Parser(HTMLParser):
             self.stack.append((tag, 0, True))
             return
         if tag == "title":
-            self.in_title = True
+            # Only the document's own <title>: icons carry <svg><title>Add to Wishlist</title></svg>.
+            if not self.title_done and not any(t == "svg" for t, _, _ in self.stack):
+                self.in_title = True
         if tag == "h1":
             self.h1_count += 1
         if tag in VOID_TAGS:
@@ -138,8 +141,9 @@ class _Parser(HTMLParser):
 
     def handle_endtag(self, tag):
         tag = tag.lower()
-        if tag == "title":
+        if tag == "title" and self.in_title:
             self.in_title = False
+            self.title_done = True
         if tag == "a" and self.current_link is not None and self.current is not None:
             anchor = collapse_ws("".join(self.current_link["parts"]))
             self.current["links"].append((self.current_link["href"], anchor))

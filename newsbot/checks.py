@@ -2,7 +2,9 @@
 
 Verifies configuration, feeds, WordPress access and category IDs, the OpenAI model
 actually served (one minimal call), discovers and validates live Poormaz localization
-pages, audits the head markup of a published post and snapshots feed metadata.
+pages, audits the head markup of a published post, checks the fallback featured-image IDs
+and how the theme renders posts with and without a featured image, and snapshots feed
+metadata.
 """
 
 from __future__ import annotations
@@ -58,6 +60,7 @@ def run_checks(settings: Settings, http: HttpClient | None = None, openai_client
         out["wordpress"] = _wordpress_checks(wp, settings)
         out["localization"] = discover_localizations(wp, http, settings)
         out["post_audit"] = audit_latest_post(wp, http)
+        out["featured_images"] = audit_featured_images(wp, http, settings)
     out["model_probe"] = probe_model(settings, openai_client)
     return out
 
@@ -172,6 +175,46 @@ def audit_latest_post(wp: WordPressClient, http: HttpClient) -> dict:
         "schema_types": sorted(set(types))[:20],
         "robots_meta": re.findall(r"<meta[^>]+name=[\"']robots[\"'][^>]+content=[\"']([^\"']+)", lower)[:2],
     }
+
+
+def _image_markers(html: str) -> dict:
+    lower = (html or "").lower()
+    return {
+        "og_image": bool(re.search(r"<meta[^>]+property=[\"']og:image[\"']", lower)),
+        "featured_img_element": "wp-post-image" in lower,
+        "theme_placeholder_hint": bool(re.search(r"(no-?image|placeholder|default-?thumb)", lower)),
+    }
+
+
+def audit_featured_images(wp: WordPressClient, http: HttpClient, settings: Settings) -> dict:
+    """Read-only: which fallback media IDs are usable, which theme renders posts, and how a post page
+    looks with and without a featured image (evidence for the image fallback decision)."""
+    out: dict = {"configured": []}
+    for kind, ids in sorted(settings.fallback_featured_media_ids.items()):
+        for media_id in ids:
+            media = wp.get_media(media_id) or {}
+            out["configured"].append({"kind": kind, "id": media_id, "found": bool(media),
+                                      "is_image": media.get("media_type") == "image",
+                                      "source_url": media.get("source_url", "")})
+    home = http.get(settings.wp_base_url + "/") if settings.wp_base_url else None
+    themes = sorted(set(re.findall(r"/wp-content/themes/([a-z0-9_-]+)/", (home.text if home else "") or "", re.I)))
+    out["themes_in_homepage"] = themes
+    try:
+        posts = wp._get("wp/v2/posts", {"per_page": "30", "status": "publish", "_fields": "id,link,featured_media"},
+                        auth=False).json() or []
+    except WordPressError as exc:
+        out["error"] = str(exc)
+        return out
+    without = [p for p in posts if not int(p.get("featured_media") or 0)]
+    with_image = [p for p in posts if int(p.get("featured_media") or 0)]
+    out["recent_posts"] = len(posts)
+    out["recent_without_featured_image"] = [p["link"] for p in without][:10]
+    for label, sample in (("example_with_image", with_image[:1]), ("example_without_image", without[:1])):
+        if sample:
+            page = http.get(sample[0]["link"])
+            out[label] = {"url": sample[0]["link"], "http": page.status, **_image_markers(page.text)}
+    log.info("FEATURED_IMAGE_AUDIT_JSON=%s", json.dumps(out, ensure_ascii=False))
+    return out
 
 
 def probe_model(settings: Settings, openai_client=None) -> dict:

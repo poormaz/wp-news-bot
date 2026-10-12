@@ -339,3 +339,119 @@ def extract_numbers(value: str) -> list[str]:
 
 def latin_phrases(value: str) -> list[str]:
     return [collapse_ws(m) for m in re.findall(r"[A-Za-z][A-Za-z0-9'’:&.\-+ ]*[A-Za-z0-9+]", value or "")]
+
+
+# ---------------------------------------------------------------------------
+# Source titles and outlet names shown to readers
+# ---------------------------------------------------------------------------
+# Store/page chrome that leaks into <title> or headings ("Forza Horizon 6Add to WishlistAdd to Wishlist").
+UI_STRING_RE = re.compile(
+    r"(add to (?:wish ?list|cart|basket|library|collection)|remove from wish ?list|buy (?:it )?now|"
+    r"pre-?order now|sign in(?: to \w+)?|log ?in|play (?:the )?trailer|watch (?:the )?trailer|"
+    r"skip to (?:main )?content|accept (?:all )?cookies|cookie settings|view (?:in|on) store|see all reviews|"
+    r"download now|share on (?:facebook|twitter|x)|open menu|close menu|toggle navigation|back to top)",
+    re.I,
+)
+# Readable names for official hosts whose pages carry no usable og:site_name.
+OUTLET_NAMES = {
+    "store.playstation.com": "PlayStation Store",
+    "blog.playstation.com": "PlayStation Blog",
+    "playstation.com": "PlayStation",
+    "news.xbox.com": "Xbox Wire",
+    "xbox.com": "Xbox",
+    "store.steampowered.com": "Steam",
+    "steamcommunity.com": "Steam",
+    "nintendo.com": "Nintendo",
+    "store.epicgames.com": "Epic Games Store",
+    "epicgames.com": "Epic Games",
+    "rockstargames.com": "Rockstar Games",
+    "ea.com": "EA",
+    "ubisoft.com": "Ubisoft",
+    "bethesda.net": "Bethesda",
+}
+
+
+def outlet_display(url: str, site_name: str = "") -> str:
+    host = site_host(url)
+    for domain in sorted(OUTLET_NAMES, key=len, reverse=True):
+        if host == domain or host.endswith("." + domain):
+            return OUTLET_NAMES[domain]
+    name = clean_source_title(site_name, limit=60)
+    if name and not re.fullmatch(r"[\w.-]+\.[a-z]{2,}", name, re.I):
+        return name
+    return host
+
+
+def clean_source_title(title: str, outlet: str = "", limit: int = 140) -> str:
+    """A headline fit to show readers: no page chrome, no repeated fragments, no "| Site" suffix."""
+    text = collapse_ws(clean_text(title))[:400]
+    text = collapse_ws(UI_STRING_RE.sub(" ", text))
+    # "Forza Horizon 6 Forza Horizon 6" -> once (fragments repeated back to back).
+    text = re.sub(r"(\b.{4,80}?)(?:\s*\1\b)+", r"\1", text)
+    if " | " in text:
+        head = text.split(" | ")[0].strip()
+        if len(head) >= 12:
+            text = head
+    for sep in (" - ", " – ", " — "):
+        head, _, tail = text.rpartition(sep)
+        if head and tail and (entity_key(tail) == entity_key(outlet) or tail.strip() in OUTLET_NAMES.values()):
+            text = head
+    text = text.strip(" -–—|:·•")
+    if len(text) > limit:
+        cut = text[:limit].rsplit(" ", 1)[0]
+        text = (cut or text[:limit]).rstrip(" ,;:-") + "…"
+    return text
+
+
+# ---------------------------------------------------------------------------
+# Persian sentence similarity (repetition / duplicate uncertainty detection)
+# ---------------------------------------------------------------------------
+_FA_STOP = {
+    "و", "در", "به", "از", "که", "این", "آن", "را", "با", "برای", "هم", "نیز", "هنوز", "است", "بود", "شده", "شد",
+    "می‌شود", "می‌شوند", "نشده", "نشده‌است", "یا", "اما", "بااین‌حال", "همچنین", "تا", "هر", "یک", "خود", "دیگر",
+    "the", "a", "an", "of", "on", "in", "and", "or", "to", "for",
+}
+
+
+# Words that say "announced / unknown / game / new" and so carry no point of their own.
+_FA_GENERIC = {
+    "اعلام", "مشخص", "نیست", "نکرده", "کرده", "کرد", "کند", "نمی‌کند", "شده", "نشده", "نشده‌اند", "هنوز", "بازی",
+    "تازه", "جدید", "خواهد", "بود", "فعلا", "فعلاً", "اطلاعات", "جزئیات", "درباره", "دارد", "ندارد", "گزارش",
+}
+
+
+def fa_content_tokens(value: str, keep_names: bool = False) -> set[str]:
+    """Distinctive words of a Persian sentence (Latin-script names only when keep_names)."""
+    out: set[str] = set()
+    for token in re.findall(r"[A-Za-z0-9؀-ۿ‌]+", normalize_persian(strip_link_markup(value)).lower()):
+        token = token.strip("‌")
+        if not keep_names and (re.search(r"[a-z]", token) or re.fullmatch(r"[0-9۰-۹.]+", token)):
+            continue
+        token = re.sub("‌?(?:های|ها|ای|اش)$", "", token) or token   # plural / indefinite / possessive
+        if len(token) >= 4 and token.endswith("ش") and not token.endswith("‌ش"):
+            token = token[:-1]                                         # نامش -> نام
+        if not token or token in _FA_STOP or token in _FA_GENERIC:
+            continue
+        out.add(token)
+    return out
+
+
+def fa_similarity(a: str, b: str) -> tuple[float, int]:
+    """(share of the shorter sentence's distinctive words found in the other, number shared)."""
+    ta, tb = fa_content_tokens(a), fa_content_tokens(b)
+    if not ta or not tb:
+        return 0.0, 0
+    shared = len(ta & tb)
+    return shared / min(len(ta), len(tb)), shared
+
+
+def strip_link_markup(value: str) -> str:
+    return re.sub(r"\[\[\s*L\d+\s*\|\s*([^\]|]{1,80})\]\]", r"\1", value or "")
+
+
+def normalize_display_names(value: str, names: dict[str, str]) -> str:
+    """Consistent official spelling of names in Latin script (e.g. "XBOX" -> "Xbox")."""
+    for wrong, right in (names or {}).items():
+        if wrong and right and wrong != right:
+            value = re.sub(rf"(?<![A-Za-z0-9]){re.escape(str(wrong))}(?![A-Za-z0-9])", str(right), value or "")
+    return value

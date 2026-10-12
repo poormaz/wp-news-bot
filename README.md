@@ -21,7 +21,7 @@ What changed from bot v1 (preserved unchanged in `legacy/bot_v1.py`):
 | Non-news (guides, deals, opinion) | published as news | filtered before any API call |
 | Article length | forced 300–650 words | proportional to verified facts; padding rejected |
 | Publishing | always one post if anything is pending | explainable quality gate; zero posts is normal |
-| Images | publisher's og:image copied to the media library | no publisher images; licensed/press-kit or site-owned images only |
+| Images | publisher's og:image copied to the media library | no publisher images; press-kit (opt-in) or validated Poormaz-owned artwork only |
 | Tags | a new tag per new entity | existing tags; new tag only for entities with ≥ 2 posts |
 | Internal links | generic "related posts" block, often empty | validated localization pages + related coverage inside the text |
 | Model | `gpt-4o-mini` (workflow override) | `gpt-6-luna` (Responses API, strict JSON schemas), configurable |
@@ -61,7 +61,8 @@ suite on every pull request.
 - [Configuration reference](docs/CONFIGURATION.md) — every variable and YAML file
 - [Operations](docs/OPERATIONS.md) — modes, canary, enabling production, monitoring, maintenance
 - [Rollback](docs/ROLLBACK.md) — returning to bot v1 in one step
-- [v1 vs v2 comparison](docs/COMPARISON.md) — measured differences and open weaknesses
+- [Featured images](docs/IMAGES.md) — audit, Poormaz-owned fallback artwork, what is never copied
+- [v1 vs v2 comparison](docs/COMPARISON.md) — measured differences, live-run fixes and open weaknesses
 
 ## Repository layout
 
